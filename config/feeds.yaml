@@ -1,0 +1,226 @@
+# ============================================================
+# SITUATION MONITOR — RSS FEED CONFIGURATION
+# ============================================================
+# Add/remove feeds here without touching Python code.
+# health_check: true means the app will ping on startup and
+# flag broken feeds in the dashboard status bar.
+#
+# BEEHIIV FEEDS: These require manual URL lookup.
+# Visit the publication site, view page source, search "rss".
+# Mark needs_url: true to surface them in the health report.
+# ============================================================
+
+news_feeds:
+  # WSJ direct RSS (feeds.a.dj.com) serves stale content here, so all WSJ feeds
+  # use Google News site:wsj.com queries to get current headlines per beat.
+  - name: "WSJ Markets"
+    url: "https://news.google.com/rss/search?q=when:7d+site:wsj.com+(markets+OR+stocks+OR+bonds+OR+credit+OR+yields)&hl=en-US&gl=US&ceid=US:en"
+    category: macro
+    health_check: true
+
+  - name: "WSJ World News"
+    url: "https://news.google.com/rss/search?q=when:7d+site:wsj.com+world&hl=en-US&gl=US&ceid=US:en"
+    category: macro
+    health_check: true
+
+  - name: "WSJ US Business"
+    url: "https://news.google.com/rss/search?q=when:7d+site:wsj.com+(business+OR+earnings+OR+company+OR+CEO+OR+merger)&hl=en-US&gl=US&ceid=US:en"
+    category: credit
+    health_check: true
+
+  - name: "WSJ Economy"
+    url: "https://news.google.com/rss/search?q=when:7d+site:wsj.com+(economy+OR+inflation+OR+fed+OR+GDP)&hl=en-US&gl=US&ceid=US:en"
+    category: macro
+    health_check: true
+
+  - name: "Bloomberg Markets"
+    url: "https://feeds.bloomberg.com/markets/news.rss"
+    category: macro
+    health_check: true
+
+  # FT home feed is front-page (politics/world) and scores low; use desk feeds instead.
+  - name: "FT Markets"
+    url: "https://www.ft.com/markets?format=rss"
+    category: credit
+    health_check: true
+
+  - name: "FT Global Economy"
+    url: "https://www.ft.com/global-economy?format=rss"
+    category: macro
+    health_check: true
+
+  # Reuters killed its public RSS; MarketWatch Top Stories is a clean direct replacement.
+  - name: "MarketWatch Top Stories"
+    url: "https://feeds.marketwatch.com/marketwatch/topstories/"
+    category: macro
+    health_check: true
+
+  - name: "NYT Economy"
+    url: "https://rss.nytimes.com/services/xml/rss/nyt/Economy.xml"
+    category: macro
+    health_check: true
+
+  - name: "FT Alphaville"
+    url: "https://www.ft.com/rss/alphaville"
+    category: credit
+    health_check: true
+
+  # SIFMA has no public RSS; CNBC Economy is a reliable direct macro feed.
+  - name: "CNBC Economy"
+    url: "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20910258"
+    category: macro
+    health_check: true
+
+  # Structured Credit Investor is paywalled (no public RSS); use a Google News
+  # query as a securitization/ABS/CLO news aggregator instead.
+  - name: "Securitization & ABS News"
+    url: "https://news.google.com/rss/search?q=when:7d+(securitization+OR+%22asset-backed%22+OR+CLO)&hl=en-US&gl=US&ceid=US:en"
+    category: structured_finance
+    health_check: true
+
+newsletter_feeds:
+
+  # ── SUBSTACK (predictable pattern) ──────────────────────
+  - name: "Fintech Takes (Alex Johnson)"
+    url: "https://newsletter.fintechtakes.com/feed"
+    category: fintech
+    platform: substack
+    health_check: true
+
+  - name: "The Diff (Byrne Hobart)"
+    url: "https://www.thediff.co/feed"
+    category: macro
+    platform: custom
+    health_check: true
+
+  - name: "Capital Gains (Byrne Hobart)"
+    url: "https://capitalgains.thediff.co/feed"
+    category: macro
+    platform: custom
+    health_check: true
+
+  - name: "Fintech Business Weekly"
+    url: "https://fintechbusinessweekly.substack.com/feed"
+    category: fintech
+    platform: substack
+    health_check: true
+
+  - name: "Pari Passu"
+    url: "https://restructuringnewsletter.com/feed"
+    category: credit
+    platform: beehiiv
+    health_check: true
+    notes: "Verify URL — Beehiiv generates unique feed URLs"
+
+  - name: "Best of Econtwitter"
+    url: "https://www.bestofecontwitter.com/feed"
+    category: macro
+    platform: custom
+    health_check: true
+
+  - name: "Briefing Book"
+    url: "https://briefingbook.substack.com/feed"
+    category: macro
+    platform: substack
+    health_check: true
+    notes: "Slug unverified"
+
+  - name: "Quant Papers"
+    url: "https://mlquants.substack.com/feed"
+    category: data_science
+    platform: substack
+    health_check: true
+
+  - name: "Cold Capital"
+    url: "https://coldcapital.substack.com/feed"
+    category: credit
+    platform: substack
+    health_check: true
+    notes: "Slug unverified"
+
+  - name: "Junk Bond Investor"
+    url: "https://junkbondinvestor.substack.com/feed"
+    category: credit
+    platform: substack
+    health_check: true
+    notes: "Slug unverified"
+
+  - name: "Macro Notes"
+    url: "https://macronotes.substack.com/feed"
+    category: macro
+    platform: substack
+    health_check: true
+    notes: "Slug unverified"
+
+  - name: "The Credit Crunch"
+    url: "https://www.creditcrunch.blog/feed"
+    category: credit
+    platform: custom
+    health_check: true
+
+  - name: "This Week in Fintech"
+    url: "https://thisweekinfintech.substack.com/feed"
+    category: fintech
+    platform: substack
+    health_check: true
+    notes: "Slug unverified"
+
+  - name: "Wall Street Roll Up"
+    url: "https://rss.beehiiv.com/feeds/saecfgjnF5.xml"
+    category: macro
+    platform: beehiiv
+    health_check: true
+
+  # ── BEEHIIV / CUSTOM — URL NEEDS MANUAL LOOKUP ──────────
+  # To find: visit the site, Cmd+F in page source for "rss" or ".xml"
+  # Then replace the placeholder URL below.
+
+  - name: "Colossus"
+    url: "NEEDS_URL"
+    category: macro
+    platform: beehiiv
+    needs_url: true
+    notes: "joincolossus.com — check for /feed or RSS link in footer"
+
+  - name: "Data Elixir"
+    url: "NEEDS_URL"
+    category: data_science
+    platform: unknown
+    needs_url: true
+    notes: "dataelixir.com — likely has standard RSS"
+
+  - name: "Data Science Weekly"
+    url: "https://datascienceweekly.substack.com/feed"
+    category: data_science
+    platform: substack
+    health_check: true
+
+  - name: "Deep Learning Weekly"
+    url: "https://www.deeplearningweekly.com/feed"
+    category: data_science
+    platform: beehiiv
+    health_check: true
+
+  - name: "Setpoint Data Tapes"
+    url: "NEEDS_URL"
+    category: structured_finance
+    platform: unknown
+    needs_url: true
+
+# ── CATEGORIES (used for frontend filtering) ────────────────
+categories:
+  macro:
+    label: "Macro / Rates"
+    color: "#3b82f6"
+  credit:
+    label: "Credit / Private Credit"
+    color: "#f59e0b"
+  structured_finance:
+    label: "Structured Finance / ABS"
+    color: "#8b5cf6"
+  fintech:
+    label: "Fintech"
+    color: "#10b981"
+  data_science:
+    label: "Data Science / Quant"
+    color: "#6b7280"

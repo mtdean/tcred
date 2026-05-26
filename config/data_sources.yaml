@@ -1,0 +1,370 @@
+# ============================================================
+# SITUATION MONITOR — DATA SOURCE CONFIGURATION
+# ============================================================
+
+# ── FRED (Federal Reserve Economic Data) ────────────────────
+# Free API — get key at https://fred.stlouisfed.org/docs/api/
+# Set env var: FRED_API_KEY
+fred_series:
+
+  # Consumer Credit & Delinquencies
+  - id: "DRCCLACBS"
+    label: "Credit Card Delinquency Rate (90+ days)"
+    category: consumer_credit
+    frequency: quarterly
+
+  - id: "DRSFRMACBS"
+    label: "Single-Family Mortgage Delinquency Rate"
+    category: consumer_credit
+    frequency: quarterly
+
+  # FRED has no auto-loan bank delinquency series; use all-consumer-loans instead.
+  - id: "DRCLACBS"
+    label: "Consumer Loan Delinquency Rate"
+    category: consumer_credit
+    frequency: quarterly
+
+  - id: "DRCCLOBS"
+    label: "Consumer Loan Delinquency Rate"
+    category: consumer_credit
+    frequency: quarterly
+
+  # Charge-offs
+  - id: "CORCCACBS"
+    label: "Credit Card Net Charge-Off Rate"
+    category: consumer_credit
+    frequency: quarterly
+
+  - id: "CORALACBS"
+    label: "All Loans Net Charge-Off Rate"
+    category: consumer_credit
+    frequency: quarterly
+
+  # Consumer Credit Outstanding
+  - id: "TOTALSL"
+    label: "Total Consumer Credit Outstanding"
+    category: consumer_credit
+    frequency: monthly
+
+  - id: "REVOLSL"
+    label: "Revolving Credit Outstanding"
+    category: consumer_credit
+    frequency: monthly
+
+  - id: "NONREVSL"
+    label: "Non-Revolving Credit Outstanding"
+    category: consumer_credit
+    frequency: monthly
+
+  # Rates
+  - id: "FEDFUNDS"
+    label: "Federal Funds Rate"
+    category: rates
+    frequency: monthly
+
+  - id: "DGS10"
+    label: "10-Year Treasury Yield"
+    category: rates
+    frequency: daily
+
+  - id: "DGS2"
+    label: "2-Year Treasury Yield"
+    category: rates
+    frequency: daily
+
+  - id: "T10Y2Y"
+    label: "10Y-2Y Treasury Spread"
+    category: rates
+    frequency: daily
+
+  # Treasury yield curve tenors (forward-curve panel: today / 6mo / 1yr)
+  - id: "DTB3"
+    label: "3-Month Treasury Bill"
+    category: rates
+    frequency: daily
+
+  - id: "DTB6"
+    label: "6-Month Treasury Bill"
+    category: rates
+    frequency: daily
+
+  - id: "DGS1"
+    label: "1-Year Treasury Yield"
+    category: rates
+    frequency: daily
+
+  - id: "DGS3"
+    label: "3-Year Treasury Yield"
+    category: rates
+    frequency: daily
+
+  - id: "DGS5"
+    label: "5-Year Treasury Yield"
+    category: rates
+    frequency: daily
+
+  - id: "DGS7"
+    label: "7-Year Treasury Yield"
+    category: rates
+    frequency: daily
+
+  - id: "DGS20"
+    label: "20-Year Treasury Yield"
+    category: rates
+    frequency: daily
+
+  - id: "DGS30"
+    label: "30-Year Treasury Yield"
+    category: rates
+    frequency: daily
+
+  # SOFR (term averages + index for computing a trailing 1yr rate)
+  - id: "SOFR30DAYAVG"
+    label: "30-Day Average SOFR (1M)"
+    category: rates
+    frequency: daily
+
+  - id: "SOFR90DAYAVG"
+    label: "90-Day Average SOFR (3M)"
+    category: rates
+    frequency: daily
+
+  - id: "SOFRINDEX"
+    label: "SOFR Index"
+    category: rates
+    frequency: daily
+
+  - id: "BAMLH0A0HYM2"
+    label: "HY OAS (ICE BofA)"
+    category: spreads
+    frequency: daily
+
+  - id: "BAMLC0A0CM"
+    label: "IG OAS (ICE BofA)"
+    category: spreads
+    frequency: daily
+
+  - id: "BAMLH0A0HYM2EY"
+    label: "HY Effective Yield"
+    category: spreads
+    frequency: daily
+
+  # Macro
+  - id: "UNRATE"
+    label: "Unemployment Rate"
+    category: macro
+    frequency: monthly
+
+  - id: "CPIAUCSL"
+    label: "CPI (All Urban)"
+    category: macro
+    frequency: monthly
+
+  - id: "CPILFESL"
+    label: "Core CPI (ex Food & Energy)"
+    category: macro
+    frequency: monthly
+
+  - id: "GDPC1"
+    label: "Real GDP"
+    category: macro
+    frequency: quarterly
+
+  - id: "UMCSENT"
+    label: "University of Michigan Consumer Sentiment"
+    category: macro
+    frequency: monthly
+
+  # ── FRED "Favorite Economic Dashboard" views (dashboard 9706) ──────
+  # Activity / recession
+  - id: "CFNAI"
+    label: "Chicago Fed National Activity Index"
+    category: activity
+    frequency: monthly
+  - id: "CFNAIMA3"
+    label: "CFNAI (3-Month Moving Avg)"
+    category: activity
+    frequency: monthly
+  - id: "RECPROUSM156N"
+    label: "Smoothed Recession Probability"
+    category: activity
+    frequency: monthly
+
+  # Financial stress / conditions
+  - id: "STLFSI4"
+    label: "St. Louis Fed Financial Stress Index"
+    category: financial_conditions
+    frequency: weekly
+  - id: "NFCI"
+    label: "Chicago Fed Financial Conditions Index"
+    category: financial_conditions
+    frequency: weekly
+
+  # Inflation expectations
+  - id: "T5YIE"
+    label: "5Y Breakeven Inflation"
+    category: inflation
+    frequency: daily
+  - id: "T5YIFR"
+    label: "5Y5Y Forward Inflation Expectation"
+    category: inflation
+    frequency: daily
+  - id: "MICH"
+    label: "UMich Inflation Expectation"
+    category: inflation
+    frequency: monthly
+  - id: "PCETRIM12M159SFRBDAL"
+    label: "Trimmed Mean PCE Inflation"
+    category: inflation
+    frequency: monthly
+
+  # Bank lending standards + business credit
+  - id: "DRTSCILM"
+    label: "Banks Tightening C&I Standards (Net %)"
+    category: lending
+    frequency: quarterly
+  - id: "DRBLACBS"
+    label: "Business Loan Delinquency Rate"
+    category: consumer_credit
+    frequency: quarterly
+
+  # Growth tracker (used as YoY)
+  - id: "PCECC96"
+    label: "Real Personal Consumption (Quarterly)"
+    category: growth
+    frequency: quarterly
+  - id: "INDPRO"
+    label: "Industrial Production Index"
+    category: growth
+    frequency: monthly
+  - id: "PAYEMS"
+    label: "Nonfarm Payrolls"
+    category: growth
+    frequency: monthly
+
+  # Markets / FX
+  - id: "SP500"
+    label: "S&P 500"
+    category: markets
+    frequency: daily
+  - id: "DTWEXBGS"
+    label: "Nominal Broad U.S. Dollar Index"
+    category: fx
+    frequency: daily
+
+# ── MARKET DATA (via yfinance) ───────────────────────────────
+market_tickers:
+
+  # Credit ETFs (proxies for spread environment)
+  - ticker: "HYG"
+    label: "iShares HY Corp Bond ETF"
+    category: credit_etf
+
+  - ticker: "LQD"
+    label: "iShares IG Corp Bond ETF"
+    category: credit_etf
+
+  - ticker: "BKLN"
+    label: "Invesco Senior Loan ETF"
+    category: credit_etf
+
+  - ticker: "JNK"
+    label: "SPDR HY Bond ETF"
+    category: credit_etf
+
+  - ticker: "SRLN"
+    label: "SPDR Blackstone Senior Loan ETF"
+    category: credit_etf
+
+  # ABS / Structured Finance Proxies
+  - ticker: "MBB"
+    label: "iShares MBS ETF"
+    category: structured_etf
+
+  - ticker: "CMBS"
+    label: "iShares CMBS ETF"
+    category: structured_etf
+
+  # Macro
+  - ticker: "^VIX"
+    label: "VIX (Volatility Index)"
+    category: macro
+
+  - ticker: "^TNX"
+    label: "10Y Treasury Yield"
+    category: rates
+
+  - ticker: "^TYX"
+    label: "30Y Treasury Yield"
+    category: rates
+
+  - ticker: "SPY"
+    label: "S&P 500 ETF"
+    category: macro
+
+  # Consumer / Fintech Proxies
+  - ticker: "SYF"
+    label: "Synchrony Financial"
+    category: consumer_credit_proxy
+
+  - ticker: "COF"
+    label: "Capital One"
+    category: consumer_credit_proxy
+
+  - ticker: "AXP"
+    label: "American Express"
+    category: consumer_credit_proxy
+
+  - ticker: "DFS"
+    label: "Discover Financial"
+    category: consumer_credit_proxy
+
+# ── SEC EDGAR ────────────────────────────────────────────────
+# Free API — https://data.sec.gov
+# No key required; must set User-Agent header (see backend config)
+edgar:
+  # Form types to monitor for ABS issuance activity
+  form_types:
+    - "ABS-15G"      # Asset-backed securitizer rep/warranty report
+    - "ABS-EE"       # ABS asset data file (Reg AB II)
+    - "8-K"          # Current reports (often announce new deals)
+    - "S-3"          # Shelf registration (precursor to ABS issuance)
+    - "424B5"        # Prospectus supplement (actual deal pricing)
+
+  # Asset classes to filter on by keyword in filing text
+  asset_class_keywords:
+    - "equipment finance"
+    - "equipment lease"
+    - "esoteric"
+    - "consumer loan"
+    - "auto loan"
+    - "marketplace lending"
+    - "personal loan"
+    - "solar"
+    - "royalty"
+    - "data center"
+    - "whole business"
+    - "aircraft"
+    - "container"
+
+  # Known ABS issuers CIKs to monitor directly (add more as discovered)
+  # Find at: https://efts.sec.gov/LATEST/search-index?q=%22asset-backed%22&dateRange=custom
+  monitored_ciks: []  # populate over time
+
+# ── SIFMA ────────────────────────────────────────────────────
+# Manual download — no public API; scrape the stats pages
+# or download Excel files. Data updated monthly/quarterly.
+sifma:
+  abs_stats_url: "https://www.sifma.org/research/statistics/us-asset-backed-securities-statistics"
+  fixed_income_url: "https://www.sifma.org/research/statistics/us-fixed-income-securities-statistics"
+  # Refresh: monthly (data lags ~3-4 weeks)
+  refresh_frequency: monthly
+
+# ── REFRESH SCHEDULE ─────────────────────────────────────────
+refresh_intervals:
+  market_data_minutes: 15       # yfinance tickers (token-free)
+  fred_data_hours: 6            # FRED (token-free)
+  news_feeds_minutes: 0         # 0 = OFF. News fetch+classify spends Claude tokens,
+                                # so it runs only on demand via the REFRESH button.
+                                # Set to e.g. 30 to re-enable automatic classification.
+  edgar_filings_hours: 4        # EDGAR new filings (token-free)

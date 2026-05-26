@@ -1,0 +1,4 @@
+# npm lockfile — integrity hashes & resolved URLs, never app secrets
+"integrity":
+"resolved":
+sha512-

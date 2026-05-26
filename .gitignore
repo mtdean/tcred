@@ -1,0 +1,34 @@
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Secrets & private working docs (not for the repo)
+.env
+# Local env files / backups (.env.bak, .env.local, ...) but keep the template
+.env.*
+!.env.example
+CLAUDE.md
+FRONTEND.md
+
+# Python
+backend/.venv/
+__pycache__/
+*.py[cod]
+
+# SQLite cache / data
+backend/cache/*.db
+backend/cache/store/
+
+# Node / frontend build
+frontend/node_modules/
+frontend/dist/
+
+# Logs
+logs/*.log
+logs/*.out
+logs/*.err
+*.out.log
+*.err.log
+
+# Claude Code local settings (local tooling config)
+.claude/settings.local.json

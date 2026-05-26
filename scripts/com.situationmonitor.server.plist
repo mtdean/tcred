@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Situation Monitor — macOS LaunchAgent.
+  Auto-starts the server on login and restarts it if it crashes.
+
+  Install:
+    cp scripts/com.situationmonitor.server.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.situationmonitor.server.plist
+
+  Stop / uninstall:
+    launchctl unload ~/Library/LaunchAgents/com.situationmonitor.server.plist
+    rm ~/Library/LaunchAgents/com.situationmonitor.server.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.situationmonitor.server</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/td/situation-monitor/backend/.venv/bin/python</string>
+        <string>-m</string>
+        <string>uvicorn</string>
+        <string>main:app</string>
+        <string>--host</string>
+        <string>0.0.0.0</string>
+        <string>--port</string>
+        <string>8000</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/td/situation-monitor/backend</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/td/situation-monitor/logs/server.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/td/situation-monitor/logs/server.err.log</string>
+</dict>
+</plist>
