@@ -605,11 +605,28 @@ def fetch_bis_credit_gap() -> int:
 # NTFS is a spread, not a probability, so we fit a logit of "NBER recession
 # within the next 12 months" on NTFS over 1980-present (≈5 cycles) — the
 # Engstrom-Sharpe construction — and store the fitted probability (NTFS_REC_PROB).
-# The ensemble is the simple mean of whichever components exist each month;
-# if NTFS can't be fit (no key / too little history) it falls back to the two
-# published probits. Equal-weight is deliberate — it's robust and transparent.
+#
+# v2 — stacked (meta-logit) weighting. Rather than an equal-weight mean, we fit
+# a *meta-logit stack*: a logistic regression of forward-12-month NBER recession
+# (USREC) on the three component probabilities (as fractions 0–1), over the
+# months where all three exist. The fitted model's prediction is the headline
+# RECESSION_RISK_ENSEMBLE — a performance-weighted blend that learns how much to
+# lean on each model. The equal-weight mean is still computed and stored as a
+# secondary series (RECESSION_RISK_ENSEMBLE_EW) for transparency / comparison.
+#
+# Months missing a component can't be scored by the full 3-feature stack, so for
+# those we fall back to the equal-weight mean of whatever components exist (the
+# v1 behaviour). If the stack itself can't be fit (too few aligned obs, single
+# target class, or a singular fit) the whole series falls back to equal-weight,
+# exactly as the NTFS probit falls back — robust and transparent by design.
 _ENSEMBLE_ID = "RECESSION_RISK_ENSEMBLE"
+_ENSEMBLE_EW_ID = "RECESSION_RISK_ENSEMBLE_EW"
 _NTFS_PROB_ID = "NTFS_REC_PROB"
+
+# Minimum aligned monthly observations (all 3 probits + observed forward window)
+# and minimum count of each target class before we trust the stacked fit.
+_STACK_MIN_OBS = 60
+_STACK_MIN_CLASS = 8
 
 
 def _ym_index(ym: str) -> int:
@@ -618,26 +635,49 @@ def _ym_index(ym: str) -> int:
     return int(y) * 12 + (int(m) - 1)
 
 
-def _fit_logit(x, y):
-    """Newton-Raphson logit of y on [1, x]. Returns (b0, b1) or None."""
+def _fit_logit(x, y, nonneg_slopes: bool = False):
+    """Newton-Raphson logit of y on [1, x].
+
+    `x` may be a 1-D sequence (single feature) or a 2-D array-like with one
+    column per feature. Returns the coefficient vector (b0, b1, …, bk) as a
+    tuple — b0 is the intercept — or None on a singular/failed fit. The L2
+    ridge term (1e-6) keeps the Hessian invertible under collinear features,
+    which the three recession probits very much are.
+
+    `nonneg_slopes` clamps every *slope* coefficient (not the intercept) to ≥ 0
+    after each Newton step — a projected-Newton non-negativity constraint used
+    by the ensemble stack so the blended probability is monotone non-decreasing
+    in each component probability (a negative weight on a recession probability
+    is economically perverse and a symptom of overfitting one false-positive
+    episode). The NTFS probit leaves this off (its spread slope is genuinely
+    negative).
+    """
     import numpy as np
 
-    X = np.column_stack([np.ones(len(x)), np.asarray(x, float)])
+    xa = np.asarray(x, float)
+    if xa.ndim == 1:
+        xa = xa[:, None]
+    X = np.column_stack([np.ones(len(xa)), xa])
     y = np.asarray(y, float)
-    beta = np.zeros(2)
-    for _ in range(50):
+    k = X.shape[1]
+    beta = np.zeros(k)
+    for _ in range(200):
         p = 1.0 / (1.0 + np.exp(-(X @ beta)))
         w = np.clip(p * (1.0 - p), 1e-9, None)
         grad = X.T @ (y - p)
-        hess = (X * w[:, None]).T @ X + 1e-6 * np.eye(2)
+        hess = (X * w[:, None]).T @ X + 1e-6 * np.eye(k)
         try:
             step = np.linalg.solve(hess, grad)
         except np.linalg.LinAlgError:
             return None
         beta += step
+        if nonneg_slopes and k > 1:
+            beta[1:] = np.clip(beta[1:], 0.0, None)
         if np.max(np.abs(step)) < 1e-9:
             break
-    return float(beta[0]), float(beta[1])
+    if not np.all(np.isfinite(beta)):
+        return None
+    return tuple(float(b) for b in beta)
 
 
 def _monthly_latest(series_id: str) -> dict[str, float]:
@@ -652,6 +692,33 @@ def _monthly_latest(series_id: str) -> dict[str, float]:
     for r in rows:
         out[r["date"][:7]] = float(r["value"])  # later rows overwrite → latest wins
     return out
+
+
+def _usrec_monthly() -> dict[str, int]:
+    """NBER recession flag per calendar month, from the cached USREC metric."""
+    return {ym: int(round(v)) for ym, v in _monthly_latest("USREC").items()}
+
+
+def _forward_recession_targets(usrec: dict[str, int]) -> dict[str, float]:
+    """Map each month to 1.0 if any of the next 12 months is an NBER recession.
+
+    Only months whose full forward window is observed are returned (so the
+    target is never censored). Mirrors the NTFS-probit target construction.
+    """
+    if not usrec:
+        return {}
+    last_idx = max(_ym_index(m) for m in usrec)
+    targets: dict[str, float] = {}
+    for ym in usrec:
+        base = _ym_index(ym)
+        if base + 12 > last_idx:
+            continue  # forward window not yet fully observed
+        future = [
+            usrec.get(f"{(base + k) // 12:04d}-{(base + k) % 12 + 1:02d}", 0)
+            for k in range(1, 13)
+        ]
+        targets[ym] = 1.0 if any(future) else 0.0
+    return targets
 
 
 def _fit_ntfs_recession_prob() -> dict[str, float]:
@@ -716,8 +783,59 @@ def _fit_ntfs_recession_prob() -> dict[str, float]:
     return {ym: 100.0 / (1.0 + _m.exp(-(b0 + b1 * s))) for ym, s in ntfs.items()}
 
 
+def _fit_ensemble_stack(
+    nyfed: dict[str, float],
+    ebp: dict[str, float],
+    ntfs_prob: dict[str, float],
+) -> tuple[float, float, float, float] | None:
+    """Fit the meta-logit stack: forward-12-mo NBER recession on the 3 probits.
+
+    Features are the component probabilities expressed as fractions (0–1) so the
+    coefficients are interpretable and well-scaled. Returns (b0, b_nyfed, b_ebp,
+    b_ntfs) or None if the sample is too thin / single-class / the fit is
+    singular — in which case the caller falls back to equal-weight.
+    """
+    targets = _forward_recession_targets(_usrec_monthly())
+    if not targets:
+        return None
+
+    feats, ys = [], []
+    for ym in sorted(set(nyfed) & set(ebp) & set(ntfs_prob) & set(targets)):
+        feats.append([nyfed[ym] / 100.0, ebp[ym] / 100.0, ntfs_prob[ym] / 100.0])
+        ys.append(targets[ym])
+
+    n = len(ys)
+    pos = sum(ys)
+    if n < _STACK_MIN_OBS or pos < _STACK_MIN_CLASS or (n - pos) < _STACK_MIN_CLASS:
+        logger.info(
+            "ensemble stack: insufficient sample (n=%d, pos=%d) — equal-weight fallback",
+            n, int(pos),
+        )
+        return None
+
+    # Non-negative slopes: the blend must be monotone in each component prob.
+    coefs = _fit_logit(feats, ys, nonneg_slopes=True)
+    if coefs is None or len(coefs) != 4:
+        logger.info("ensemble stack: singular fit — equal-weight fallback")
+        return None
+    # Guard a fully degenerate stack (all slopes clamped to ~0 → just an
+    # intercept, i.e. a constant): that carries no cross-sectional signal, so
+    # prefer the transparent equal-weight mean instead.
+    if all(abs(b) < 1e-6 for b in coefs[1:]):
+        logger.info("ensemble stack: all slopes ~0 — equal-weight fallback")
+        return None
+    return coefs  # (b0, b_nyfed, b_ebp, b_ntfs)
+
+
 def compute_recession_ensemble() -> int:
-    """Blend the yield-curve probit, EBP probit, and NTFS probit into one gauge."""
+    """Blend the yield-curve probit, EBP probit, and NTFS probit into one gauge.
+
+    Headline RECESSION_RISK_ENSEMBLE is a meta-logit *stack* of the three
+    component probabilities against forward-12-mo NBER recession (performance
+    weighted). The equal-weight mean is also stored as RECESSION_RISK_ENSEMBLE_EW.
+    Months missing a stack feature, and the whole series if the stack can't be
+    fit, fall back to the equal-weight mean of available components.
+    """
     nyfed = _monthly_latest(_RECESSION_PROBIT_ID)
     ebp = _monthly_latest("EBP_REC_PROB")
     ntfs_prob = _fit_ntfs_recession_prob()
@@ -742,25 +860,62 @@ def compute_recession_ensemble() -> int:
             }
         )
 
+    # Fit the stack once over the all-three-present aligned sample.
+    coefs = _fit_ensemble_stack(nyfed, ebp, ntfs_prob)
+    if coefs is not None:
+        b0, bN, bE, bT = coefs
+        logger.info(
+            "ensemble stack fit: b0=%.3f nyfed=%.3f ebp=%.3f ntfs=%.3f", b0, bN, bE, bT
+        )
+
+    def _equal_weight(ym: str) -> float | None:
+        comps = [d[ym] for d in (nyfed, ebp, ntfs_prob) if ym in d]
+        return sum(comps) / len(comps) if comps else None
+
+    def _stacked(ym: str) -> float | None:
+        if coefs is None or not (ym in nyfed and ym in ebp and ym in ntfs_prob):
+            return None  # need all three features for the full stack
+        b0, bN, bE, bT = coefs
+        z = b0 + bN * nyfed[ym] / 100.0 + bE * ebp[ym] / 100.0 + bT * ntfs_prob[ym] / 100.0
+        return 100.0 / (1.0 + math.exp(-z))
+
     months = set(nyfed) | set(ebp) | set(ntfs_prob)
     for ym in sorted(months):
-        comps = [d[ym] for d in (nyfed, ebp, ntfs_prob) if ym in d]
-        if not comps:
+        ew = _equal_weight(ym)
+        if ew is None:
             continue
+        # Headline: stacked where all features exist, else equal-weight fallback.
+        headline = _stacked(ym)
+        if headline is None:
+            headline = ew
         upsert_metric(
             {
                 "series_id": _ENSEMBLE_ID,
                 "label": "Recession Risk — Ensemble (12-mo)",
                 "category": "recession_risk",
                 "date": f"{ym}-01",
-                "value": round(sum(comps) / len(comps), 3),
+                "value": round(headline, 3),
+                "fetched_at": now,
+            }
+        )
+        upsert_metric(
+            {
+                "series_id": _ENSEMBLE_EW_ID,
+                "label": "Recession Risk — Ensemble, equal-weight (12-mo)",
+                "category": "recession_risk",
+                "date": f"{ym}-01",
+                "value": round(ew, 3),
                 "fetched_at": now,
             }
         )
         count += 1
 
-    logger.info("recession ensemble: stored %d monthly points (NTFS probit: %s)",
-                count, "yes" if ntfs_prob else "no")
+    logger.info(
+        "recession ensemble: stored %d monthly points (NTFS probit: %s, weighting: %s)",
+        count,
+        "yes" if ntfs_prob else "no",
+        "stacked" if coefs is not None else "equal-weight",
+    )
     return count
 
 
