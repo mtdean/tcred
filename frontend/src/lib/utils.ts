@@ -139,3 +139,46 @@ export function fredSeriesUrl(seriesId: string | undefined): string | null {
   }
   return `https://fred.stlouisfed.org/series/${seriesId}`;
 }
+
+// Computed/ingested series → anchor in docs/INDICATORS.md ("Calculated fields"
+// reference). Anchors are the GitHub auto-anchors of that section's headings.
+const DOC_BASE = 'https://github.com/mtdean/tcred/blob/main/docs/INDICATORS.md';
+const DOC_ANCHORS: Record<string, string> = {
+  RECESSION_RISK_ENSEMBLE: 'recession-risk-ensemble',
+  RECESSION_RISK_ENSEMBLE_EW: 'recession-risk-ensemble',
+  NYFED_RECESSION_PROB: 'yield-curve-recession-probit',
+  EBP: 'excess-bond-premium',
+  GZ_SPREAD: 'excess-bond-premium',
+  EBP_REC_PROB: 'excess-bond-premium',
+  NEAR_TERM_FWD_SPREAD: 'near-term-forward-spread',
+  NTFS_REC_PROB: 'near-term-forward-spread',
+  CREDIT_IMPULSE: 'credit-impulse',
+  CFSI: 'consumer-financial-stress-index',
+  OFR_FSI: 'ofr-financial-stress-index',
+  OFR_FSI_CREDIT: 'ofr-financial-stress-index',
+  OFR_FSI_EQUITY: 'ofr-financial-stress-index',
+  OFR_FSI_SAFE: 'ofr-financial-stress-index',
+  OFR_FSI_FUNDING: 'ofr-financial-stress-index',
+  OFR_FSI_VOL: 'ofr-financial-stress-index',
+  BIS_CREDIT_GAP_US: 'bis-credit-to-gdp-gap',
+};
+
+/** Methodology-doc URL (source/calculation/interpretation) for a computed series. */
+export function seriesDocUrl(seriesId: string | undefined): string | null {
+  if (!seriesId) return null;
+  if (seriesId.startsWith('HHDC_FLOW')) return `${DOC_BASE}#delinquency-transition-flows`;
+  const anchor = DOC_ANCHORS[seriesId];
+  return anchor ? `${DOC_BASE}#${anchor}` : null;
+}
+
+/** Where a legend label should link: FRED for raw series, the methodology doc
+ *  for computed ones. Returns null when neither applies. */
+export function seriesReference(
+  seriesId: string | undefined,
+): { url: string; title: string } | null {
+  const fred = fredSeriesUrl(seriesId);
+  if (fred) return { url: fred, title: `${seriesId} — open on FRED` };
+  const doc = seriesDocUrl(seriesId);
+  if (doc) return { url: doc, title: `${seriesId} — data source, calculation & how to read it` };
+  return null;
+}

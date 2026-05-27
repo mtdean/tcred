@@ -11,6 +11,70 @@ source, update cadence, documented predictive value, and caveats. Verified May 2
 
 ---
 
+## Calculated fields — legend reference
+
+> The dashboard charts a layer of **computed** series, not just raw data. Clicking a
+> computed series name in a chart legend brings you here; genuine FRED series link to
+> FRED instead. Each entry below gives the **data source**, the **calculation**, and
+> **how to read it**. Deeper research, formulas, and citations are in the per-indicator
+> sections further down.
+
+### Recession-Risk Ensemble
+- **Series:** `RECESSION_RISK_ENSEMBLE` (headline), `RECESSION_RISK_ENSEMBLE_EW` (equal-weight comparison line).
+- **Data source:** the three component probabilities below (yield-curve probit, EBP probit, NTFS probit) + NBER recession dates (FRED `USREC`) used to fit the blend.
+- **Calculation:** a meta-logit "stack" — a logistic regression of *recession within the next 12 months* on the three component probabilities, with non-negative weights, fit where all three exist (post-2015); falls back to a simple average where a component is missing (pre-2015). Output is a probability, %.
+- **Interpretation:** one headline 0–100% chance of recession within ~12 months; higher = more risk. The stack down-weights models that have misfired (it tempers the 2022–23 yield-curve false alarm). The dashed equal-weight line shows how much the learned weighting changes the call.
+
+### Yield-Curve Recession Probit
+- **Series:** `NYFED_RECESSION_PROB`.
+- **Data source:** FRED `T10Y3M` — the 10-year minus 3-month Treasury term spread.
+- **Calculation:** the Estrella-Mishkin probit `P = Φ(−0.5333 − 0.6629 · spread)` applied to the monthly-average spread, in %.
+- **Interpretation:** the classic yield-curve recession signal, 12 months ahead; rises as the curve flattens/inverts. Known to over-predict during the deep 2022–23 inversion — best read alongside the ensemble.
+
+### Excess Bond Premium
+- **Series:** `EBP`, `GZ_SPREAD`, `EBP_REC_PROB`.
+- **Data source:** Federal Reserve FEDS Notes monthly CSV (Gilchrist-Zakrajšek).
+- **Calculation:** `GZ_SPREAD` is a corporate-bond credit-spread index; `EBP` is the portion of that spread *not* explained by expected default (i.e. investor risk appetite); `EBP_REC_PROB` is the Fed's EBP-based 12-month recession probability, taken directly from the CSV.
+- **Interpretation:** `EBP` > 0 = investors demanding more for credit risk than fundamentals justify (risk-off); < 0 = compressed risk premia (risk-on). The predictive power of credit spreads for downturns comes from the EBP component, not the raw spread.
+
+### Near-Term Forward Spread
+- **Series:** `NEAR_TERM_FWD_SPREAD`, `NTFS_REC_PROB`.
+- **Data source:** Federal Reserve GSW Treasury yield-curve parameters (`feds200628.csv`).
+- **Calculation:** the market-implied 3-month T-bill rate ~18 months out minus today's 3-month rate, derived from the Svensson curve. `NTFS_REC_PROB` is a logistic fit of 12-month-ahead NBER recession on that spread (1980+).
+- **Interpretation:** the Fed staff's *preferred* curve measure — it captures expected near-term rate cuts. Negative = the market is pricing cuts = recession signal. Less distorted than 2s10s.
+
+### Credit Impulse
+- **Series:** `CREDIT_IMPULSE`.
+- **Data source:** FRED `TCMDO` (total nonfinancial debt) and `GDP` (nominal).
+- **Calculation:** the year-over-year change in the *annual flow* of new credit, as % of GDP: `[(C_t − C_{t−4}) − (C_{t−4} − C_{t−8})] / GDP_t × 100`.
+- **Interpretation:** the *acceleration* of credit, which leads real-economy growth by ~9–12 months. Positive = credit accelerating (tailwind); negative = decelerating (headwind). Noisy quarter to quarter — read the trend.
+
+### Consumer Financial Stress Index
+- **Series:** `CFSI`.
+- **Data source:** FRED Consumer DSR (`CDSP`), SLOOS credit-card tightening (`DRTSCLCC`, lagged 4 quarters), revolving credit (`REVOLSL`) deflated by CPI (`CPIAUCSL`), and the NY Fed 30+ delinquency transition flow (`HHDC_FLOW30_ALL`).
+- **Calculation:** each input standardized (z-score) over ~2005+, combined via their first principal component, oriented so higher = more stress. Units are standard deviations.
+- **Interpretation:** a single consumer-credit-stress needle. 0 = the ~2005-present average; +1 = one σ more stressed than average. The 2008–09 GFC peaks near +3σ.
+
+### OFR Financial Stress Index
+- **Series:** `OFR_FSI` plus category contributions `OFR_FSI_CREDIT / EQUITY / SAFE / FUNDING / VOL`.
+- **Data source:** U.S. Office of Financial Research daily CSV (33 global market variables; not on FRED).
+- **Calculation:** the published index; we ingest the headline and its five additive category contributions as-is.
+- **Interpretation:** 0 = average financial stress; > 0 = stressed, < 0 = calm. Daily and global; tends to lead the real economy. The category lines show what's driving stress (credit, equity valuation, safe assets, funding, volatility).
+
+### BIS Credit-to-GDP Gap
+- **Series:** `BIS_CREDIT_GAP_US`.
+- **Data source:** Bank for International Settlements (pre-computed), US private non-financial sector.
+- **Calculation:** the private-credit-to-GDP ratio minus its long-run one-sided HP-filter trend, in percentage points; we ingest BIS's published gap.
+- **Interpretation:** a slow, long-horizon banking-crisis early-warning gauge (the basis for the Basel III countercyclical capital buffer). > +10pp = elevated (credit boom); deeply negative (currently ~−12pp) = credit well below trend / post-GFC deleveraging, i.e. no boom risk. Signals years early — not a market-timing tool.
+
+### Delinquency Transition Flows
+- **Series:** `HHDC_FLOW30_*` (into 30+ days late) and `HHDC_FLOW90_*` (into 90+), by loan type (auto, credit card, mortgage, HELOC, student, other, all).
+- **Data source:** NY Fed Household Debt & Credit Report (Consumer Credit Panel / Equifax), quarterly workbook.
+- **Calculation:** the share of balances *transitioning into* 30+ / 90+ days delinquent each quarter, by loan type (published; we parse the workbook).
+- **Interpretation:** the *flow* into delinquency, which turns before the *stock* delinquency and charge-off rates shown elsewhere. Rising flows = early deterioration; credit-card and auto are the consumer-stress canaries.
+
+---
+
 ## Tier 1 — Academically validated, free via FRED / Fed
 
 ### 1. NY Fed Recession Probability (Estrella-Mishkin probit) ✅

@@ -13,7 +13,7 @@ import {
   YAxis,
 } from 'recharts';
 import { COLORS } from '../../lib/colors';
-import { fmtDate, fredSeriesUrl } from '../../lib/utils';
+import { fmtDate, seriesReference } from '../../lib/utils';
 
 export interface SeriesDef {
   key: string;
@@ -87,18 +87,18 @@ export default function MultiLineChart({
   xFormatter = (v) => fmtDate(v),
   shadedIntervals,
 }: Props) {
-  // Legend label → FRED link when the series has a FRED page. Inherits the
-  // legend's color and weight so the appearance is unchanged (just clickable).
-  const urlByKey = new Map(series.map((s) => [s.key, fredSeriesUrl(s.seriesId)]));
+  // Legend label → FRED page for raw series, methodology doc for computed ones.
+  // Inherits the legend's color/weight so the appearance is unchanged.
+  const refByKey = new Map(series.map((s) => [s.key, seriesReference(s.seriesId)]));
   const renderLegend = (value: string, entry: { dataKey?: unknown }) => {
-    const url = urlByKey.get(String(entry?.dataKey ?? ''));
-    if (!url) return value;
+    const ref = refByKey.get(String(entry?.dataKey ?? ''));
+    if (!ref) return value;
     return (
       <a
-        href={url}
+        href={ref.url}
         target="_blank"
         rel="noreferrer"
-        title={`${url.split('/').pop()} — open on FRED`}
+        title={ref.title}
         style={{ color: 'inherit', textDecoration: 'none' }}
       >
         {value}
