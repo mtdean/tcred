@@ -13,13 +13,16 @@ import {
   YAxis,
 } from 'recharts';
 import { COLORS } from '../../lib/colors';
-import { fmtDate } from '../../lib/utils';
+import { fmtDate, fredSeriesUrl } from '../../lib/utils';
 
 export interface SeriesDef {
   key: string;
   name: string;
   color: string;
   width?: number;
+  // Underlying FRED series id; when it resolves to a FRED page the legend label
+  // becomes a link. Computed/ingested series leave this undefined (no link).
+  seriesId?: string;
 }
 
 // A [start, end] x-axis span to shade (e.g. an NBER recession). Both endpoints
@@ -84,6 +87,24 @@ export default function MultiLineChart({
   xFormatter = (v) => fmtDate(v),
   shadedIntervals,
 }: Props) {
+  // Legend label → FRED link when the series has a FRED page. Inherits the
+  // legend's color and weight so the appearance is unchanged (just clickable).
+  const urlByKey = new Map(series.map((s) => [s.key, fredSeriesUrl(s.seriesId)]));
+  const renderLegend = (value: string, entry: { dataKey?: unknown }) => {
+    const url = urlByKey.get(String(entry?.dataKey ?? ''));
+    if (!url) return value;
+    return (
+      <a
+        href={url}
+        target="_blank"
+        rel="noreferrer"
+        title={`${url.split('/').pop()} — open on FRED`}
+        style={{ color: 'inherit', textDecoration: 'none' }}
+      >
+        {value}
+      </a>
+    );
+  };
   return (
     <ResponsiveContainer width="100%" height={height}>
       <LineChart data={data} margin={{ top: 6, right: 12, bottom: 0, left: 0 }}>
@@ -118,7 +139,7 @@ export default function MultiLineChart({
           content={<TooltipBox fmt={valueFormatter} xFmt={xFormatter} />}
           cursor={{ stroke: COLORS.borderBright }}
         />
-        <Legend wrapperStyle={{ fontSize: 10, letterSpacing: '0.06em' }} iconType="square" iconSize={8} />
+        <Legend wrapperStyle={{ fontSize: 10, letterSpacing: '0.06em' }} iconType="square" iconSize={8} formatter={renderLegend} />
         {series.map((s) => (
           <Line
             key={s.key}

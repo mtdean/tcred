@@ -63,7 +63,12 @@ export default function FredSeriesPanel({
       .map((iv) => ({ start: iv.start < lo ? lo : iv.start, end: iv.end > hi ? hi : iv.end }));
   }, [shadedIntervals, sliced]);
 
-  const chartSeries: SeriesDef[] = series.map((s) => ({ key: s.key, name: s.name, color: s.color }));
+  const chartSeries: SeriesDef[] = series.map((s) => ({
+    key: s.key,
+    name: s.name,
+    color: s.color,
+    seriesId: s.seriesId,
+  }));
   const fmt = (v: number) => (unit === 'pct' ? `${v.toFixed(decimals)}%` : v.toFixed(decimals));
 
   return (

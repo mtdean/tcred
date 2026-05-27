@@ -121,3 +121,21 @@ export function ordinal(n: number): string {
   const v = n % 100;
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
+
+// Series IDs we compute/ingest ourselves (no FRED page). Everything else stored
+// in `metrics` is a genuine FRED series ID. HHDC_FLOW* (NY Fed) is prefix-matched.
+const NON_FRED_SERIES = new Set([
+  'RECESSION_RISK_ENSEMBLE', 'RECESSION_RISK_ENSEMBLE_EW',
+  'NYFED_RECESSION_PROB', 'EBP_REC_PROB', 'NTFS_REC_PROB',
+  'NEAR_TERM_FWD_SPREAD', 'EBP', 'GZ_SPREAD', 'CFSI', 'CREDIT_IMPULSE',
+  'OFR_FSI', 'OFR_FSI_CREDIT', 'OFR_FSI_EQUITY', 'OFR_FSI_SAFE',
+  'OFR_FSI_FUNDING', 'OFR_FSI_VOL', 'BIS_CREDIT_GAP_US',
+]);
+
+/** FRED series page URL, or null for our computed/ingested (non-FRED) series. */
+export function fredSeriesUrl(seriesId: string | undefined): string | null {
+  if (!seriesId || NON_FRED_SERIES.has(seriesId) || seriesId.startsWith('HHDC_FLOW')) {
+    return null;
+  }
+  return `https://fred.stlouisfed.org/series/${seriesId}`;
+}
