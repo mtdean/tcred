@@ -89,9 +89,12 @@ source, update cadence, documented predictive value, and caveats. Verified May 2
 ## Tier 3 — Constructible composites
 
 ### 10. Consumer Financial Stress Index (CFSI) ✅
-- **What:** A single dashboard needle — equal-weight average of the z-scores of four quarterly consumer-stress inputs, each oriented so higher = more stress: `CDSP` (Consumer DSR) + `DRTSCLCC` SLOOS card tightening **lagged 4Q** + `HHDC_FLOW30_ALL` flow into 30+ delinquency (#7) + real revolving-credit growth (`REVOLSL`/`CPIAUCSL` YoY).
-- **Build:** `compute_cfsi()` → series **`CFSI`** (in σ; 0 = post-2015 avg). Runs in the FRED job tail and is recomputed at the end of the HHDC job so new transition data flows in immediately.
-- **Caveats:** z-scores normalized over the available window (~2016→present, bounded by the 2015 FRED fetch start), so the baseline excludes the GFC — read it as "stress vs. the last decade," not vs. all history. The frontier quarter is bound by the Consumer DSR's ~1–2 quarter publication lag. Note the missing Oct-2025 CPI (BLS shutdown) drops that one quarter's real-credit deflator.
+- **What:** A single dashboard needle — the **first principal component** of four standardized quarterly consumer-stress inputs, each oriented so higher = more stress: `CDSP` (Consumer DSR) + `DRTSCLCC` SLOOS card tightening **lagged 4Q** + `HHDC_FLOW30_ALL` flow into 30+ delinquency (#7) + real revolving-credit growth (`REVOLSL`/`CPIAUCSL` YoY).
+- **v2 (this build):**
+  - **Longer history.** `CDSP`, `DRTSCLCC`, `REVOLSL`, `CPIAUCSL` are fetched **directly from FRED** with `observation_start="1999-01-01"` (not from the 2015-truncated `metrics` table); `HHDC_FLOW30_ALL` stays from `metrics` (back to 2003Q1). The aligned common window now spans **~2004Q1→present and includes the GFC**, so the z-score baseline reflects a full stress cycle. Falls back to the metrics table if `FRED_API_KEY` is missing.
+  - **PCA weighting (default).** Instead of an equal-weight z-score average, each input is standardized (mean 0, sd 1), the 4×4 correlation matrix is eigendecomposed (`np.linalg.eigh`, numpy only), and the standardized data is projected onto the top eigenvector. The PC is sign-oriented (flipped if it anti-correlates with the DSR input) so higher = more stress, and rescaled to unit σ. Co-moving stress signals get more weight than idiosyncratic noise. Degrades gracefully to equal-weight if the PCA is degenerate.
+- **Build:** `compute_cfsi()` → series **`CFSI`** (in σ; 0 = full-sample ~2004+ avg). Runs in the FRED job tail and is recomputed at the end of the HHDC job so new transition data flows in immediately.
+- **Caveats:** z-scores normalized over the aligned ~2004+ window, so the GFC now anchors the high-stress end of the baseline. The frontier quarter is bound by the Consumer DSR's ~1–2 quarter publication lag. Note the missing Oct-2025 CPI (BLS shutdown) drops that one quarter's real-credit deflator.
 
 ### 11. NY Fed Recession Probability Enhanced (EBP + term spread) ✅
 - **What / lead:** Probit on term spread + EBP (+ real funds rate). EBP carries most of the signal: **+50 bps EBP → +15 pp** recession prob vs. **−50 bps term spread → ~4 pp** — EBP ~4× more powerful at the 12-month horizon. Outperforms yield-curve-only.
@@ -169,6 +172,6 @@ All surface through the existing `GET /api/fred/latest` and `GET /api/fred/histo
 **Frontend** (`MacroPage` → `DashboardPanels.tsx`): Recession Probability panel overlays all three 12-mo probits; new Consumer Stress (CFSI), Sahm Rule, Near-Term Forward Spread, Credit Impulse, and Flow-into-Delinquency panels.
 
 ## Suggested next builds (in order)
-1. **CFSI v2** — extend the component history pre-2015 (longer FRED fetch window) so the z-score baseline spans the GFC; consider a PCA weighting instead of equal-weight.
+1. ~~**CFSI v2** — extend the component history pre-2015 (longer FRED fetch window) so the z-score baseline spans the GFC; consider a PCA weighting instead of equal-weight.~~ **Done** — `compute_cfsi()` now fetches its FRED components from 1999 (common window ~2004+, GFC included) and weights them by the first principal component (numpy `eigh`).
 2. **ABS spread momentum v2** — a spread-vs-prior-quarter delta per segment/seniority (a true momentum z-score), and widen coverage to credit-card/student/equipment shelves. The `get_abs_spread_momentum()` series is the starting point.
 3. **Ensemble v2** — recession-probability-weighted (not equal-weight) blend; add recession shading (`USREC`) to the chart; consider an optimal-weight or model-confidence weighting.

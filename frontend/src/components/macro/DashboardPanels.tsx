@@ -127,8 +127,9 @@ export function NearTermForwardSpreadPanel() {
 }
 
 export function ConsumerStressPanel() {
-  // Single-needle composite (z-score): Consumer DSR + SLOOS card tightening
-  // (lagged 4Q) + flow into 30+ delinquency + real revolving-credit growth.
+  // Single-needle composite (z-score): PCA of Consumer DSR + SLOOS card
+  // tightening (lagged 4Q) + flow into 30+ delinquency + real revolving-credit
+  // growth. Baseline spans ~2004+ (includes the GFC).
   const series: FredSeriesDef[] = [
     { seriesId: 'CFSI', key: 'cfsi', name: 'CFSI', color: COLORS.negative },
   ];
@@ -138,10 +139,10 @@ export function ConsumerStressPanel() {
       subtitle="σ FROM AVG; 0 = NORMAL, >0 = MORE STRESS"
       series={series}
       ranges={RANGES_QUARTERLY}
-      defaultRange="10Y"
+      defaultRange="MAX"
       unit="plain"
       decimals={2}
-      limit={80}
+      limit={120}
     />
   );
 }
