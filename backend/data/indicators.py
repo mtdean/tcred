@@ -344,18 +344,41 @@ def compute_credit_impulse() -> int:
 
 # ── 5. Consumer Financial Stress Index (CFSI) ────────────────────────────────
 #
-# A single-needle composite of consumer credit stress: an equal-weight average
-# of the z-scores of four quarterly inputs, each oriented so higher = more
-# stress. This mirrors the Fed's internal consumer-stress modelling.
+# A single-needle composite of consumer credit stress built from four quarterly
+# inputs, each oriented so higher = more stress:
 #   • Consumer DSR (CDSP) — debt service as a share of income
 #   • SLOOS credit-card tightening (DRTSCLCC), lagged 4Q — leads delinquency
 #   • Flow into 30+ delinquency, all loans (HHDC_FLOW30_ALL) — the leading flow
-#   • Real revolving-credit growth (REVOLSL/CPI, YoY) — consumer leverage
-# Output is in standard deviations: 0 = post-2015 average, +1 = 1σ more stress.
-# Caveat: z-scores are normalized over the available window (~2016→present,
-# limited by the 2015 FRED fetch start), so the baseline excludes the GFC.
+#   • Real revolving-credit growth (REVOLSL/CPIAUCSL, YoY) — consumer leverage
+#
+# v2 changes vs. the original equal-weight / post-2015 build:
+#   1. LONGER HISTORY — three of the four components (CDSP, DRTSCLCC, REVOLSL,
+#      CPIAUCSL) are fetched DIRECTLY from FRED with observation_start=1999-01-01,
+#      rather than read out of the `metrics` table (which is truncated to the
+#      2015 generic-fetch start). HHDC_FLOW30_ALL stays from `metrics` (already
+#      back to 2003Q1). The aligned common window then spans ~2004Q1+ and
+#      *includes the GFC*, so the z-score baseline reflects a full stress cycle.
+#   2. PCA WEIGHTING (default) — instead of an equal-weight z-score average, the
+#      index is the first principal component of the four standardized inputs.
+#      Each input is standardized (mean 0, sd 1); we eigendecompose the 4×4
+#      correlation matrix (np.linalg.eigh), take the top eigenvector, and project
+#      the standardized data onto it. The PC is sign-oriented so that higher =
+#      more stress (we flip it if it correlates negatively with the DSR input)
+#      and rescaled to unit standard deviation so the output stays in σ units.
+#      PCA lets the data choose the weights — co-moving stress signals get more
+#      weight than idiosyncratic noise. Falls back to equal-weight if PCA is
+#      degenerate (e.g. a zero/near-singular eigenvector).
+#
+# If FRED_API_KEY is missing we fall back to the v1 behavior (read all four
+# components from the 2015-truncated `metrics` table).
+#
+# Output is in standard deviations: 0 = full-sample (~2004+) average, +1 = 1σ
+# more stress.
 _CFSI_ID = "CFSI"
 _CFSI_KEYS = ("dsr", "sloos", "flow", "revol")
+# Direct-from-FRED components and how far back to fetch (HHDC stays from metrics).
+_CFSI_FRED_START = "1999-01-01"
+_CFSI_FRED_SERIES = ("CDSP", "DRTSCLCC", "REVOLSL", "CPIAUCSL")
 
 
 def _quarter_shift(d: str, back: int) -> str:
@@ -365,8 +388,71 @@ def _quarter_shift(d: str, back: int) -> str:
     return f"{total // 12:04d}-{total % 12 + 1:02d}-01"
 
 
+def _cfsi_fred_components() -> dict[str, dict[str, float]] | None:
+    """Fetch CDSP/DRTSCLCC/REVOLSL/CPIAUCSL direct from FRED back to 1999.
+
+    Returns {series_id: {YYYY-MM-01: value}} keyed to quarter-start dates, or
+    None if FRED is unavailable (caller then falls back to the metrics table).
+    """
+    if not settings.FRED_API_KEY:
+        return None
+    try:
+        from fredapi import Fred
+
+        fred = Fred(api_key=settings.FRED_API_KEY)
+        out: dict[str, dict[str, float]] = {}
+        for sid in _CFSI_FRED_SERIES:
+            s = fred.get_series(sid, observation_start=_CFSI_FRED_START).dropna()
+            # Normalize each observation date to its quarter-start month so the
+            # quarterly series (CDSP, DRTSCLCC) and monthly ones (REVOLSL,
+            # CPIAUCSL) share a 'YYYY-MM-01' grid. Later obs win within a quarter.
+            sm: dict[str, float] = {}
+            for d, v in s.items():
+                month = d.month
+                qmonth = ((month - 1) // 3) * 3 + 1
+                key = f"{d.year:04d}-{qmonth:02d}-01"
+                sm[key] = float(v)
+            out[sid] = sm
+        return out
+    except Exception as e:  # noqa: BLE001 — any FRED failure → fall back
+        logger.warning("CFSI: direct FRED fetch failed (%s) — using metrics table", e)
+        return None
+
+
+def _pca_first_component(rows: list[list[float]]) -> list[float] | None:
+    """First principal component score for each row of standardized inputs.
+
+    `rows` is N observations × K standardized features (mean 0, sd 1 per column).
+    Builds the K×K correlation matrix, eigendecomposes it (np.linalg.eigh, which
+    returns ascending eigenvalues for a symmetric matrix), takes the top
+    eigenvector, and projects each row onto it. Returns the projected scores
+    (rescaled to unit sd), or None if the result is degenerate.
+    """
+    try:
+        import numpy as np
+
+        X = np.asarray(rows, float)
+        if X.shape[0] < 4 or X.shape[1] < 2:
+            return None
+        # Columns are already standardized → covariance == correlation matrix.
+        corr = np.cov(X, rowvar=False)
+        if not np.all(np.isfinite(corr)):
+            return None
+        eigvals, eigvecs = np.linalg.eigh(corr)  # ascending eigenvalues
+        top = eigvecs[:, -1]  # eigenvector of the largest eigenvalue
+        scores = X @ top
+        sd = float(scores.std())
+        if not np.isfinite(sd) or sd < 1e-9:
+            return None
+        return list(scores / sd)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("CFSI: PCA failed (%s) — using equal-weight", e)
+        return None
+
+
 def compute_cfsi() -> int:
-    """Build the Consumer Financial Stress Index. Returns rows written."""
+    """Build the Consumer Financial Stress Index (v2). Returns rows written."""
+    # HHDC flow always comes from metrics (already back to 2003Q1).
     with get_conn() as conn:
         def _series(sid: str) -> dict[str, float]:
             return {
@@ -378,11 +464,20 @@ def compute_cfsi() -> int:
                 )
             }
 
-        cdsp = _series("CDSP")
-        sloos = _series("DRTSCLCC")
         flow = _series("HHDC_FLOW30_ALL")
-        revol = _series("REVOLSL")
-        cpi = _series("CPIAUCSL")
+
+        # Prefer long-history FRED pulls; fall back to the 2015-truncated metrics.
+        fred = _cfsi_fred_components()
+        if fred is not None:
+            cdsp = fred["CDSP"]
+            sloos = fred["DRTSCLCC"]
+            revol = fred["REVOLSL"]
+            cpi = fred["CPIAUCSL"]
+        else:
+            cdsp = _series("CDSP")
+            sloos = _series("DRTSCLCC")
+            revol = _series("REVOLSL")
+            cpi = _series("CPIAUCSL")
 
     if not (cdsp and sloos and flow and revol and cpi):
         logger.warning("CFSI: missing one or more component series — skipping")
@@ -412,7 +507,7 @@ def compute_cfsi() -> int:
         logger.warning("CFSI: only %d aligned quarters — skipping", len(comps))
         return 0
 
-    # z-score each component over the common sample (all already higher = stress).
+    # Standardize each component over the common sample (all already higher = stress).
     moments: dict[str, tuple[float, float]] = {}
     for k in _CFSI_KEYS:
         vals = [comps[d][k] for d in comps]
@@ -420,23 +515,46 @@ def compute_cfsi() -> int:
         sd = statistics.pstdev(vals) or 1.0
         moments[k] = (mu, sd)
 
+    ordered = sorted(comps)
+    zmatrix = [
+        [(comps[d][k] - moments[k][0]) / moments[k][1] for k in _CFSI_KEYS]
+        for d in ordered
+    ]
+
+    # PCA-weighted index (default); fall back to equal-weight if degenerate.
+    pca_scores = _pca_first_component(zmatrix)
+    if pca_scores is not None:
+        # Orient so higher = more stress: align the PC's sign with the consumer
+        # DSR z-score (a monotone stress input). If the PC anti-correlates with
+        # DSR, flip it.
+        dsr_idx = _CFSI_KEYS.index("dsr")
+        dsr_z = [row[dsr_idx] for row in zmatrix]
+        cov = sum(p * z for p, z in zip(pca_scores, dsr_z))
+        if cov < 0:
+            pca_scores = [-p for p in pca_scores]
+        values = pca_scores
+        method = "PCA"
+    else:
+        values = [sum(row) / len(row) for row in zmatrix]
+        method = "equal-weight"
+
     now = _now()
     count = 0
-    for d in sorted(comps):
-        z = [(comps[d][k] - moments[k][0]) / moments[k][1] for k in _CFSI_KEYS]
+    for d, val in zip(ordered, values):
         upsert_metric(
             {
                 "series_id": _CFSI_ID,
                 "label": "Consumer Financial Stress Index (z-score)",
                 "category": "recession_risk",
                 "date": d,
-                "value": round(sum(z) / len(z), 4),
+                "value": round(val, 4),
                 "fetched_at": now,
             }
         )
         count += 1
 
-    logger.info("CFSI: stored %d quarterly points", count)
+    logger.info("CFSI: stored %d quarterly points (%s, span %s..%s)",
+                count, method, ordered[0], ordered[-1])
     return count
 
 
