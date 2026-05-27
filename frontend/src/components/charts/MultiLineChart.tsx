@@ -6,6 +6,7 @@ import {
   Legend,
   Line,
   LineChart,
+  ReferenceArea,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -21,6 +22,13 @@ export interface SeriesDef {
   width?: number;
 }
 
+// A [start, end] x-axis span to shade (e.g. an NBER recession). Both endpoints
+// are values on the x-axis domain (dates as 'YYYY-MM-DD' strings here).
+export interface ShadedInterval {
+  start: string;
+  end: string;
+}
+
 interface Props {
   data: Record<string, unknown>[];
   series: SeriesDef[];
@@ -28,6 +36,9 @@ interface Props {
   height?: number;
   valueFormatter?: (v: number) => string;
   xFormatter?: (v: string) => string;
+  // Optional gray bands (e.g. NBER recessions). Left undefined for panels that
+  // don't want shading, so they're entirely unaffected.
+  shadedIntervals?: ShadedInterval[];
 }
 
 function TooltipBox({
@@ -71,11 +82,24 @@ export default function MultiLineChart({
   height = 240,
   valueFormatter = (v) => v.toFixed(2),
   xFormatter = (v) => fmtDate(v),
+  shadedIntervals,
 }: Props) {
   return (
     <ResponsiveContainer width="100%" height={height}>
       <LineChart data={data} margin={{ top: 6, right: 12, bottom: 0, left: 0 }}>
         <CartesianGrid stroke={COLORS.border} vertical={false} />
+        {/* Recession (or other) bands sit behind the grid lines and series. */}
+        {shadedIntervals?.map((iv) => (
+          <ReferenceArea
+            key={`${iv.start}-${iv.end}`}
+            x1={iv.start}
+            x2={iv.end}
+            fill={COLORS.textSecondary}
+            fillOpacity={0.12}
+            stroke="none"
+            ifOverflow="hidden"
+          />
+        ))}
         <XAxis
           dataKey={xKey}
           tick={{ fill: COLORS.axis, fontSize: 10 }}

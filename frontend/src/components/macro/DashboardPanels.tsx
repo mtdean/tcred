@@ -4,6 +4,7 @@
 import { COLORS } from '../../lib/colors';
 import FredSeriesPanel from './FredSeriesPanel';
 import type { FredSeriesDef } from '../charts/useFredSeries';
+import { useRecessionIntervals } from '../charts/useRecessionIntervals';
 
 const RANGES_MONTHLY = [
   { label: '2Y', years: 2 },
@@ -66,23 +67,27 @@ export function RecessionProbabilityPanel() {
 }
 
 export function RecessionEnsemblePanel() {
-  // Headline gauge: equal-weight blend of three 12-mo recession-probability
-  // models, shown bold over its components.
+  // Headline gauge: a meta-logit *stack* of three 12-mo recession-probability
+  // models (performance-weighted), shown bold over its components plus the
+  // equal-weight blend for comparison. Gray bands = NBER recessions (USREC).
   const series: FredSeriesDef[] = [
-    { seriesId: 'RECESSION_RISK_ENSEMBLE', key: 'ens', name: 'ENSEMBLE', color: COLORS.negative },
+    { seriesId: 'RECESSION_RISK_ENSEMBLE', key: 'ens', name: 'ENSEMBLE (STACKED)', color: COLORS.negative },
+    { seriesId: 'RECESSION_RISK_ENSEMBLE_EW', key: 'ew', name: 'EQUAL-WEIGHT', color: COLORS.neutral },
     { seriesId: 'NTFS_REC_PROB', key: 'ntfs', name: 'NTFS', color: COLORS.chartTertiary },
     { seriesId: 'NYFED_RECESSION_PROB', key: 'curve', name: 'YIELD CURVE', color: COLORS.chartSecondary },
     { seriesId: 'EBP_REC_PROB', key: 'ebp', name: 'EBP', color: COLORS.chartPrimary },
   ];
+  const recessions = useRecessionIntervals();
   return (
     <FredSeriesPanel
       title="Recession Risk — Ensemble"
-      subtitle="BLEND OF 3 MODELS, P(RECESSION 12-MO) %"
+      subtitle="STACKED BLEND OF 3 MODELS, P(RECESSION 12-MO) %"
       series={series}
       ranges={RANGES_MONTHLY}
       defaultRange="10Y"
       unit="pct"
       decimals={1}
+      shadedIntervals={recessions}
     />
   );
 }
