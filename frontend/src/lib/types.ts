@@ -17,6 +17,24 @@ export interface Article {
 
 export type SourceType = 'news' | 'letter';
 
+export interface AbsTranche {
+  class_name: string;
+  rating: string | null;
+  wal: number | null;
+  benchmark: string | null;
+  spread_bps: number | null;
+  coupon: number | null;
+}
+
+export interface AbsDeal {
+  accession_no: string;
+  deal_name: string;
+  segment: string;
+  pricing_date: string;
+  url: string;
+  tranches: AbsTranche[];
+}
+
 export interface ArticleListResponse {
   items: Article[];
   offset: number;

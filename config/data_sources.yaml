@@ -77,6 +77,13 @@ fred_series:
     category: rates
     frequency: daily
 
+  # 10y-3m term spread — the NY Fed recession-probit input (more reliable than
+  # 2s10s per Estrella-Mishkin). Drives the computed NYFED_RECESSION_PROB series.
+  - id: "T10Y3M"
+    label: "10Y-3M Treasury Spread"
+    category: rates
+    frequency: daily
+
   # Treasury yield curve tenors (forward-curve panel: today / 6mo / 1yr)
   - id: "DTB3"
     label: "3-Month Treasury Bill"
@@ -218,14 +225,92 @@ fred_series:
     category: inflation
     frequency: monthly
 
-  # Bank lending standards + business credit
+  # Bank lending standards (SLOOS) + business credit.
+  # Net % of banks tightening standards. Leads the delinquency curves by ~4
+  # quarters (see the Fed's "Predicting Credit Card Delinquency Rates" model).
+  # NOTE: credit-card tightening is DRTSCLCC (DRTSCLNC/STDSCREDIT do not exist).
   - id: "DRTSCILM"
     label: "Banks Tightening C&I Standards (Net %)"
+    category: lending
+    frequency: quarterly
+  - id: "DRTSCLCC"
+    label: "Banks Tightening Credit Card Standards (Net %)"
+    category: lending
+    frequency: quarterly
+  - id: "STDSAUTO"
+    label: "Banks Tightening Auto Loan Standards (Net %)"
     category: lending
     frequency: quarterly
   - id: "DRBLACBS"
     label: "Business Loan Delinquency Rate"
     category: consumer_credit
+    frequency: quarterly
+
+  # Household Debt Service Ratios (% of disposable income). Methodology break in
+  # 2024-Q2: the Board switched to a credit-bureau-based measure — treat pre/post
+  # vintages as not directly comparable. Watch CDSP (consumer ex-mortgage); the
+  # mortgage DSR (MDSP) is distorted by the locked-in sub-3% mortgage stock.
+  - id: "TDSP"
+    label: "Household Debt Service Ratio (Total)"
+    category: consumer_credit
+    frequency: quarterly
+  - id: "CDSP"
+    label: "Consumer Debt Service Ratio (ex-Mortgage)"
+    category: consumer_credit
+    frequency: quarterly
+  - id: "MDSP"
+    label: "Mortgage Debt Service Ratio"
+    category: consumer_credit
+    frequency: quarterly
+
+  # ── Recession / leading indicators ───────────────────────────────
+  # Sahm Rule: triggers at +0.50pp. SAHMREALTIME uses real-time unemployment
+  # vintages (honest for backtests); SAHMCURRENT uses latest-revised data.
+  - id: "SAHMREALTIME"
+    label: "Sahm Rule Recession Indicator (Real-Time)"
+    category: recession_risk
+    frequency: monthly
+  - id: "SAHMCURRENT"
+    label: "Sahm Rule Recession Indicator (Current)"
+    category: recession_risk
+    frequency: monthly
+
+  # Adjusted NFCI — financial conditions relative to the economy (the more
+  # genuinely *leading* variant of NFCI). Positive = tighter than the macro warrants.
+  - id: "ANFCI"
+    label: "Adjusted Chicago Fed Financial Conditions Index"
+    category: financial_conditions
+    frequency: weekly
+
+  # Weekly Economic Index (Lewis-Mertens-Stock) — weekly GDP-equivalent nowcast.
+  - id: "WEI"
+    label: "Weekly Economic Index (GDP-equivalent %)"
+    category: activity
+    frequency: weekly
+
+  # Early-cycle real-economy leads.
+  - id: "TEMPHELPS"
+    label: "Temporary Help Services Employment"
+    category: labor
+    frequency: monthly
+  - id: "JTSQUR"
+    label: "JOLTS Quits Rate"
+    category: labor
+    frequency: monthly
+  - id: "PERMIT"
+    label: "Building Permits (SAAR)"
+    category: housing
+    frequency: monthly
+
+  # Credit Impulse inputs: total nonfinancial debt (Z.1) over nominal GDP.
+  # TCMDO is the economy-wide credit stock (TOTALSL is consumer-only).
+  - id: "TCMDO"
+    label: "Total Nonfinancial Debt (Z.1)"
+    category: credit
+    frequency: quarterly
+  - id: "GDP"
+    label: "Nominal GDP (SAAR)"
+    category: macro
     frequency: quarterly
 
   # Growth tracker (used as YoY)
@@ -350,6 +435,18 @@ edgar:
   # Known ABS issuers CIKs to monitor directly (add more as discovered)
   # Find at: https://efts.sec.gov/LATEST/search-index?q=%22asset-backed%22&dateRange=custom
   monitored_ciks: []  # populate over time
+
+# ── ABS NEW-ISSUE SPREAD MOMENTUM ────────────────────────────
+# Discovers ABS pricing term sheets (FWP) on EDGAR and parses per-tranche
+# new-issue spreads. Keywords match deal/trust names; the pricing sheet itself
+# is then reached via the trust's filing history. Token-free (regex parse).
+abs_pricing:
+  discovery_keywords:
+    - "auto receivables"
+    - "auto owner trust"
+    - "auto lease"
+    - "equipment finance"
+    - "dealer floorplan"
 
 # ── SIFMA ────────────────────────────────────────────────────
 # Manual download — no public API; scrape the stats pages

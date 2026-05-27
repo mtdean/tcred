@@ -190,9 +190,14 @@ track how the dominant narrative shifts across the cycle.
 read-state persistence; feed-health modal.
 - **Markets** — snapshot table (price, 1D/5D/30D %, 90-day sparkline) grouped by category;
 HY/IG/loan spread charts with 3-yr percentiles; consumer-credit equity proxies.
-- **Macro** — activity & recession risk, rates & financial conditions, delinquencies &
-charge-offs, lending standards & inflation expectations, growth/markets, indicators table.
-- **ABS / EDGAR** — paginated, filterable SEC filings monitor; SIFMA placeholder.
+- **Macro** — a layered predictive stack on top of the raw series: a **recession-risk
+ensemble** (blended yield-curve + EBP + near-term-forward-spread probits), a **Consumer
+Financial Stress Index**, OFR & BIS systemic-risk gauges, NY Fed delinquency-transition
+*flows*, credit impulse, plus the underlying activity/rates/conditions/inflation panels.
+See [`docs/INDICATORS.md`](docs/INDICATORS.md) for the research, formulas, and sources.
+- **ABS / EDGAR** — paginated, filterable SEC filings monitor **plus a new-issue
+spread tracker** that parses ABS pricing term sheets (per-tranche spreads by
+prime/subprime/equipment segment) as a forward read on the consumer risk premium.
 - **Deals** — placeholder (see [Roadmap](#roadmap)).
 
 ---
@@ -204,19 +209,21 @@ Browser (Mac / iPad) ──http://<lan-ip>:8000──▶ FastAPI (uvicorn)
                                                  ├── /api/*   REST API
                                                  └── /        built React app + SPA fallback
                                                       ├── SQLite (articles, metrics,
-                                                      │           edgar_filings, feed_health,
-                                                      │           digests, meta)
+                                                      │           edgar_filings, abs_pricing,
+                                                      │           feed_health, digests, meta)
                                                       └── APScheduler
                                                            ├── market  15m  ┐
-                                                           ├── FRED      6h  │ token-free,
-                                                           ├── EDGAR     4h  │ automatic
+                                                           ├── FRED+indicators 6h │ token-free,
+                                                           ├── EDGAR+ABS-pricing 4h │ automatic
+                                                           ├── HHDC     24h │
                                                            ├── health   12h  ┘
                                                            └── news fetch+classify — manual
 ```
 
 **Stack:** FastAPI · uvicorn · APScheduler · SQLite · `fredapi` · `yfinance` · `feedparser`
-· `anthropic` (backend); React 19 + TypeScript + Vite · React Query · React Router ·
-Recharts · Radix UI (frontend). Dependencies are pinned to exact versions.
+· `anthropic` · `pandas`/`numpy` · `openpyxl` (NY Fed workbook) · `lxml` (ABS term-sheet
+tables) (backend); React 19 + TypeScript + Vite · React Query · React Router · Recharts ·
+Radix UI (frontend). Dependencies are pinned to exact versions.
 
 ---
 
@@ -229,16 +236,19 @@ backend/
   api/routes.py      all REST endpoints
   cache/db.py        SQLite schema, migrations, queries
   data/              feeds · classifier · digest · fred · market · edgar · scheduler
+                     indicators (computed/derived series) · hhdc (NY Fed flows) · abs_pricing
 frontend/
   src/               React app: pages/ components/ lib/ styles/
   .env(.production)  VITE_API_URL (dev: localhost:8000/api · prod: /api)
 config/
   feeds.yaml         RSS/newsletter feeds
-  data_sources.yaml  FRED series, tickers, EDGAR config, refresh intervals
+  data_sources.yaml  FRED series, tickers, EDGAR config, ABS pricing, refresh intervals
 scripts/
   run.sh             manual launcher
   com.situationmonitor.server.plist   launchd auto-start service
-docs/screenshots/    README images
+docs/
+  INDICATORS.md      predictive-indicator research: formulas, sources, build status
+  screenshots/       README images
 ```
 
 ---
@@ -255,13 +265,22 @@ POST /api/digest                      MANUAL: generate + persist digest (Claude)
 GET  /api/digests                     digest archive (newest first)
 GET  /api/market/snapshot             latest prices + 1D/5D/30D %
 GET  /api/market/history/{ticker}     price history
-GET  /api/fred/latest                 latest value per series
+GET  /api/fred/latest                 latest value per series (incl. computed indicators)
 GET  /api/fred/history/{series_id}    series history
 GET  /api/fred/forward-curve          today / 6mo / 1yr treasury curve
 GET  /api/fred/sofr                   SOFR 1M/3M + computed 1Y
+POST /api/indicators/refresh          recompute derived indicators (probits, EBP, ensemble…)
+POST /api/hhdc/refresh                pull NY Fed delinquency-transition flows
 GET  /api/edgar/filings               filings (form_type, asset_class, limit, offset)
 GET  /api/edgar/facets                distinct form types + asset classes
+GET  /api/abs/pricing                 ABS new-issue spreads by deal/tranche (segment filter)
+GET  /api/abs/spread-momentum         senior/subordinate spread per deal over time
+POST /api/abs/pricing/refresh         discover + parse recent ABS pricing term sheets
 ```
+
+Computed series (recession-probit ensemble, EBP, NTFS, CFSI, OFR FSI, BIS credit gap,
+NY Fed flows, …) are stored alongside FRED data and served through `/api/fred/*`. See
+[`docs/INDICATORS.md`](docs/INDICATORS.md).
 
 Interactive docs: `http://localhost:8000/docs`.
 

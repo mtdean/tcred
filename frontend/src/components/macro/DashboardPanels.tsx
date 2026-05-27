@@ -44,18 +44,146 @@ export function NationalActivityPanel() {
 }
 
 export function RecessionProbabilityPanel() {
+  // Three 12-month recession probabilities on one axis (all %): the yield-curve
+  // probit (NY Fed / Estrella-Mishkin), the Excess Bond Premium probit (the
+  // academically strongest), and the smoothed Chauvet-Piger model for context.
   const series: FredSeriesDef[] = [
-    { seriesId: 'RECPROUSM156N', key: 'prob', name: 'RECESSION PROB', color: COLORS.negative },
+    { seriesId: 'EBP_REC_PROB', key: 'ebp', name: 'EBP PROBIT', color: COLORS.negative },
+    { seriesId: 'NYFED_RECESSION_PROB', key: 'curve', name: 'YIELD-CURVE PROBIT', color: COLORS.chartSecondary },
+    { seriesId: 'RECPROUSM156N', key: 'smoothed', name: 'SMOOTHED (CHAUVET-PIGER)', color: COLORS.chart12mo },
   ];
   return (
     <FredSeriesPanel
-      title="Recession Probability"
-      subtitle="SMOOTHED, %"
+      title="Recession Probability (12-mo)"
+      subtitle="P(RECESSION), %"
       series={series}
       ranges={RANGES_MONTHLY}
       defaultRange="10Y"
       unit="pct"
       decimals={1}
+    />
+  );
+}
+
+export function RecessionEnsemblePanel() {
+  // Headline gauge: equal-weight blend of three 12-mo recession-probability
+  // models, shown bold over its components.
+  const series: FredSeriesDef[] = [
+    { seriesId: 'RECESSION_RISK_ENSEMBLE', key: 'ens', name: 'ENSEMBLE', color: COLORS.negative },
+    { seriesId: 'NTFS_REC_PROB', key: 'ntfs', name: 'NTFS', color: COLORS.chartTertiary },
+    { seriesId: 'NYFED_RECESSION_PROB', key: 'curve', name: 'YIELD CURVE', color: COLORS.chartSecondary },
+    { seriesId: 'EBP_REC_PROB', key: 'ebp', name: 'EBP', color: COLORS.chartPrimary },
+  ];
+  return (
+    <FredSeriesPanel
+      title="Recession Risk — Ensemble"
+      subtitle="BLEND OF 3 MODELS, P(RECESSION 12-MO) %"
+      series={series}
+      ranges={RANGES_MONTHLY}
+      defaultRange="10Y"
+      unit="pct"
+      decimals={1}
+    />
+  );
+}
+
+export function SahmRulePanel() {
+  // Separate panel: the Sahm gap is in pp of unemployment, not a probability,
+  // so it can't share the probit axis. Triggers at +0.50.
+  const series: FredSeriesDef[] = [
+    { seriesId: 'SAHMREALTIME', key: 'realtime', name: 'REAL-TIME', color: COLORS.chartPrimary },
+    { seriesId: 'SAHMCURRENT', key: 'current', name: 'CURRENT (REVISED)', color: COLORS.chartSecondary },
+  ];
+  return (
+    <FredSeriesPanel
+      title="Sahm Rule"
+      subtitle="TRIGGERS AT +0.50 pp"
+      series={series}
+      ranges={RANGES_MONTHLY}
+      defaultRange="10Y"
+      unit="plain"
+      decimals={2}
+    />
+  );
+}
+
+export function NearTermForwardSpreadPanel() {
+  // Engstrom-Sharpe: implied 3-mo yield 18 months out minus current 3-mo.
+  const series: FredSeriesDef[] = [
+    { seriesId: 'NEAR_TERM_FWD_SPREAD', key: 'ntfs', name: 'NTFS', color: COLORS.chartPrimary },
+  ];
+  return (
+    <FredSeriesPanel
+      title="Near-Term Forward Spread"
+      subtitle="NEGATIVE = CUTS PRICED / RECESSION SIGNAL"
+      series={series}
+      ranges={RANGES_DAILY}
+      defaultRange="5Y"
+      unit="pct"
+      decimals={2}
+      limit={2700}
+    />
+  );
+}
+
+export function ConsumerStressPanel() {
+  // Single-needle composite (z-score): Consumer DSR + SLOOS card tightening
+  // (lagged 4Q) + flow into 30+ delinquency + real revolving-credit growth.
+  const series: FredSeriesDef[] = [
+    { seriesId: 'CFSI', key: 'cfsi', name: 'CFSI', color: COLORS.negative },
+  ];
+  return (
+    <FredSeriesPanel
+      title="Consumer Financial Stress (CFSI)"
+      subtitle="σ FROM AVG; 0 = NORMAL, >0 = MORE STRESS"
+      series={series}
+      ranges={RANGES_QUARTERLY}
+      defaultRange="10Y"
+      unit="plain"
+      decimals={2}
+      limit={80}
+    />
+  );
+}
+
+export function DelinquencyFlowPanel() {
+  // NY Fed transition rates: % of balances flowing into 30+ delinquency by loan
+  // type. Flows lead the stock delinquency/charge-off series.
+  const series: FredSeriesDef[] = [
+    { seriesId: 'HHDC_FLOW30_CC', key: 'cc', name: 'CREDIT CARD', color: COLORS.negative },
+    { seriesId: 'HHDC_FLOW30_AUTO', key: 'auto', name: 'AUTO', color: COLORS.chartPrimary },
+    { seriesId: 'HHDC_FLOW30_STUDENT', key: 'student', name: 'STUDENT', color: COLORS.chart6mo },
+    { seriesId: 'HHDC_FLOW30_ALL', key: 'all', name: 'ALL LOANS', color: COLORS.chartSecondary },
+  ];
+  return (
+    <FredSeriesPanel
+      title="Flow into Delinquency (30+, NY Fed)"
+      subtitle="% OF BALANCES TRANSITIONING IN"
+      series={series}
+      ranges={RANGES_QUARTERLY}
+      defaultRange="10Y"
+      unit="pct"
+      decimals={1}
+      limit={100}
+    />
+  );
+}
+
+export function CreditImpulsePanel() {
+  // Δ in the annual flow of credit (TCMDO) as % of GDP. Leads GDP ~9-12 months.
+  const series: FredSeriesDef[] = [
+    { seriesId: 'CREDIT_IMPULSE', key: 'impulse', name: 'CREDIT IMPULSE', color: COLORS.chartTertiary },
+  ];
+  return (
+    <FredSeriesPanel
+      title="Credit Impulse"
+      subtitle="Δ CREDIT FLOW, % OF GDP"
+      series={series}
+      ranges={RANGES_QUARTERLY}
+      defaultRange="10Y"
+      unit="pct"
+      decimals={1}
+      limit={80}
     />
   );
 }
@@ -76,6 +204,53 @@ export function FinancialStressPanel() {
       unit="plain"
       decimals={2}
       limit={800}
+    />
+  );
+}
+
+export function OfrStressPanel() {
+  // OFR FSI headline + its five additive category contributions (daily, global).
+  const series: FredSeriesDef[] = [
+    { seriesId: 'OFR_FSI', key: 'fsi', name: 'OFR FSI', color: COLORS.negative },
+    { seriesId: 'OFR_FSI_CREDIT', key: 'credit', name: 'CREDIT', color: COLORS.chartPrimary },
+    { seriesId: 'OFR_FSI_EQUITY', key: 'equity', name: 'EQUITY', color: COLORS.chartSecondary },
+    { seriesId: 'OFR_FSI_SAFE', key: 'safe', name: 'SAFE ASSETS', color: COLORS.chartTertiary },
+    { seriesId: 'OFR_FSI_FUNDING', key: 'funding', name: 'FUNDING', color: COLORS.chart6mo },
+    { seriesId: 'OFR_FSI_VOL', key: 'vol', name: 'VOLATILITY', color: COLORS.neutral },
+  ];
+  return (
+    <FredSeriesPanel
+      title="OFR Financial Stress Index"
+      subtitle="0 = AVG; >0 = STRESS (DAILY, GLOBAL)"
+      series={series}
+      ranges={RANGES_DAILY}
+      defaultRange="5Y"
+      unit="plain"
+      decimals={2}
+      limit={6800}
+    />
+  );
+}
+
+export function CreditGapPanel() {
+  // BIS US private credit-to-GDP gap (pp). >+10pp = elevated banking-crisis risk.
+  const series: FredSeriesDef[] = [
+    { seriesId: 'BIS_CREDIT_GAP_US', key: 'gap', name: 'CREDIT-TO-GDP GAP', color: COLORS.chartPrimary },
+  ];
+  return (
+    <FredSeriesPanel
+      title="BIS Credit-to-GDP Gap (US)"
+      subtitle="pp vs HP TREND; >+10 = ELEVATED CRISIS RISK"
+      series={series}
+      ranges={[
+        { label: '10Y', years: 10 },
+        { label: '20Y', years: 20 },
+        { label: 'MAX', years: null },
+      ]}
+      defaultRange="20Y"
+      unit="plain"
+      decimals={1}
+      limit={300}
     />
   );
 }

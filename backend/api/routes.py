@@ -205,6 +205,24 @@ def get_fred_history(series_id: str, limit: int = Query(default=120)):
     return get_series_history(series_id, limit=limit)
 
 
+@router.post("/indicators/refresh")
+def trigger_indicators_refresh():
+    """Recompute derived indicators (recession probits, Excess Bond Premium).
+
+    The NY Fed probit reads T10Y3M from the DB, so this assumes a FRED fetch has
+    already populated it; call POST /api/fred-style refresh first on a cold DB.
+    """
+    from data.indicators import compute_all_indicators
+    return {"rows": compute_all_indicators()}
+
+
+@router.post("/hhdc/refresh")
+def trigger_hhdc_refresh():
+    """Pull the latest NY Fed Household Debt & Credit flow-into-delinquency rates."""
+    from data.hhdc import fetch_hhdc_transitions
+    return {"rows": fetch_hhdc_transitions()}
+
+
 @router.get("/fred/forward-curve")
 def get_fred_forward_curve():
     """Treasury yield curve at three snapshots: today, ~6mo ago, ~1yr ago."""
@@ -233,6 +251,27 @@ def get_edgar_filings(
     return get_recent_filings(
         limit=limit, offset=offset, form_type=form_type, asset_class=asset_class
     )
+
+
+@router.get("/abs/pricing")
+def get_abs_pricing(limit: int = Query(default=40, le=100), segment: Optional[str] = None):
+    """Recent ABS deals priced at new issue, with per-tranche spreads."""
+    from data.abs_pricing import get_abs_pricing_deals
+    return get_abs_pricing_deals(limit=limit, segment=segment)
+
+
+@router.get("/abs/spread-momentum")
+def get_abs_spread_momentum():
+    """Senior/subordinate new-issue spread per deal over time, by segment."""
+    from data.abs_pricing import get_abs_spread_momentum as _mom
+    return _mom()
+
+
+@router.post("/abs/pricing/refresh")
+def trigger_abs_pricing_refresh(days_back: int = Query(default=30, le=180)):
+    """Discover and parse recent ABS pricing term sheets."""
+    from data.abs_pricing import fetch_abs_pricing
+    return {"tranches": fetch_abs_pricing(days_back=days_back)}
 
 
 @router.get("/edgar/facets")

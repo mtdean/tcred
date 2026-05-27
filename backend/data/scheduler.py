@@ -45,20 +45,39 @@ def _job_market():
 
 def _job_fred():
     from data.fred import fetch_fred_series
+    from data.indicators import compute_all_indicators
     try:
         n = fetch_fred_series()
-        logger.info(f"Scheduler: FRED — {n} rows")
+        # Derived indicators run last: the recession probit reads T10Y3M out of
+        # the DB, so the raw FRED pull must land first.
+        m = compute_all_indicators()
+        logger.info(f"Scheduler: FRED — {n} rows, indicators — {m} rows")
     except Exception as e:
         logger.error(f"Scheduler: FRED job error: {e}")
 
 
 def _job_edgar():
     from data.edgar import fetch_abs_filings
+    from data.abs_pricing import fetch_abs_pricing
     try:
         n = fetch_abs_filings(days_back=2)
-        logger.info(f"Scheduler: EDGAR — {n} filings")
+        # New-issue spread tracker shares EDGAR's cadence (token-free, regex parse).
+        p = fetch_abs_pricing(days_back=10)
+        logger.info(f"Scheduler: EDGAR — {n} filings, ABS pricing — {p} tranches")
     except Exception as e:
         logger.error(f"Scheduler: EDGAR job error: {e}")
+
+
+def _job_hhdc():
+    from data.hhdc import fetch_hhdc_transitions
+    from data.indicators import compute_cfsi
+    try:
+        n = fetch_hhdc_transitions()
+        # CFSI consumes the transition flows, so refresh it once they land.
+        c = compute_cfsi()
+        logger.info(f"Scheduler: HHDC transition rates — {n} rows, CFSI — {c} rows")
+    except Exception as e:
+        logger.error(f"Scheduler: HHDC job error: {e}")
 
 
 async def _job_health():
@@ -120,6 +139,14 @@ async def start_scheduler():
         max_instances=1,
         replace_existing=True,
     )
+    # NY Fed HHDC is quarterly data; a daily check is ample to catch new releases.
+    _scheduler.add_job(
+        _job_hhdc,
+        IntervalTrigger(hours=24),
+        id="hhdc",
+        max_instances=1,
+        replace_existing=True,
+    )
 
     _scheduler.start()
     logger.info(
@@ -145,6 +172,7 @@ async def _initial_fetch(auto_news: bool) -> None:
         asyncio.to_thread(_job_market),  # blocking → thread
         asyncio.to_thread(_job_fred),    # blocking → thread
         asyncio.to_thread(_job_edgar),   # blocking → thread
+        asyncio.to_thread(_job_hhdc),    # blocking → thread
     ]
     if auto_news:
         tasks.append(_job_feeds())       # async

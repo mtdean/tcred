@@ -74,6 +74,25 @@ CREATE TABLE IF NOT EXISTS meta (
     value  TEXT
 );
 
+CREATE TABLE IF NOT EXISTS abs_pricing (
+    accession_no  TEXT NOT NULL,
+    deal_name     TEXT,
+    issuer        TEXT,
+    segment       TEXT,           -- prime_auto | subprime_auto | equipment | other
+    pricing_date  TEXT,           -- filing date of the pricing term sheet
+    class_name    TEXT NOT NULL,  -- tranche, e.g. A-2, B, C, D
+    rating        TEXT,
+    wal           REAL,           -- weighted-average life (years)
+    benchmark     TEXT,           -- e.g. I-CRV (interpolated swaps), SOFR
+    spread_bps    REAL,           -- new-issue spread over benchmark, bps
+    coupon        REAL,
+    url           TEXT,
+    fetched_at    TEXT NOT NULL,
+    PRIMARY KEY (accession_no, class_name)
+);
+CREATE INDEX IF NOT EXISTS idx_abs_pricing_date ON abs_pricing(pricing_date DESC);
+CREATE INDEX IF NOT EXISTS idx_abs_pricing_seg  ON abs_pricing(segment);
+
 CREATE TABLE IF NOT EXISTS digests (
     date          TEXT NOT NULL,      -- YYYY-MM-DD in US/Eastern
     session       TEXT NOT NULL,      -- 'AM' (before noon ET) or 'PM' (noon+)
@@ -245,6 +264,21 @@ def upsert_edgar_filing(row: dict) -> None:
             VALUES
               (:accession_no, :company_name, :form_type, :filed_at,
                :description, :url, :asset_class, :fetched_at)
+            """,
+            row,
+        )
+
+
+def upsert_abs_pricing_tranche(row: dict) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO abs_pricing
+              (accession_no, deal_name, issuer, segment, pricing_date, class_name,
+               rating, wal, benchmark, spread_bps, coupon, url, fetched_at)
+            VALUES
+              (:accession_no, :deal_name, :issuer, :segment, :pricing_date, :class_name,
+               :rating, :wal, :benchmark, :spread_bps, :coupon, :url, :fetched_at)
             """,
             row,
         )

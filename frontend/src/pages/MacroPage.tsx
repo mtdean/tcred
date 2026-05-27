@@ -4,7 +4,14 @@ import RatesPanel from '../components/macro/RatesPanel';
 import MacroIndicators from '../components/macro/MacroIndicators';
 import {
   NationalActivityPanel,
-  RecessionProbabilityPanel,
+  RecessionEnsemblePanel,
+  SahmRulePanel,
+  NearTermForwardSpreadPanel,
+  CreditImpulsePanel,
+  ConsumerStressPanel,
+  DelinquencyFlowPanel,
+  OfrStressPanel,
+  CreditGapPanel,
   FinancialStressPanel,
   LendingStandardsPanel,
   InflationExpectationsPanel,
@@ -36,20 +43,27 @@ export default function MacroPage() {
     <div className="stack">
       <SectionLabel>Activity & Recession Risk</SectionLabel>
       <div className="grid-2">
+        <RecessionEnsemblePanel />
+        <ConsumerStressPanel />
+        <SahmRulePanel />
         <NationalActivityPanel />
-        <RecessionProbabilityPanel />
       </div>
 
       <SectionLabel>Rates, Curve & Financial Conditions</SectionLabel>
       <div className="grid-2">
         <RatesPanel />
+        <NearTermForwardSpreadPanel />
         <FinancialStressPanel />
+        <OfrStressPanel />
       </div>
 
       <SectionLabel>Credit & Delinquency</SectionLabel>
       <div className="grid-2">
         <DelinquencyPanel />
         <ChargeOffPanel />
+        <DelinquencyFlowPanel />
+        <CreditImpulsePanel />
+        <CreditGapPanel />
       </div>
 
       <SectionLabel>Lending Standards & Inflation</SectionLabel>

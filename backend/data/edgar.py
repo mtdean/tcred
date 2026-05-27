@@ -66,12 +66,13 @@ def _search_filings(
     results = []
 
     for keyword in keywords:
+        # NB: EDGAR FTS now 500s when sent `dateRange=custom` or `_source`;
+        # pass only q/forms/startdt/enddt (the omitted fields come back anyway).
         params = {
             "q": f'"{keyword}"',
-            "dateRange": "custom",
             "startdt": since,
+            "enddt": datetime.now().strftime("%Y-%m-%d"),
             "forms": form_type,
-            "_source": "file_date,display_names,form_type,file_num,period_of_report",
         }
         try:
             resp = requests.get(

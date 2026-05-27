@@ -18,6 +18,12 @@ apscheduler==3.11.2
 # Database
 # (sqlite3 is stdlib — no install needed)
 
+# Excel ingest (NY Fed Household Debt & Credit workbook)
+openpyxl==3.1.5
+
+# HTML table parsing (ABS pricing term sheets via pandas.read_html)
+lxml==6.1.1
+
 # Config
 pyyaml==6.0.3
 python-dotenv==1.2.2
