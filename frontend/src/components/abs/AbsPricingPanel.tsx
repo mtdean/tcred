@@ -4,10 +4,10 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ExternalLink } from 'lucide-react';
-import { getAbsPricing } from '../../lib/api';
+import { getAbsPricing, getAbsMomentumDeltas } from '../../lib/api';
 import { qk } from '../../lib/queryKeys';
 import { fmtDate } from '../../lib/utils';
-import type { AbsDeal, AbsTranche } from '../../lib/types';
+import type { AbsDeal, AbsTranche, AbsMomentumDelta } from '../../lib/types';
 import Panel from '../shared/Panel';
 import LoadingCursor from '../shared/LoadingCursor';
 import EmptyState from '../shared/EmptyState';
@@ -17,13 +17,25 @@ const SEGMENTS = [
   { value: 'subprime_auto', label: 'SUBPRIME AUTO' },
   { value: 'prime_auto', label: 'PRIME AUTO' },
   { value: 'equipment', label: 'EQUIPMENT' },
+  { value: 'credit_card', label: 'CREDIT CARD' },
+  { value: 'student_loan', label: 'STUDENT LOAN' },
+  { value: 'floorplan', label: 'FLOORPLAN' },
 ];
 
 const SEGMENT_LABEL: Record<string, string> = {
   subprime_auto: 'SUBPRIME',
   prime_auto: 'PRIME',
   equipment: 'EQUIP',
+  credit_card: 'CARD',
+  student_loan: 'STUDENT',
+  floorplan: 'FLOORPLAN',
   other: 'OTHER',
+};
+
+const SENIORITY_LABEL: Record<string, string> = {
+  senior: 'SR',
+  mezzanine: 'MEZ',
+  junior: 'JR',
 };
 
 function segmentColor(seg: string): string {
@@ -73,6 +85,96 @@ function TrancheChips({ tranches }: { tranches: AbsTranche[] }) {
   );
 }
 
+// Widening (positive delta) = red, tightening (negative) = green.
+function deltaColor(delta: number | null): string {
+  if (delta == null || delta === 0) return 'var(--text-secondary)';
+  return delta > 0 ? 'var(--negative)' : 'var(--positive)';
+}
+
+function fmtDelta(delta: number | null): string {
+  if (delta == null) return '—';
+  const r = Math.round(delta);
+  return `${r > 0 ? '+' : ''}${r}`;
+}
+
+// Most-recent momentum delta per (segment, seniority), as compact chips.
+function MomentumDeltas({ deltas }: { deltas: AbsMomentumDelta[] }) {
+  // Keep only the newest observation per segment+seniority (deltas come newest-first).
+  const latest = new Map<string, AbsMomentumDelta>();
+  for (const d of deltas) {
+    const key = `${d.segment}|${d.seniority}`;
+    if (!latest.has(key)) latest.set(key, d);
+  }
+  const rows = [...latest.values()].filter((d) => d.delta_bps != null);
+  if (rows.length === 0) return null;
+
+  // Group by segment for a tidy layout.
+  const bySegment = new Map<string, AbsMomentumDelta[]>();
+  for (const d of rows) {
+    const arr = bySegment.get(d.segment) ?? [];
+    arr.push(d);
+    bySegment.set(d.segment, arr);
+  }
+  const order: Record<string, number> = { senior: 0, mezzanine: 1, junior: 2 };
+
+  return (
+    <div
+      style={{
+        marginBottom: 10,
+        padding: '8px 10px',
+        background: 'var(--bg-panel-alt)',
+        border: '1px solid var(--border-bright)',
+        borderRadius: 2,
+      }}
+    >
+      <div
+        className="mono"
+        style={{ fontSize: 10, color: 'var(--text-secondary)', marginBottom: 6, letterSpacing: 0.5 }}
+      >
+        SPREAD MOMENTUM — Δ bps VS PRIOR DEAL (WIDENING / TIGHTENING)
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+        {[...bySegment.entries()].map(([seg, items]) => (
+          <div key={seg} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span className="cat-chip" style={{ color: segmentColor(seg) }}>
+              {SEGMENT_LABEL[seg] ?? seg}
+            </span>
+            {items
+              .sort((a, b) => (order[a.seniority] ?? 9) - (order[b.seniority] ?? 9))
+              .map((d) => (
+                <span
+                  key={d.seniority}
+                  className="mono"
+                  title={[
+                    `${d.deal_name}`,
+                    `now +${Math.round(d.spread_bps)}`,
+                    d.prior_spread_bps != null && `prior +${Math.round(d.prior_spread_bps)}`,
+                    d.zscore != null && `z ${d.zscore}`,
+                    fmtDate(d.pricing_date),
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                  style={{
+                    fontSize: 10,
+                    padding: '1px 5px',
+                    border: '1px solid var(--border-bright)',
+                    borderRadius: 2,
+                    color: deltaColor(d.delta_bps),
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {SENIORITY_LABEL[d.seniority] ?? d.seniority}{' '}
+                  <b>{fmtDelta(d.delta_bps)}</b>
+                  {d.zscore != null && Math.abs(d.zscore) >= 2 ? ' ⚠' : ''}
+                </span>
+              ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function AbsPricingPanel() {
   const [segment, setSegment] = useState('');
 
@@ -82,7 +184,16 @@ export default function AbsPricingPanel() {
     staleTime: 30 * 60_000,
   });
 
+  const { data: momentumData } = useQuery({
+    queryKey: qk.absMomentumDeltas,
+    queryFn: () => getAbsMomentumDeltas().then((r) => r.data),
+    staleTime: 30 * 60_000,
+  });
+
   const deals: AbsDeal[] = data ?? [];
+  const allDeltas: AbsMomentumDelta[] = momentumData ?? [];
+  // Honor the segment filter for the momentum strip too.
+  const deltas = segment ? allDeltas.filter((d) => d.segment === segment) : allDeltas;
 
   const actions = (
     <select
@@ -119,6 +230,8 @@ export default function AbsPricingPanel() {
       ) : deals.length === 0 ? (
         <EmptyState message="NO PRICED DEALS YET — RUN POST /api/abs/pricing/refresh" />
       ) : (
+        <>
+        <MomentumDeltas deltas={deltas} />
         <table className="data-table">
           <thead>
             <tr>
@@ -153,6 +266,7 @@ export default function AbsPricingPanel() {
             ))}
           </tbody>
         </table>
+        </>
       )}
     </Panel>
   );

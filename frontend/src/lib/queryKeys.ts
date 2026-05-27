@@ -16,6 +16,7 @@ export const qk = {
   edgarFeed: (params: Record<string, unknown>) => ['edgar-feed', params] as const,
   edgarFacets: ['edgar', 'facets'] as const,
   absPricing: (segment: string) => ['abs', 'pricing', segment] as const,
+  absMomentumDeltas: ['abs', 'momentum-deltas'] as const,
   deals: ['deals'] as const,
   deal: (id: string, view: string) => ['deals', id, view] as const,
 };

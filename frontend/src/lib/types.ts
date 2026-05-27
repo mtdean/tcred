@@ -35,6 +35,22 @@ export interface AbsDeal {
   tranches: AbsTranche[];
 }
 
+export type AbsSeniority = 'senior' | 'mezzanine' | 'junior';
+
+// One observation in a segment+seniority spread-momentum series: the change in
+// representative spread vs the prior comparable deal (widening +, tightening −).
+export interface AbsMomentumDelta {
+  segment: string;
+  seniority: AbsSeniority;
+  pricing_date: string;
+  deal_name: string;
+  accession_no: string;
+  spread_bps: number;
+  prior_spread_bps: number | null;
+  delta_bps: number | null;
+  zscore: number | null;
+}
+
 export interface ArticleListResponse {
   items: Article[];
   offset: number;

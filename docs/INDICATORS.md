@@ -78,10 +78,15 @@ source, update cadence, documented predictive value, and caveats. Verified May 2
 - **Data:** [frbsf.org LMSI](https://www.frbsf.org/research-and-insights/data-and-indicators/labor-market-stress-indicator/); downloadable [`.xlsx`](https://www.frbsf.org/wp-content/uploads/labor-market-stress-indicator-data.xlsx). No API. Weekly.
 - **Cite:** Garimella, Jordà & Singh (2025), [SF Fed WP 2025-31](https://www.frbsf.org/wp-content/uploads/wp2025-31.pdf).
 
-### 9. ABS New-Issue Spread Momentum ✅
-- **What / lead:** New-issue spreads on subprime/prime auto and equipment ABS as a forward read on consumer risk premium — widening *subordinate subprime auto* tranches flag stress before realized delinquencies. **No FRED series**; deal-level only.
+### 9. ABS New-Issue Spread Momentum ✅ (v2)
+- **What / lead:** New-issue spreads on consumer/commercial ABS as a forward read on the risk premium — widening *subordinate* tranches flag stress before realized delinquencies. **No FRED series**; deal-level only.
 - **Data:** the underwriter **pricing term sheet**, filed as an FWP on pricing day, carries a tranche table with a spread column (over interpolated swaps / SOFR). Ratings FWPs (filed earlier) have no spread column — the presence of a parseable spread table cleanly distinguishes the pricing sheet. The pricing sheet is reached via the deal **trust's** filing history (it doesn't name the deal, so it isn't directly text-searchable).
-- **Build:** `data/abs_pricing.py` — full-text-searches EDGAR for ABS FWPs, discovers trust CIKs, enumerates each trust's FWPs, parses tranche tables with `pandas.read_html` (needs `lxml`), and stores per-tranche spreads in the `abs_pricing` table (segment-tagged prime/subprime/equipment). Token-free regex parse; shares the EDGAR job cadence. API: `GET /api/abs/pricing`, `GET /api/abs/spread-momentum`, `POST /api/abs/pricing/refresh`. Frontend: ABS-page "New-Issue Spreads" panel. *Validated: Carvana (subprime) C+155/D+190 vs CarMax (prime) C+95/D+130 — the risk-premium gap.*
+- **Build:** `data/abs_pricing.py` — full-text-searches EDGAR for ABS FWPs, discovers trust CIKs, enumerates each trust's FWPs, parses tranche tables with `pandas.read_html` (needs `lxml`), and stores per-tranche spreads in the `abs_pricing` table. Token-free regex parse; shares the EDGAR job cadence.
+- **Coverage (v2):** `_segment()` now classifies six segments — **subprime_auto, prime_auto, equipment, credit_card, student_loan, floorplan** — matched most-specific-first off trust-name fragments (card: "credit card"/"card funding"/"master trust"/Synchrony/Comenity/Capital One COMET/Chase CHAIT; student: "student loan"/SLM/Navient/Nelnet/SoFi; floorplan: "floorplan"/"dealer floorplan"). Discovery keywords widened in both `_DEFAULT_KEYWORDS` and `config/data_sources.yaml` (`abs_pricing.discovery_keywords`). The same v1 trust-discovery + spread-table parse generalizes to revolving (card/floorplan master-trust) and student-loan shelves with no parser change.
+- **Momentum (v2):** `get_abs_spread_momentum_deltas()` is the **true momentum signal**. Tranches collapse into three **seniority buckets** (`_seniority_bucket()`): *senior* = AAA / class A\*; *mezzanine* = AA/A / class B,C; *junior* = BBB & below / class D,E,F,N. Per **(segment, bucket)**, deals are time-ordered and the representative spread (widest-WAL tranche in the bucket) is differenced vs the **prior comparable deal**: `delta_bps` (widening +, tightening −), plus a **rolling z-score** of that delta over the segment+bucket's trailing delta history (needs ≥3 deltas). The original per-deal senior/subordinate series remains as `get_abs_spread_momentum()`.
+- **API:** `GET /api/abs/pricing`, `GET /api/abs/spread-momentum`, **`GET /api/abs/spread-momentum/deltas`** (new), `POST /api/abs/pricing/refresh`.
+- **Frontend:** ABS-page "New-Issue Spreads" panel now renders a momentum strip above the deals table — one chip per (segment, seniority) showing the latest Δbps **color-coded widening=red / tightening=green** (⚠ flag at |z|≥2), honoring the segment filter, alongside the existing per-tranche spread chips.
+- *v1 validation: Carvana (subprime) C+155/D+190 vs CarMax (prime) C+95/D+130 — the risk-premium gap.*
 - **Note:** also fixed a latent bug in the existing `edgar.py` — EDGAR FTS now 500s on `dateRange=custom`/`_source` params, so the ABS-filing monitor was silently returning nothing.
 
 ---
@@ -159,7 +164,7 @@ Discovered while going wide. Prioritized; all free.
 14 `HHDC_FLOW{30,90}_{loan}` transition-rate series.
 
 **ABS new-issue spread tracker** (`backend/data/abs_pricing.py`, shares the EDGAR job + `POST /api/abs/pricing/refresh`):
-per-tranche spreads in the `abs_pricing` table, segment-tagged. `GET /api/abs/pricing`, `GET /api/abs/spread-momentum`.
+per-tranche spreads in the `abs_pricing` table, segment-tagged across six segments (subprime/prime auto, equipment, credit card, student loan, floorplan). `GET /api/abs/pricing`, `GET /api/abs/spread-momentum`, `GET /api/abs/spread-momentum/deltas` (per segment+seniority momentum Δ vs prior deal, with rolling z-score).
 
 **New FRED series** (`config/data_sources.yaml`):
 `T10Y3M`, `SAHMREALTIME`, `SAHMCURRENT`, `DRTSCLCC`, `STDSAUTO`, `TDSP`, `CDSP`, `MDSP`, `ANFCI`, `WEI`, `TEMPHELPS`, `JTSQUR`, `PERMIT`, `TCMDO`, `GDP`.

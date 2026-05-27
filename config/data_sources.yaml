@@ -447,6 +447,11 @@ abs_pricing:
     - "auto lease"
     - "equipment finance"
     - "dealer floorplan"
+    - "floorplan"
+    - "credit card"
+    - "card funding"
+    - "master trust"
+    - "student loan"
 
 # ── SIFMA ────────────────────────────────────────────────────
 # Manual download — no public API; scrape the stats pages

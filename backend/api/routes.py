@@ -267,6 +267,16 @@ def get_abs_spread_momentum():
     return _mom()
 
 
+@router.get("/abs/spread-momentum/deltas")
+def get_abs_spread_momentum_deltas():
+    """Spread change vs prior comparable deal, per segment + seniority bucket.
+
+    Widening = positive bps, tightening = negative; includes a rolling z-score.
+    """
+    from data.abs_pricing import get_abs_spread_momentum_deltas as _deltas
+    return _deltas()
+
+
 @router.post("/abs/pricing/refresh")
 def trigger_abs_pricing_refresh(days_back: int = Query(default=30, le=180)):
     """Discover and parse recent ABS pricing term sheets."""

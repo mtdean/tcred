@@ -47,6 +47,11 @@ _DEFAULT_KEYWORDS = [
     "auto lease",
     "equipment finance",
     "dealer floorplan",
+    "floorplan",
+    "credit card",
+    "card funding",
+    "master trust",
+    "student loan",
 ]
 BASE_SUBMISSIONS = "https://data.sec.gov/submissions/CIK{cik:010d}.json"
 
@@ -60,6 +65,19 @@ _SUBPRIME = [
     "foursight", "regional management", "lobel", "tricolor", "sierra",
 ]
 _EQUIPMENT = ["equipment", "deere", "cnh", "kubota", "dll", "great america", "octane"]
+
+# Revolving consumer-credit segments. Floorplan (dealer inventory financing) is
+# kept distinct from term auto because its risk profile and benchmark differ.
+_CREDIT_CARD = [
+    "credit card", "card funding", "master trust", "synchrony", "comenity",
+    "capital one comet", "comet", "chase chait", "chait", "citibank credit card",
+    "american express credit account", "world financial",
+]
+_STUDENT_LOAN = [
+    "student loan", "slm ", "slm student", "sallie mae", "navient", "nelnet",
+    "sofi", "education loan", "private student",
+]
+_FLOORPLAN = ["floorplan", "floor plan", "dealer floorplan", "master owner trust"]
 
 # ── Pricing-table header mapping ─────────────────────────────────────────────
 _FIELD_TOKENS = {
@@ -89,6 +107,14 @@ def _num(s):
 
 def _segment(name: str) -> str:
     n = (name or "").lower()
+    # Most-specific asset classes first; "auto" is a broad fallback that many
+    # trust names contain incidentally, so it's tested last.
+    if any(k in n for k in _STUDENT_LOAN):
+        return "student_loan"
+    if any(k in n for k in _CREDIT_CARD):
+        return "credit_card"
+    if any(k in n for k in _FLOORPLAN):
+        return "floorplan"
     if any(k in n for k in _EQUIPMENT):
         return "equipment"
     if any(k in n for k in _SUBPRIME):
@@ -96,6 +122,36 @@ def _segment(name: str) -> str:
     if "auto" in n or "vehicle" in n or "motor" in n:
         return "prime_auto"
     return "other"
+
+
+# ── Seniority buckets ────────────────────────────────────────────────────────
+# Collapse the dozens of class labels / ratings into three risk buckets so deals
+# with different tranche structures stay comparable across time:
+#   senior     = AAA / class A*          (the benchmark senior spread)
+#   mezzanine  = AA / A   / class B, C   (mid risk)
+#   junior     = BBB & below / class D, E, F, N  (the first-loss risk read)
+def _seniority_bucket(class_name: str, rating: str | None) -> str:
+    r = (rating or "").upper().replace(" ", "")
+    cls = (class_name or "").upper().strip()
+    cls_letter = cls[0] if cls else ""
+
+    # Rating takes precedence when present (more reliable than class letter).
+    if r:
+        if "AAA" in r:
+            return "senior"
+        # BBB / BB / B / CCC / below-investment-grade -> junior
+        if "BBB" in r or r.startswith("BB") or r.startswith("B") or r.startswith("C") or "NR" in r:
+            return "junior"
+        # AA / A (but not AAA, handled above) -> mezzanine
+        if r.startswith("AA") or r.startswith("A"):
+            return "mezzanine"
+
+    # Fall back to the class letter.
+    if cls_letter == "A":
+        return "senior"
+    if cls_letter in ("B", "C"):
+        return "mezzanine"
+    return "junior"  # D, E, F, N, ...
 
 
 def _archive_url(cik: int, accession: str, doc: str) -> str:
@@ -367,4 +423,106 @@ def get_abs_spread_momentum() -> list[dict]:
             }
         )
     out.sort(key=lambda x: x["pricing_date"])
+    return out
+
+
+def _bucket_spread(tranches: list[dict]) -> dict[str, float]:
+    """Representative spread per seniority bucket for one deal.
+
+    Within a bucket, take the widest-WAL tranche (the longest, most cycle-
+    sensitive paper) as that bucket's spread for the deal.
+    """
+    by_bucket: dict[str, dict] = {}
+    for t in tranches:
+        if t.get("spread_bps") is None:
+            continue
+        b = _seniority_bucket(t.get("class_name", ""), t.get("rating"))
+        cur = by_bucket.get(b)
+        if cur is None or (t.get("wal") or 0) > (cur.get("wal") or 0):
+            by_bucket[b] = t
+    return {b: tr["spread_bps"] for b, tr in by_bucket.items()}
+
+
+def get_abs_spread_momentum_deltas() -> list[dict]:
+    """True momentum signal: per (segment, seniority bucket), the spread change
+    of each deal vs the *prior comparable deal* in that segment+bucket.
+
+    For each segment+bucket we order deals by pricing date and compute:
+      - spread_bps        — this deal's representative bucket spread
+      - delta_bps         — change vs the prior deal (widening +, tightening −)
+      - zscore            — delta standardized over the trailing deltas in that
+                            segment+bucket (None until enough history)
+    Returns one row per (segment, bucket, deal), newest first.
+    """
+    with get_conn() as conn:
+        rows = [
+            dict(r)
+            for r in conn.execute(
+                "SELECT segment, pricing_date, accession_no, deal_name, class_name, "
+                "rating, wal, spread_bps FROM abs_pricing "
+                "WHERE spread_bps IS NOT NULL "
+                "ORDER BY pricing_date, accession_no"
+            ).fetchall()
+        ]
+
+    # Group tranches by deal, preserving deal order (date, then accession).
+    by_deal: dict[str, dict] = {}
+    for r in rows:
+        d = by_deal.setdefault(
+            r["accession_no"],
+            {
+                "accession_no": r["accession_no"],
+                "segment": r["segment"],
+                "pricing_date": r["pricing_date"],
+                "deal_name": r["deal_name"],
+                "tranches": [],
+            },
+        )
+        d["tranches"].append(r)
+
+    deals = sorted(by_deal.values(), key=lambda d: (d["pricing_date"], d["accession_no"]))
+
+    # Build per (segment, bucket) time-ordered series of (deal, spread).
+    series: dict[tuple[str, str], list[dict]] = {}
+    for deal in deals:
+        for bucket, spread in _bucket_spread(deal["tranches"]).items():
+            key = (deal["segment"], bucket)
+            series.setdefault(key, []).append(
+                {
+                    "segment": deal["segment"],
+                    "seniority": bucket,
+                    "pricing_date": deal["pricing_date"],
+                    "deal_name": deal["deal_name"],
+                    "accession_no": deal["accession_no"],
+                    "spread_bps": spread,
+                }
+            )
+
+    out: list[dict] = []
+    for key, points in series.items():
+        deltas: list[float] = []
+        for i, p in enumerate(points):
+            if i == 0:
+                p["delta_bps"] = None
+                p["prior_spread_bps"] = None
+            else:
+                prior = points[i - 1]["spread_bps"]
+                delta = p["spread_bps"] - prior
+                p["delta_bps"] = round(delta, 1)
+                p["prior_spread_bps"] = prior
+                deltas.append(delta)
+            # Rolling z-score of this delta vs the prior deltas in this series.
+            p["zscore"] = None
+            if p["delta_bps"] is not None and len(deltas) >= 3:
+                hist = deltas[:-1] if len(deltas) > 1 else deltas
+                if len(hist) >= 2:
+                    mean = sum(hist) / len(hist)
+                    var = sum((x - mean) ** 2 for x in hist) / (len(hist) - 1)
+                    sd = var ** 0.5
+                    if sd > 1e-9:
+                        p["zscore"] = round((p["delta_bps"] - mean) / sd, 2)
+            out.append(p)
+
+    # Newest first overall; ties broken by segment/seniority for stable display.
+    out.sort(key=lambda x: (x["pricing_date"], x["segment"], x["seniority"]), reverse=True)
     return out

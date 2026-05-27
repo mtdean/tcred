@@ -8,6 +8,7 @@ import type {
   EdgarFiling,
   EdgarParams,
   AbsDeal,
+  AbsMomentumDelta,
   FeedHealth,
   ForwardCurveData,
   MarketRow,
@@ -51,6 +52,8 @@ export const getEdgarFilings = (params: EdgarParams = {}) =>
 export const getEdgarFacets = () => api.get<EdgarFacets>('/edgar/facets');
 export const getAbsPricing = (segment?: string) =>
   api.get<AbsDeal[]>('/abs/pricing', { params: { segment: segment || undefined } });
+export const getAbsMomentumDeltas = () =>
+  api.get<AbsMomentumDelta[]>('/abs/spread-momentum/deltas');
 
 // ── Deals ──────────────────────────────────────────────
 export const getDeals = () => api.get('/deals');
