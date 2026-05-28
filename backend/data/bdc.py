@@ -27,26 +27,49 @@ logger = logging.getLogger(__name__)
 
 HEADERS = {"User-Agent": settings.EDGAR_USER_AGENT}
 
-# SEC publishes ZIPs at /files/bdc/*.zip; the index page links to them.
+# SEC publishes BDC dataset ZIPs under
+# /files/structureddata/data/business-development-company-bdc-data-sets/.
+# Historical files are quarterly (e.g. 2024q3_bdc.zip); from 2025_04 onward the
+# release cadence switched to monthly (e.g. 2026_04_bdc.zip).
 BDC_DATA_INDEX = "https://www.sec.gov/data-research/sec-markets-data/bdc-data-sets"
-BDC_ZIP_URL_PATTERN = "https://www.sec.gov/files/bdc/bdc_{year}q{quarter}.zip"
+BDC_BASE_PATH = (
+    "/files/structureddata/data/business-development-company-bdc-data-sets"
+)
+
+
+def _sort_key(path: str) -> tuple:
+    """Sort BDC zip filenames so monthly releases (YYYY_MM_bdc.zip) outrank
+    quarterly ones for the same year, with most-recent winning overall."""
+    name = path.rsplit("/", 1)[-1]
+    m = re.match(r"^(\d{4})_(\d{2})_bdc\.zip$", name)
+    if m:
+        year, month = int(m.group(1)), int(m.group(2))
+        return (year, month, 1)  # monthly wins ties
+    q = re.match(r"^(\d{4})q([1-4])_bdc\.zip$", name)
+    if q:
+        year, qtr = int(q.group(1)), int(q.group(2))
+        return (year, qtr * 3, 0)  # map quarter to its last month
+    return (0, 0, 0)
 
 
 def _get_latest_bdc_zip_url() -> Optional[str]:
-    """Scrape the index page for the most recent ZIP link, falling back to the
-    current calendar quarter if scraping fails."""
+    """Scrape the index page for the most recent ZIP link.
+
+    SEC publishes both quarterly archives and (since 2025-04) monthly releases.
+    We accept either filename pattern and return the most-recent file.
+    """
     try:
         resp = requests.get(BDC_DATA_INDEX, headers=HEADERS, timeout=15)
         resp.raise_for_status()
-        matches = re.findall(r'href="(/files/bdc/[^"]+\.zip)"', resp.text)
+        matches = re.findall(
+            rf'href="({re.escape(BDC_BASE_PATH)}/[^"]+\.zip)"', resp.text
+        )
         if matches:
-            # The index lists newest-last; take the trailing entry.
-            return f"https://www.sec.gov{matches[-1]}"
+            latest = max(matches, key=_sort_key)
+            return f"https://www.sec.gov{latest}"
     except Exception as e:
         logger.error(f"BDC ZIP URL discovery error: {e}")
-    now = datetime.now()
-    q = (now.month - 1) // 3 + 1
-    return BDC_ZIP_URL_PATTERN.format(year=now.year, quarter=q)
+    return None
 
 
 def _download_and_parse_soi(zip_url: str) -> Optional[pd.DataFrame]:
@@ -141,9 +164,68 @@ def _compute_bdc_summary(
     }
 
 
+# SOI.tsv is reported as XBRL facts — the SAME total NAV gets repeated under
+# each independent breakdown (by industry, by issuer, by fair-value hierarchy,
+# by valuation technique, etc.). Naïvely summing every row over-counts 5-10x.
+#
+# Rollup axes are pure totals (e.g. "Level 1/2/3", "Income Approach", "Operating
+# Segments") — we exclude rows where any of them is set. Breakdown axes are
+# disjoint partitions of the portfolio — we keep rows that have exactly one
+# breakdown axis populated and then pick, per filer, the breakdown axis whose
+# rows sum to the SMALLEST positive total cost (the least double-counted
+# representation of the BDC's portfolio).
+_ROLLUP_AXES = [
+    "Fair Value Hierarchy and NAV Axis",
+    "Valuation Approach and Technique Axis",
+    "Consolidation Items Axis",
+    "Investment Company, Nonconsolidated Subsidiary Axis",
+    "Segments Axis",
+]
+_BREAKDOWN_AXES = [
+    "Investment, Identifier Axis",
+    "Investment, Issuer Name Axis",
+    "Investment, Issuer Affiliation Axis",
+    "Industry Sector Axis",
+    "Investment Type Axis",
+    "Financial Instrument Axis",
+]
+
+
+def _norm(s) -> str:
+    """NaN-safe string strip + [Member] suffix removal (XBRL Member taxonomy)."""
+    if s is None or (isinstance(s, float) and pd.isna(s)):
+        return ""
+    return str(s).replace("[Member]", "").strip()
+
+
+def _pick_primary_breakdown(group_df: pd.DataFrame, fv_col: str, cost_col: str) -> str | None:
+    """For one BDC's rows, return the breakdown axis whose rows sum to the
+    smallest positive total cost — the cleanest non-double-counted view of the
+    portfolio. Returns None if no axis yields any usable rows."""
+    best_axis: str | None = None
+    best_total: float | None = None
+    for axis in _BREAKDOWN_AXES:
+        if axis not in group_df.columns:
+            continue
+        rows = group_df[group_df[axis].map(_norm) != ""]
+        if rows.empty:
+            continue
+        cost_sum = pd.to_numeric(rows[cost_col], errors="coerce").fillna(0).sum()
+        if cost_sum <= 0:
+            continue  # affiliate-axis edge case where cost is zeroed out
+        if best_total is None or cost_sum < best_total:
+            best_axis, best_total = axis, cost_sum
+    return best_axis
+
+
 def fetch_bdc_data() -> int:
     """Pipeline: discover URL → download → parse → persist holdings + summaries.
-    Returns total holdings inserted."""
+    Returns total holdings inserted.
+
+    The SOI.tsv schema does NOT match PHASE7.md's spec. It's a sparse fact table
+    in XBRL long-form, with each total repeated under multiple breakdown axes.
+    See _pick_primary_breakdown for the de-duplication strategy.
+    """
     zip_url = _get_latest_bdc_zip_url()
     if not zip_url:
         logger.error("Could not determine BDC ZIP URL")
@@ -158,87 +240,99 @@ def fetch_bdc_data() -> int:
 
     df.columns = [c.strip() for c in df.columns]
 
-    # SEC dataset has varied between camelCase and lowercase across vintages.
-    col_map = {
-        "adsh":       ["adsh", "Adsh"],
-        "cik":        ["cik", "CIK"],
-        "name":       ["name", "Name"],
-        "period":     ["period", "Period"],
-        "company":    ["InvestmentIdentifier", "investmentidentifier", "company"],
-        "industry":   ["InvestmentIndustry", "investmentindustry"],
-        "inv_type":   ["InvestmentTypeAxis", "investmenttypeaxis"],
-        "rate":       ["InvestmentInterestRate", "investmentinterestrate"],
-        "pik":        ["InvestmentPIKRate", "investmentpikrate"],
-        "cost":       ["InvestmentCostBasis", "investmentcostbasis"],
-        "fv":         ["InvestmentFairValue", "investmentfairvalue"],
-        "pct_nav":    ["InvestmentPercentOfNetAssets", "investmentpercentofnetassets"],
-        "maturity":   ["InvestmentMaturityDate", "investmentmaturitydate"],
-        "nonaccrual": ["InvestmentIsOnNonaccrualStatus", "investmentisonnonaccrualstatus"],
-    }
+    COL_ADSH     = "adsh"
+    COL_CIK      = "cik"
+    COL_NAME     = "name"
+    COL_DDATE    = "ddate"
+    COL_PERIOD   = "period"
+    COL_INDUSTRY = "Industry Sector Axis"
+    COL_INV_TYPE = "Investment Type Axis"
+    COL_RATE     = "Investment Interest Rate"
+    COL_PIK      = "Investment, Interest Rate, Paid in Kind"
+    COL_COST     = "Adjusted cost basis"
+    COL_FV       = "Initial fair value of Investment"
+    COL_PCT_NAV  = "Investment Owned, Net Assets, Percentage"
+    COL_MATURITY = "Investment Maturity Date"
 
-    def get_col(key: str) -> Optional[str]:
-        for candidate in col_map.get(key, []):
-            if candidate in df.columns:
-                return candidate
-        return None
-
-    cik_col = get_col("cik")
-    name_col = get_col("name")
-    period_col = get_col("period")
-
-    if not all([cik_col, period_col]):
+    required = [COL_ADSH, COL_CIK, COL_NAME, COL_DDATE, COL_PERIOD, COL_COST, COL_FV]
+    missing = [c for c in required if c not in df.columns]
+    if missing:
         logger.error(
-            f"Required BDC columns not found. Available: {list(df.columns)[:20]}"
+            f"BDC SOI missing expected columns: {missing}. "
+            f"Available: {list(df.columns)[:20]}"
         )
         return 0
 
-    # Log a sample of BDCs we're processing so the watch list stays maintainable.
-    if cik_col and name_col:
-        unique_bdcs = df[[cik_col, name_col]].drop_duplicates()
-        logger.info(f"BDCs in dataset: {len(unique_bdcs)}")
-        for _, row in unique_bdcs.head(20).iterrows():
-            logger.info(f"  CIK={row[cik_col]} NAME={row[name_col]}")
+    # Current-period observations only. A 10-Q includes prior comparative
+    # balances under the same adsh but with ddate set to the prior quarter.
+    df = df[df[COL_DDATE] == df[COL_PERIOD]].copy()
 
-    group_cols = [c for c in [cik_col, name_col, period_col] if c]
-    bdc_groups = df.groupby(group_cols) if group_cols else []
+    # Need cost OR fair value to be useful.
+    df["_cost_num"] = pd.to_numeric(df[COL_COST], errors="coerce")
+    df["_fv_num"] = pd.to_numeric(df[COL_FV], errors="coerce")
+    df = df[df[["_cost_num", "_fv_num"]].notna().any(axis=1)]
+
+    # Drop rows that are rollup totals (any rollup-axis member set).
+    for axis in _ROLLUP_AXES:
+        if axis in df.columns:
+            df = df[df[axis].map(_norm) == ""]
+
+    if df.empty:
+        logger.warning("BDC SOI produced 0 usable holdings after rollup filter")
+        return 0
+
+    # Each row should have exactly one breakdown axis populated; multi-axis
+    # rows are sub-partitions and re-introduce double counting.
+    present_axes = [a for a in _BREAKDOWN_AXES if a in df.columns]
+    df["_n_breakdowns"] = (
+        df[present_axes].map(_norm).ne("").sum(axis=1)
+    )
+    df = df[df["_n_breakdowns"] == 1]
+
+    unique_bdcs = df[[COL_CIK, COL_NAME]].drop_duplicates()
+    logger.info(f"BDC dataset: {len(df)} candidate rows across {len(unique_bdcs)} BDCs")
+
+    def _get(row, col: str) -> str:
+        return _norm(row.get(col) if col in df.columns else "")
 
     with get_conn() as conn:
-        for group_key, group_df in bdc_groups:
-            if isinstance(group_key, str):
-                group_key = (group_key,)
+        for (cik, bdc_name, period), group_df in df.groupby(
+            [COL_CIK, COL_NAME, COL_PERIOD]
+        ):
+            primary = _pick_primary_breakdown(group_df, COL_FV, COL_COST)
+            if primary is None:
+                logger.debug(f"BDC {bdc_name}: no usable breakdown axis")
+                continue
 
-            cik = group_key[0] if len(group_key) > 0 else ""
-            bdc_name = group_key[1] if len(group_key) > 1 else ""
-            period = group_key[2] if len(group_key) > 2 else ""
-
+            sub = group_df[group_df[primary].map(_norm) != ""]
             holdings: list[dict] = []
-            for _, row in group_df.iterrows():
-                inv_id = str(row.get(get_col("company"), "") or "")
+            for idx, row in sub.iterrows():
+                inv_id = _get(row, primary)
+                inv_type = _get(row, COL_INV_TYPE)
+                industry = _get(row, COL_INDUSTRY)
                 row_id = hashlib.sha256(
-                    f"{row.get(get_col('adsh'), '')}_{inv_id}".encode()
+                    f"{_get(row, COL_ADSH)}|{primary}|{inv_id}|{idx}".encode()
                 ).hexdigest()[:16]
-
-                is_nonaccrual_raw = str(
-                    row.get(get_col("nonaccrual"), "") or ""
-                ).lower()
-                is_nonaccrual = is_nonaccrual_raw in ("true", "1", "yes")
 
                 h = {
                     "id": row_id,
-                    "adsh": str(row.get(get_col("adsh"), "") or ""),
+                    "adsh": _get(row, COL_ADSH),
                     "cik": str(cik),
                     "bdc_name": str(bdc_name),
                     "period": str(period),
                     "company_name": inv_id[:200],
-                    "industry": str(row.get(get_col("industry"), "") or "")[:100],
-                    "investment_type": str(row.get(get_col("inv_type"), "") or "")[:100],
-                    "interest_rate": _safe_float(row.get(get_col("rate"))),
-                    "pik_rate": _safe_float(row.get(get_col("pik"))),
-                    "cost_basis": _safe_float(row.get(get_col("cost"))),
-                    "fair_value": _safe_float(row.get(get_col("fv"))),
-                    "fair_value_pct_nav": _safe_float(row.get(get_col("pct_nav"))),
-                    "maturity_date": str(row.get(get_col("maturity"), "") or "")[:20],
-                    "is_nonaccrual": 1 if is_nonaccrual else 0,
+                    "industry": industry[:100],
+                    "investment_type": inv_type[:100],
+                    "interest_rate": _safe_float(_get(row, COL_RATE)),
+                    "pik_rate": _safe_float(_get(row, COL_PIK)),
+                    "cost_basis": _safe_float(_get(row, COL_COST)),
+                    "fair_value": _safe_float(_get(row, COL_FV)),
+                    "fair_value_pct_nav": _safe_float(_get(row, COL_PCT_NAV)),
+                    "maturity_date": _get(row, COL_MATURITY)[:20],
+                    # Non-accrual is not reliably tagged as a typed XBRL fact in
+                    # SOI.tsv — most BDCs disclose status in footnote text. Left
+                    # as 0 until a text-extraction path is wired.
+                    "is_nonaccrual": 0,
                     "fetched_at": now,
                 }
                 holdings.append(h)
