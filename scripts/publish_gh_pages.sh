@@ -66,4 +66,13 @@ if [ "$PUSH" = "1" ]; then
   git push origin gh-pages
 fi
 
-echo "done — gh-pages at $(git rev-parse --short HEAD)"
+# Restore frontend/dist to a local-mode build so the FastAPI server at
+# localhost:8000 keeps working (the gh-pages build bakes a /tcred/ base path
+# into index.html, which breaks local serving).
+echo "→ restoring local-mode dist for FastAPI serving"
+(
+  cd "$REPO_ROOT/frontend"
+  npm run build >/dev/null
+)
+
+echo "done — gh-pages at $(cd "$WORKTREE" && git rev-parse --short HEAD)"
