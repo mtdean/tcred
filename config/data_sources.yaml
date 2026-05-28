@@ -430,8 +430,83 @@ market_tickers:
     label: "American Express"
     category: consumer_credit_proxy
 
-  - ticker: "DFS"
-    label: "Discover Financial"
+  # DFS removed — Capital One closed the Discover Financial acquisition.
+
+  # Subprime auto + private-label cards
+  - ticker: "ALLY"
+    label: "Ally Financial"
+    category: consumer_credit_proxy
+
+  - ticker: "CACC"
+    label: "Credit Acceptance"
+    category: consumer_credit_proxy
+
+  - ticker: "BFH"
+    label: "Bread Financial"
+    category: consumer_credit_proxy
+
+  # Subprime personal / installment
+  - ticker: "OMF"
+    label: "OneMain Holdings"
+    category: consumer_credit_proxy
+
+  - ticker: "ENVA"
+    label: "Enova International"
+    category: consumer_credit_proxy
+
+  - ticker: "WRLD"
+    label: "World Acceptance"
+    category: consumer_credit_proxy
+
+  # Fintech / BNPL
+  - ticker: "LC"
+    label: "LendingClub"
+    category: consumer_credit_proxy
+
+  - ticker: "UPST"
+    label: "Upstart Holdings"
+    category: consumer_credit_proxy
+
+  - ticker: "AFRM"
+    label: "Affirm"
+    category: consumer_credit_proxy
+
+  - ticker: "SOFI"
+    label: "SoFi Technologies"
+    category: consumer_credit_proxy
+
+  # Universal banks — major consumer-credit exposure (cards, auto, mortgage)
+  - ticker: "JPM"
+    label: "JPMorgan Chase"
+    category: consumer_credit_proxy
+
+  - ticker: "BAC"
+    label: "Bank of America"
+    category: consumer_credit_proxy
+
+  - ticker: "C"
+    label: "Citigroup"
+    category: consumer_credit_proxy
+
+  - ticker: "GS"
+    label: "Goldman Sachs"
+    category: consumer_credit_proxy
+
+  - ticker: "PNC"
+    label: "PNC Financial"
+    category: consumer_credit_proxy
+
+  # Student loans
+  - ticker: "SLM"
+    label: "SLM (Sallie Mae)"
+    category: consumer_credit_proxy
+
+  - ticker: "NAVI"
+    label: "Navient"
+    category: consumer_credit_proxy
+
+  - ticker: "NNI"
+    label: "Nelnet"
     category: consumer_credit_proxy
 
   # ── CLO ETF Proxies (Phase 7 — CLO Stress Monitor) ────────────────
