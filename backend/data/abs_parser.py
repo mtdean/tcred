@@ -334,8 +334,29 @@ def _extract_from_html(html: str, metadata: dict) -> dict:
         return result  # confidence stays 'low'
 
     rows = pricing_table.find_all("tr")
-    header_cells = [td.get_text(" ", strip=True).lower()
-                    for td in rows[header_row_idx].find_all(["th", "td"])]
+    # Many EDGAR-rendered tables include blank spacer cells between every real
+    # column (a leftover of how the original word-processor formatted the
+    # table). Build a "compact" view that drops blanks so column indexes line
+    # up between the header and the body rows. We track the mapping back to
+    # raw cell positions so cell_text() can still index the body row.
+    raw_header_cells = rows[header_row_idx].find_all(["th", "td"])
+
+    # Lone "$" and "%" cells aren't real columns — they're typographic
+    # spacers. Drop them when compacting so the header/body cell counts
+    # line up.
+    _spacer_cells = {"$", "%", "(", ")"}
+
+    def _compact(cell_list: list, lower: bool = False) -> tuple[list[str], list[int]]:
+        out: list[str] = []
+        idx_map: list[int] = []
+        for i, c in enumerate(cell_list):
+            t = c.get_text(" ", strip=True)
+            if t and t not in _spacer_cells:
+                out.append(t.lower() if lower else t)
+                idx_map.append(i)
+        return out, idx_map
+
+    header_cells, _header_raw_idx = _compact(raw_header_cells, lower=True)
     body_rows = rows[header_row_idx + 1:]
 
     # Column roles inferred from header text. Defaults are positional fallbacks
@@ -361,14 +382,19 @@ def _extract_from_html(html: str, metadata: dict) -> dict:
 
     tranches: list[dict] = []
     for row in body_rows:
-        cells = row.find_all(["td", "th"])
-        if len(cells) < 3:
+        raw_cells = row.find_all(["td", "th"])
+        if len(raw_cells) < 3:
             continue
+        # Use the same compaction as the header so col_X indexes align with
+        # the body cells, ignoring blank spacer columns. When a body row also
+        # contains a "$" or "%" cell on its own (separate from the numeric),
+        # we keep those tokens so the dollar/rate parsers can still see them.
+        cells_text, _idx = _compact(raw_cells)
 
         def cell_text(idx: int) -> str:
-            if idx < 0 or idx >= len(cells):
+            if idx < 0 or idx >= len(cells_text):
                 return ""
-            return cells[idx].get_text(" ", strip=True)
+            return cells_text[idx]
 
         class_raw = cell_text(col_class).strip()
         if not class_raw or class_raw.lower() in ("total", "totals", ""):
@@ -389,7 +415,7 @@ def _extract_from_html(html: str, metadata: dict) -> dict:
                           for kw in ["sofr", "libor", "+", "bps", "bp"])
 
         tranche = {
-            "class_name": class_raw,
+            "class_name": class_raw.replace("\xa0", " "),
             "principal_amount": _parse_dollar(amount_raw),
             "coupon_type": "floating" if is_floating else "fixed",
             "coupon_rate": None if is_floating else _parse_rate(rate_raw),
@@ -435,6 +461,64 @@ def _extract_from_html(html: str, metadata: dict) -> dict:
     for i, tranche in enumerate(tranches):
         if i < len(valid_cusips):
             tranche["cusip"] = valid_cusips[i]
+
+    # WAL extraction from prepayment sensitivity tables. The pricing table at
+    # the top of the prospectus rarely includes WAL; it lives in per-class
+    # sensitivity tables much deeper in the doc, in a row whose first cell
+    # reads "Weighted Average Life (years)" followed by 3-7 values across
+    # prepayment-speed columns. We attribute each WAL row to a tranche by
+    # walking back to the nearest "Class X-Y" mention in the same table, and
+    # take the median of the row's numeric values as the canonical WAL.
+    _wal_first_cell_re = re.compile(r"^\s*weighted\s+average\s+life", re.IGNORECASE)
+    _class_in_table_re = re.compile(r"Class\s+([A-Z][-A-Z0-9]*)", re.IGNORECASE)
+
+    def _class_designator(class_name: str) -> str:
+        """Strip 'Class ' prefix / 'notes' suffix and NBSP to get e.g. 'A-1'."""
+        cleaned = class_name.replace("\xa0", " ")
+        cleaned = re.sub(r"(?i)^class\s+", "", cleaned).strip()
+        cleaned = re.sub(r"(?i)\s+notes?$", "", cleaned).strip()
+        return cleaned.upper()
+
+    for table in soup.find_all("table"):
+        rows = table.find_all("tr")
+        if len(rows) < 3:
+            continue
+        for ri, row in enumerate(rows):
+            cells = row.find_all(["td", "th"])
+            if not cells:
+                continue
+            first = cells[0].get_text(" ", strip=True)
+            if not _wal_first_cell_re.match(first):
+                continue
+            # Extract numeric values from the rest of the row.
+            wal_vals = []
+            for c in cells[1:]:
+                txt = c.get_text(" ", strip=True)
+                m = re.fullmatch(r"\d+\.\d+", txt)
+                if m:
+                    wal_vals.append(float(txt))
+            if not wal_vals:
+                continue
+            # Attribute to tranche: look in *preceding* rows of this same
+            # table for "Class X-Y" — sensitivity tables typically have one
+            # such header per class block.
+            target_class = None
+            for back_row in rows[:ri][::-1]:
+                back_text = back_row.get_text(" ", strip=True)
+                m = _class_in_table_re.search(back_text)
+                if m:
+                    target_class = m.group(1).upper()
+                    break
+            if target_class is None:
+                continue
+            wal_median = sorted(wal_vals)[len(wal_vals) // 2]
+            for tranche in tranches:
+                designator = _class_designator(tranche["class_name"])
+                # Sensitivity tables sometimes label "A-2" even when there's
+                # an A-2a and A-2b — accept prefix match in either direction.
+                if designator == target_class or designator.startswith(target_class):
+                    if tranche.get("wal_years") is None:
+                        tranche["wal_years"] = wal_median
 
     return result
 
