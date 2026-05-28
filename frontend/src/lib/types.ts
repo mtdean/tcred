@@ -189,7 +189,7 @@ export interface AbsNewIssueListResponse {
   count: number;
 }
 
-export type AbsRatingBucket = 'AAA' | 'AA' | 'A' | 'BBB' | 'BB_and_below';
+export type AbsRatingBucket = 'all' | 'AAA' | 'AA' | 'A' | 'BBB' | 'BB_and_below';
 export type AbsSpreadMetric =
   | 'spread_to_benchmark'
   | 'implied_yield'

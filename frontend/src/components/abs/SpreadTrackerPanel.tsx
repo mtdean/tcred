@@ -58,8 +58,9 @@ const ASSET_CLASSES: { value: string; label: string }[] = [
   { value: 'esoteric_other',      label: 'OTHER ESOTERIC' },
 ];
 
-const RATING_BUCKETS: readonly AbsRatingBucket[] = ['AAA', 'AA', 'A', 'BBB', 'BB_and_below'] as const;
+const RATING_BUCKETS: readonly AbsRatingBucket[] = ['all', 'AAA', 'AA', 'A', 'BBB', 'BB_and_below'] as const;
 const RATING_LABEL: Record<AbsRatingBucket, string> = {
+  all: 'ALL',
   AAA: 'AAA',
   AA: 'AA',
   A: 'A',
@@ -191,7 +192,10 @@ function RatingChips({ row }: { row: AbsNewIssue }) {
 
 export default function SpreadTrackerPanel() {
   const [assetClass, setAssetClass] = useState<string>('prime_auto_loan');
-  const [bucket, setBucket] = useState<AbsRatingBucket>('AAA');
+  // 424B5 filings rarely include ratings — most disclosure happens in FWP /
+  // rating-agency reports. Default to ALL so the chart populates with the
+  // tranches we have; user can drill into a bucket when ratings are present.
+  const [bucket, setBucket] = useState<AbsRatingBucket>('all');
   const [range, setRange] = useState<RangeLabel>('1Y');
   const queryClient = useQueryClient();
 
@@ -326,7 +330,21 @@ export default function SpreadTrackerPanel() {
       ) : seriesQ.isError ? (
         <EmptyState message="FAILED TO LOAD SPREAD SERIES" />
       ) : data.length === 0 ? (
-        <EmptyState message="NO 424B5 DATA YET — RUN POST /api/abs/new-issues/refresh" />
+        // Three distinct reasons the chart can be empty; tell the user which.
+        // (a) No tranches at all in the window → really empty.
+        // (b) Tranches exist but the metric (spread_to_benchmark by default)
+        //     is null on all of them — usually missing WAL → no benchmark
+        //     treasury → no spread.
+        // (c) Bucket filter excluded everything (rare with 'all').
+        <EmptyState
+          message={
+            recent.length === 0
+              ? 'NO 424B5 TRANCHES IN WINDOW — RUN POST /api/abs/new-issues/refresh'
+              : bucket !== 'all'
+              ? `NO TRANCHES MATCHED ${RATING_LABEL[bucket]} RATING — TRY ALL`
+              : 'TRANCHES PRESENT BUT NO SPREAD DATA — WAL OR BENCHMARK MISSING'
+          }
+        />
       ) : (
         <div style={{ marginBottom: 16 }}>
           <ResponsiveContainer width="100%" height={240}>
