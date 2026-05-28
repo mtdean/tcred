@@ -39,8 +39,11 @@ def get_articles(
         params: list = [min_score]
 
         if category:
-            base += " AND feed_category = ?"
-            params.append(category)
+            cats = [c.strip() for c in category.split(",") if c.strip()]
+            if cats:
+                placeholders = ",".join("?" * len(cats))
+                base += f" AND feed_category IN ({placeholders})"
+                params.extend(cats)
 
         if source_type:
             slugs = [s.strip() for s in source_type.split(",") if s.strip()]
