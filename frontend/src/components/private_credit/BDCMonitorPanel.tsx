@@ -171,9 +171,8 @@ export default function BDCMonitorPanel() {
   const nonaccruals = nonaccrualsQ.data ?? [];
 
   const latestTrend = trend.length > 0 ? trend[trend.length - 1] : null;
-  const latestPeriod = latestTrend?.period
-    ?? (summary[0]?.period ?? null)
-    ?? (nonaccruals[0]?.period ?? null);
+  const latestPeriod: string | null =
+    latestTrend?.period ?? summary[0]?.period ?? nonaccruals[0]?.period ?? null;
 
   const noDataAnywhere =
     !trendQ.isLoading && !summaryQ.isLoading && !nonaccrualsQ.isLoading
