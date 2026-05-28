@@ -1,17 +1,30 @@
 import { useState } from 'react';
 import Panel from '../components/shared/Panel';
-import FeedControls, { ALL_SOURCES, SOURCE_OPTIONS, sourceParam } from '../components/news/FeedControls';
-import type { SourceFilter } from '../components/news/FeedControls';
+import FeedControls, {
+  ALL_CATEGORIES,
+  ALL_SOURCES,
+  CATEGORY_OPTIONS,
+  SOURCE_OPTIONS,
+  categoryParam,
+  sourceParam,
+} from '../components/news/FeedControls';
+import type { CategoryFilter, SourceFilter } from '../components/news/FeedControls';
 import ArticleFeed from '../components/news/ArticleFeed';
 import FeedHealthModal from '../components/news/FeedHealthModal';
 
 export default function NewsPage() {
   const [minScore, setMinScore] = useState(3);
-  const [category, setCategory] = useState('');
+  const [categories, setCategories] = useState<CategoryFilter>(new Set(ALL_CATEGORIES));
   const [sources, setSources] = useState<SourceFilter>(new Set(ALL_SOURCES));
   const [healthOpen, setHealthOpen] = useState(false);
 
-  // Subtitle: list selected sources, or 'ALL SOURCES' when nothing is filtered.
+  // Subtitle pieces — collapse to "ALL ..." when nothing is filtered out.
+  const categoryLabel =
+    categories.size === CATEGORY_OPTIONS.length
+      ? 'ALL CATEGORIES'
+      : Array.from(categories)
+          .map((c) => CATEGORY_OPTIONS.find((o) => o.value === c)?.label ?? c.toUpperCase())
+          .join(' · ');
   const sourceLabel =
     sources.size === SOURCE_OPTIONS.length
       ? 'ALL SOURCES'
@@ -25,16 +38,23 @@ export default function NewsPage() {
         <FeedControls
           minScore={minScore}
           onMinScore={setMinScore}
-          category={category}
-          onCategory={setCategory}
+          categories={categories}
+          onCategories={setCategories}
           sources={sources}
           onSources={setSources}
           onOpenHealth={() => setHealthOpen(true)}
         />
       </Panel>
 
-      <Panel title="News Feed" subtitle={`${sourceLabel} · SCORE ≥ ${minScore}`}>
-        <ArticleFeed minScore={minScore} category={category} sourceType={sourceParam(sources)} />
+      <Panel
+        title="News Feed"
+        subtitle={`${categoryLabel} · ${sourceLabel} · SCORE ≥ ${minScore}`}
+      >
+        <ArticleFeed
+          minScore={minScore}
+          category={categoryParam(categories)}
+          sourceType={sourceParam(sources)}
+        />
       </Panel>
 
       <FeedHealthModal open={healthOpen} onOpenChange={setHealthOpen} />

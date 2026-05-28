@@ -1,13 +1,17 @@
-// News page sidebar: min-score dot toggle, category select, source-type chips,
+// News page sidebar: min-score dot toggle, category chips, source-type chips,
 // and the feed-health launcher. All state is lifted to NewsPage.
+//
+// Chip colors match the chips rendered on each ArticleCard so the same hue
+// represents the same publisher / category everywhere on the page.
 
 import { Activity } from 'lucide-react';
 import type { SourceType } from '../../lib/types';
+import { categoryColor } from '../shared/CategoryChip';
+import { sourceTypeColor } from '../../lib/colors';
 
 export type SourceFilter = Set<SourceType>;
+export type CategoryFilter = Set<string>;
 
-// Order drives the chip layout. Keep publisher rows compact (3 per row at
-// typical widths) and the catch-alls at the bottom.
 export const SOURCE_OPTIONS: readonly { value: SourceType; label: string }[] = [
   { value: 'bloomberg',   label: 'BLOOMBERG' },
   { value: 'wsj',         label: 'WSJ' },
@@ -20,26 +24,26 @@ export const SOURCE_OPTIONS: readonly { value: SourceType; label: string }[] = [
   { value: 'news',        label: 'OTHER' },
 ] as const;
 
+export const CATEGORY_OPTIONS: readonly { value: string; label: string }[] = [
+  { value: 'macro',              label: 'MACRO' },
+  { value: 'credit',             label: 'CREDIT' },
+  { value: 'structured_finance', label: 'STRUCTURED' },
+  { value: 'fintech',            label: 'FINTECH' },
+  { value: 'data_science',       label: 'DATA' },
+] as const;
+
 export const ALL_SOURCES: SourceFilter = new Set(SOURCE_OPTIONS.map((o) => o.value));
+export const ALL_CATEGORIES: CategoryFilter = new Set(CATEGORY_OPTIONS.map((o) => o.value));
 
 interface Props {
   minScore: number;
   onMinScore: (n: number) => void;
-  category: string;
-  onCategory: (c: string) => void;
+  categories: CategoryFilter;
+  onCategories: (c: CategoryFilter) => void;
   sources: SourceFilter;
   onSources: (s: SourceFilter) => void;
   onOpenHealth: () => void;
 }
-
-const CATEGORIES = [
-  { value: '', label: 'ALL' },
-  { value: 'macro', label: 'MACRO' },
-  { value: 'credit', label: 'CREDIT' },
-  { value: 'fintech', label: 'FINTECH' },
-  { value: 'structured_finance', label: 'STRUCTURED FINANCE' },
-  { value: 'data_science', label: 'DATA SCIENCE' },
-];
 
 function Label({ children }: { children: React.ReactNode }) {
   return (
@@ -77,13 +81,18 @@ function ScoreToggle({ value, onChange }: { value: number; onChange: (n: number)
   );
 }
 
-function SourceChipButton({
+// Color-aware chip. When active, paints the text + border in the brand color
+// supplied by the parent; inactive chips fall back to the neutral palette so
+// the strip doesn't look like a scattered rainbow.
+function FilterChip({
   active,
   label,
+  color,
   onClick,
 }: {
   active: boolean;
   label: string;
+  color: string;
   onClick: () => void;
 }) {
   return (
@@ -93,8 +102,8 @@ function SourceChipButton({
       style={{
         fontSize: 10,
         padding: '3px 6px',
-        color: active ? 'var(--text-accent)' : 'var(--text-secondary)',
-        borderColor: active ? 'var(--text-accent)' : 'var(--border-bright)',
+        color: active ? color : 'var(--text-secondary)',
+        borderColor: active ? color : 'var(--border-bright)',
         background: active ? 'var(--bg-selected)' : 'var(--bg-panel-alt)',
       }}
     >
@@ -103,25 +112,44 @@ function SourceChipButton({
   );
 }
 
+function ResetButton({ disabled, onClick }: { disabled: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="btn"
+      style={{ fontSize: 9, padding: '2px 6px', opacity: disabled ? 0.4 : 1 }}
+    >
+      ALL
+    </button>
+  );
+}
+
 export default function FeedControls({
   minScore,
   onMinScore,
-  category,
-  onCategory,
+  categories,
+  onCategories,
   sources,
   onSources,
   onOpenHealth,
 }: Props) {
-  // Keep at least one source active so the user never lands on an empty feed
-  // they can't escape from.
-  const toggle = (s: SourceType) => {
+  const toggleSource = (s: SourceType) => {
     const next = new Set(sources);
     if (next.has(s)) next.delete(s);
     else next.add(s);
-    if (next.size === 0) return;
+    if (next.size === 0) return; // keep at least one active
     onSources(next);
   };
-  const allOn = sources.size === SOURCE_OPTIONS.length;
+  const toggleCategory = (c: string) => {
+    const next = new Set(categories);
+    if (next.has(c)) next.delete(c);
+    else next.add(c);
+    if (next.size === 0) return;
+    onCategories(next);
+  };
+  const allSourcesOn = sources.size === SOURCE_OPTIONS.length;
+  const allCategoriesOn = categories.size === CATEGORY_OPTIONS.length;
 
   return (
     <aside style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -131,27 +159,28 @@ export default function FeedControls({
       </div>
 
       <div>
-        <Label>Category</Label>
-        <select
-          value={category}
-          onChange={(e) => onCategory(e.target.value)}
-          className="mono"
+        <div
           style={{
-            width: '100%',
-            background: 'var(--bg-panel-alt)',
-            color: 'var(--text-primary)',
-            border: '1px solid var(--border-bright)',
-            padding: '4px 6px',
-            fontSize: 12,
-            borderRadius: 2,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 6,
           }}
         >
-          {CATEGORIES.map((c) => (
-            <option key={c.value} value={c.value} style={{ background: 'var(--bg-panel)' }}>
-              {c.label}
-            </option>
+          <Label>Category</Label>
+          <ResetButton disabled={allCategoriesOn} onClick={() => onCategories(new Set(ALL_CATEGORIES))} />
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+          {CATEGORY_OPTIONS.map((c) => (
+            <FilterChip
+              key={c.value}
+              active={categories.has(c.value)}
+              label={c.label}
+              color={categoryColor(c.value)}
+              onClick={() => toggleCategory(c.value)}
+            />
           ))}
-        </select>
+        </div>
       </div>
 
       <div>
@@ -164,26 +193,16 @@ export default function FeedControls({
           }}
         >
           <Label>Source</Label>
-          <button
-            onClick={() => onSources(new Set(ALL_SOURCES))}
-            disabled={allOn}
-            className="btn"
-            style={{
-              fontSize: 9,
-              padding: '2px 6px',
-              opacity: allOn ? 0.4 : 1,
-            }}
-          >
-            ALL
-          </button>
+          <ResetButton disabled={allSourcesOn} onClick={() => onSources(new Set(ALL_SOURCES))} />
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
           {SOURCE_OPTIONS.map((s) => (
-            <SourceChipButton
+            <FilterChip
               key={s.value}
               active={sources.has(s.value)}
               label={s.label}
-              onClick={() => toggle(s.value)}
+              color={sourceTypeColor(s.value)}
+              onClick={() => toggleSource(s.value)}
             />
           ))}
         </div>
@@ -201,10 +220,11 @@ export default function FeedControls({
   );
 }
 
-// Serialise the active source set into a CSV the backend understands.
-// Returns undefined when every option is selected so the query stays
-// unfiltered (cleaner cache keys, fewer params on the wire).
-export function sourceParam(s: SourceFilter): string | undefined {
-  if (s.size === 0 || s.size === SOURCE_OPTIONS.length) return undefined;
+// CSV-serialise the active set for the backend. Returns undefined when every
+// option is selected so the default view skips the filter entirely.
+function csv<T extends string>(s: Set<T>, total: number): string | undefined {
+  if (s.size === 0 || s.size === total) return undefined;
   return Array.from(s).join(',');
 }
+export const sourceParam = (s: SourceFilter) => csv(s, SOURCE_OPTIONS.length);
+export const categoryParam = (c: CategoryFilter) => csv(c, CATEGORY_OPTIONS.length);

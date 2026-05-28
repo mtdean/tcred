@@ -52,3 +52,21 @@ export function sourceColor(feedName: string): string {
   for (let i = 0; i < n.length; i++) h = (h * 31 + n.charCodeAt(i)) >>> 0;
   return SOURCE_PALETTE[h % SOURCE_PALETTE.length];
 }
+
+// Direct slug → color map for the source-filter chips. Keys match the
+// source_type values derived in backend/data/feeds.py.
+const SOURCE_SLUG_COLOR: Record<string, string> = {
+  bloomberg:   '#e67e22',
+  wsj:         '#5b8ff9',
+  ft:          '#f4978e',
+  marketwatch: '#2ecc71',
+  cnbc:        '#4a90d9',
+  nyt:         '#c9c9c9',
+  reuters:     '#ff7676',
+  letter:      '#9b59b6',
+  news:        '#1abc9c',
+};
+
+export function sourceTypeColor(slug: string): string {
+  return SOURCE_SLUG_COLOR[slug] ?? COLORS.textSecondary;
+}

@@ -12,7 +12,8 @@ const PAGE = 50;
 
 interface Props {
   minScore: number;
-  category: string;
+  // CSV of category slugs (e.g. 'macro,credit'). Omitted = all categories.
+  category?: string;
   // CSV of source-type slugs (e.g. 'wsj,ft,bloomberg'). Omitted = all sources.
   sourceType?: string;
 }
@@ -30,7 +31,7 @@ export default function ArticleFeed({ minScore, category, sourceType }: Props) {
       queryFn: ({ pageParam }) =>
         getArticles({
           min_score: minScore,
-          category: category || undefined,
+          category,
           source_type: sourceType,
           limit: PAGE,
           offset: pageParam,
