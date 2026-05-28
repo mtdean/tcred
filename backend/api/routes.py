@@ -314,6 +314,11 @@ def get_abs_new_issues_endpoint(
 # spread-series endpoint matches a tranche to a bucket if ANY of its agencies
 # falls in the bucket's labels (so a deal rated AAA/Aaa by S&P/Moody's is one
 # observation in the AAA bucket).
+#
+# The "all" pseudo-bucket bypasses the rating filter entirely. Useful because
+# 424B5 prospectuses rarely disclose ratings inline — final ratings typically
+# land in the FWP or rating-agency reports — so requiring AAA matching often
+# yields zero observations even when we have tranche data.
 _RATING_BUCKET_MAP: dict[str, list[str]] = {
     "AAA": ["AAA", "Aaa"],
     "AA":  ["AA+", "AA", "AA-", "Aa1", "Aa2", "Aa3"],
@@ -342,9 +347,48 @@ def get_abs_spread_series(
     from cache.db import get_conn
 
     since = datetime_now_iso_days_ago(days_back)
-    ratings = _RATING_BUCKET_MAP.get(rating_bucket, [])
 
     with get_conn() as conn:
+        if rating_bucket == "all":
+            # Skip the rating filter entirely — useful when ratings aren't
+            # disclosed in the parsed prospectus and you just want the full
+            # weekly spread distribution for the asset class.
+            sql = f"""
+                SELECT
+                    strftime('%Y-W%W', filing_date) AS week,
+                    MIN(filing_date)                AS week_start,
+                    AVG({metric})                   AS avg_spread,
+                    MIN({metric})                   AS min_spread,
+                    MAX({metric})                   AS max_spread,
+                    COUNT(*)                        AS n_tranches
+                FROM abs_new_issues
+                WHERE filing_date >= ?
+                  AND asset_class = ?
+                  AND {metric} IS NOT NULL
+                  AND parse_confidence IN ('high','medium')
+                GROUP BY week
+                ORDER BY week ASC
+            """
+            params: list = [since, asset_class]
+            rows = conn.execute(sql, params).fetchall()
+            series = [
+                {
+                    "week": r["week"],
+                    "week_start": r["week_start"],
+                    "avg_spread": r["avg_spread"],
+                    "min_spread": r["min_spread"],
+                    "max_spread": r["max_spread"],
+                    "n_tranches": r["n_tranches"],
+                }
+                for r in rows
+            ]
+            return {
+                "asset_class": asset_class,
+                "rating_bucket": rating_bucket,
+                "metric": metric,
+                "series": series,
+            }
+        ratings = _RATING_BUCKET_MAP.get(rating_bucket, [])
         if ratings:
             placeholders = ",".join("?" * len(ratings))
             sql = f"""
