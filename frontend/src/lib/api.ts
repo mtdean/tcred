@@ -32,8 +32,51 @@ import type {
 } from './types';
 
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+const STATIC_MODE = import.meta.env.VITE_STATIC_MODE === 'true';
+const SNAPSHOT_BASE = `${import.meta.env.BASE_URL || '/'}api-snapshot`;
+
+export const STATIC_MODE_ENABLED = STATIC_MODE;
+export class StaticModeError extends Error {
+  constructor() {
+    super('not available');
+    this.name = 'StaticModeError';
+  }
+}
+
+// Size/window params we strip when building the snapshot key. We snapshot
+// each endpoint once at its widest setting and let the chart clip — so a
+// request for days_back=180 happily reads from the days_back=1095 file.
+const KEY_IGNORED_PARAMS = new Set(['limit', 'offset', 'days_back', 'hours_back']);
+
+function snapshotKey(path: string, params: Record<string, unknown> = {}): string {
+  const cleanPath = path.replace(/^\/+|\/+$/g, '').replace(/\//g, '__');
+  const kept = Object.entries(params)
+    .filter(([k, v]) => !KEY_IGNORED_PARAMS.has(k) && v !== undefined && v !== null && v !== '')
+    .map(([k, v]) => [k, String(v)] as [string, string])
+    .sort(([a], [b]) => a.localeCompare(b));
+  const suffix = kept.length ? '__' + kept.map(([k, v]) => `${k}-${v}`).join('__') : '';
+  return cleanPath + suffix + '.json';
+}
 
 export const api = axios.create({ baseURL: BASE });
+
+if (STATIC_MODE) {
+  api.interceptors.request.use(async (config) => {
+    const method = (config.method || 'get').toLowerCase();
+    if (method !== 'get') {
+      throw new StaticModeError();
+    }
+    const path = (config.url || '').replace(/^\/+/, '');
+    const params = (config.params || {}) as Record<string, unknown>;
+    const file = snapshotKey(path, params);
+    // Rewrite to fetch the snapshot from the static asset folder. We also
+    // clear params so axios doesn't append a query string to the .json URL.
+    config.baseURL = SNAPSHOT_BASE;
+    config.url = '/' + file;
+    config.params = undefined;
+    return config;
+  });
+}
 
 // ── Articles ───────────────────────────────────────────
 export const getArticles = (params: ArticleParams) =>

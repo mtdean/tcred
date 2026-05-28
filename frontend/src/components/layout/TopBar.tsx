@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
 import { getStatus, triggerRefresh } from '../../lib/api';
 import { qk } from '../../lib/queryKeys';
+import { staticDisabledProps } from '../../lib/staticMode';
 import { clockString, fmtRelative } from '../../lib/utils';
 import TabNav from './TabNav';
 
@@ -54,6 +55,7 @@ export default function TopBar() {
         disabled={refresh.isPending}
         title="Fetch feeds and classify new articles (uses Claude tokens)"
         style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+        {...staticDisabledProps()}
       >
         <RefreshCw
           size={12}

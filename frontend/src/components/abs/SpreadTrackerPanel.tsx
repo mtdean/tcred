@@ -25,6 +25,7 @@ import {
   triggerAbsNewIssuesRefresh,
 } from '../../lib/api';
 import { qk } from '../../lib/queryKeys';
+import { staticDisabledProps } from '../../lib/staticMode';
 import type {
   AbsNewIssue,
   AbsRatingBucket,
@@ -302,6 +303,7 @@ export default function SpreadTrackerPanel() {
         disabled={refresh.isPending}
         title="Discover and parse the last 14 days of 424B5 ABS filings (Claude fallback on low confidence)"
         style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10 }}
+        {...staticDisabledProps()}
       >
         <RefreshCw
           size={11}

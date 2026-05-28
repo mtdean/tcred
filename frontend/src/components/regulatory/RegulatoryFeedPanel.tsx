@@ -18,6 +18,7 @@ import {
   triggerRegulatoryScore,
 } from '../../lib/api';
 import { qk } from '../../lib/queryKeys';
+import { staticDisabledProps } from '../../lib/staticMode';
 import type { RegulatoryAction } from '../../lib/types';
 import { fmtDate, fmtRelative } from '../../lib/utils';
 import Panel from '../shared/Panel';
@@ -320,6 +321,7 @@ export default function RegulatoryFeedPanel() {
         disabled={refresh.isPending}
         title="Pull recent Federal Register documents + agency press releases (token-free)"
         style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10 }}
+        {...staticDisabledProps()}
       >
         <RefreshCw
           size={11}
@@ -352,6 +354,7 @@ export default function RegulatoryFeedPanel() {
           color: 'var(--text-accent)',
           borderColor: 'var(--text-accent)',
         }}
+        {...staticDisabledProps()}
       >
         <Sparkles
           size={11}

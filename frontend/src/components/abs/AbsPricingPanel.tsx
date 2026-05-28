@@ -11,6 +11,7 @@ import {
   triggerAbsPricingRefresh,
 } from '../../lib/api';
 import { qk } from '../../lib/queryKeys';
+import { staticDisabledProps } from '../../lib/staticMode';
 import { fmtDate, fmtRelative } from '../../lib/utils';
 import type { AbsDeal, AbsTranche, AbsMomentumDelta } from '../../lib/types';
 import Panel from '../shared/Panel';
@@ -259,6 +260,7 @@ export default function AbsPricingPanel() {
         disabled={refresh.isPending}
         title="Discover and parse the last 30 days of FWP pricing term sheets"
         style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10 }}
+        {...staticDisabledProps()}
       >
         <RefreshCw
           size={11}

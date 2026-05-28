@@ -11,6 +11,7 @@ import { RefreshCw } from 'lucide-react';
 
 import { getKbraPresales, getStatus, triggerKbraRefresh } from '../../lib/api';
 import { qk } from '../../lib/queryKeys';
+import { staticDisabledProps } from '../../lib/staticMode';
 import type { KbraPresale } from '../../lib/types';
 import { fmtDate, fmtRelative } from '../../lib/utils';
 import Panel from '../shared/Panel';
@@ -125,6 +126,7 @@ export default function KbraPresalesPanel() {
         disabled={refresh.isPending}
         title="Sends presale PDF text to Claude — token-spending"
         style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10 }}
+        {...staticDisabledProps()}
       >
         <RefreshCw
           size={11}

@@ -29,6 +29,7 @@ import {
   triggerBdcRefresh,
 } from '../../lib/api';
 import { qk } from '../../lib/queryKeys';
+import { staticDisabledProps } from '../../lib/staticMode';
 import type {
   BdcNonaccrualHolding,
   BdcNonaccrualTrendPoint,
@@ -185,6 +186,7 @@ export default function BDCMonitorPanel() {
       disabled={refresh.isPending}
       title="Downloads ~50MB SEC bulk dataset (takes 60-90s)"
       style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10 }}
+      {...staticDisabledProps()}
     >
       <RefreshCw
         size={11}

@@ -22,6 +22,9 @@ backend/cache/store/
 # Node / frontend build
 frontend/node_modules/
 frontend/dist/
+# Generated static-mode API snapshot (rebuilt by scripts/snapshot_api.py
+# and published to the gh-pages branch).
+frontend/public/api-snapshot/
 
 # Logs
 logs/*.log

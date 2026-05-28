@@ -7,6 +7,7 @@ import axios from 'axios';
 import { Moon, Sparkles, Sun } from 'lucide-react';
 import { generateDigest, getDigests } from '../../lib/api';
 import { qk } from '../../lib/queryKeys';
+import { staticDisabledProps } from '../../lib/staticMode';
 import { fmtDate, fmtDateTime } from '../../lib/utils';
 import type { DigestResponse } from '../../lib/types';
 import Panel from '../shared/Panel';
@@ -98,6 +99,7 @@ export default function DigestPanel() {
         disabled={generate.isPending}
         title="Generate today's digest (uses Claude tokens)"
         style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+        {...staticDisabledProps()}
       >
         <Sparkles size={12} />
         {generate.isPending ? 'GENERATING' : 'GENERATE'}

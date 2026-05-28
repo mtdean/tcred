@@ -209,6 +209,36 @@ a:hover { text-decoration: underline; }
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .btn:disabled:hover { color: var(--text-secondary); border-color: var(--border-bright); }
 
+/* Static-snapshot mode: refresh/generate buttons are locked. Show a styled
+   tooltip on hover so users know why nothing happens. */
+.btn[data-static-disabled] {
+  position: relative;
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn[data-static-disabled]:hover {
+  color: var(--text-secondary);
+  border-color: var(--border-bright);
+}
+.btn[data-static-disabled]:hover::after {
+  content: 'not available';
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-panel);
+  color: var(--text-accent);
+  border: 1px solid var(--border-bright);
+  border-radius: 2px;
+  padding: 3px 8px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 10000;
+}
+
 /* ── Status bar ────────────────────────────────────────── */
 .statusbar {
   display: flex;
