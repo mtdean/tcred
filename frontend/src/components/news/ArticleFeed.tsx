@@ -3,7 +3,7 @@
 
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getArticles, markRead } from '../../lib/api';
-import type { ArticleListResponse, SourceType } from '../../lib/types';
+import type { ArticleListResponse } from '../../lib/types';
 import ArticleCard from './ArticleCard';
 import LoadingCursor from '../shared/LoadingCursor';
 import EmptyState from '../shared/EmptyState';
@@ -13,7 +13,8 @@ const PAGE = 50;
 interface Props {
   minScore: number;
   category: string;
-  sourceType?: SourceType;
+  // CSV of source-type slugs (e.g. 'wsj,ft,bloomberg'). Omitted = all sources.
+  sourceType?: string;
 }
 
 type FeedData = { pages: ArticleListResponse[]; pageParams: number[] };

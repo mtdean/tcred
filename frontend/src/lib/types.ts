@@ -15,7 +15,16 @@ export interface Article {
   source_type: SourceType;
 }
 
-export type SourceType = 'news' | 'letter';
+export type SourceType =
+  | 'bloomberg'
+  | 'wsj'
+  | 'ft'
+  | 'marketwatch'
+  | 'cnbc'
+  | 'nyt'
+  | 'reuters'
+  | 'letter'
+  | 'news'; // catch-all for aggregator feeds (e.g. Google News queries)
 
 export interface AbsTranche {
   class_name: string;
@@ -60,7 +69,8 @@ export interface ArticleListResponse {
 export interface ArticleParams {
   min_score?: number;
   category?: string;
-  source_type?: SourceType;
+  // Single slug or comma-separated list (e.g. 'wsj,ft,bloomberg').
+  source_type?: string;
   limit?: number;
   offset?: number;
 }
