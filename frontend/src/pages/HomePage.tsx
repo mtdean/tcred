@@ -10,12 +10,20 @@ export default function HomePage() {
     <div className="stack">
       <div className="grid-2">
         <DigestPanel />
-        <HYOASPanel />
-      </div>
-
-      <div className="grid-2">
-        <ForwardCurvePanel />
-        <SofrPanel />
+        {/* Stacked rates column matches the digest's height — three equal
+            grid rows so HY OAS no longer leaves dead space below it. */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateRows: '1fr 1fr 1fr',
+            gap: 12,
+            minHeight: 0,
+          }}
+        >
+          <HYOASPanel />
+          <ForwardCurvePanel />
+          <SofrPanel />
+        </div>
       </div>
 
       <div className="grid-2">
