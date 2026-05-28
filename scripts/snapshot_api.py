@@ -142,7 +142,7 @@ def run(base: str, out_dir: Path) -> int:
         "prime_auto_loan", "subprime_auto_loan", "auto_lease", "credit_card",
         "equipment", "student_loan", "consumer_loan", "solar",
     )
-    buckets = ("AAA", "AA", "A", "BBB", "BB_and_below")
+    buckets = ("all", "AAA", "AA", "A", "BBB", "BB_and_below")
     for ac in abs_classes:
         s.snap("/abs/new-issues", {
             "asset_class": ac, "days_back": 1095, "limit": 100,
