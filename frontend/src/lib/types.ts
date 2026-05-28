@@ -87,6 +87,8 @@ export interface StatusResponse {
   edgar_filings: number;
   feeds: { live: number; total: number };
   last_news_refresh: string | null;
+  last_abs_pricing_refresh: string | null;
+  last_abs_424b5_refresh: string | null;
 }
 
 export interface MarketRow {
@@ -134,6 +136,85 @@ export interface DigestResponse {
   date_range: { from: string; to: string };
   model: string;
   generated_at: string;
+}
+
+// 424B5 new-issue parser (data/abs_parser.py). Richer schema than the FWP
+// path: per-tranche ratings, CUSIPs, coupon type, and a treasury-derived
+// spread. `parse_confidence` flags rows for the UI to dim or filter.
+export interface AbsNewIssue {
+  id: string;
+  accession_no: string;
+  edgar_url: string;
+  filing_date: string;
+
+  issuer_name: string | null;
+  depositor: string | null;
+  servicer: string | null;
+  asset_class: string;
+  closing_date: string | null;
+  cutoff_date: string | null;
+  total_deal_size: number | null;
+  underwriters: string | null;
+  parse_confidence: 'high' | 'medium' | 'low';
+
+  class_name: string;
+  principal_amount: number | null;
+  coupon_type: 'fixed' | 'floating' | null;
+  coupon_rate: number | null;
+  floating_index: string | null;
+  floating_spread_bps: number | null;
+  wal_years: number | null;
+  final_payment_date: string | null;
+  legal_maturity_date: string | null;
+  price_to_public: number | null;
+  cusip: string | null;
+
+  rating_sp: string | null;
+  rating_moodys: string | null;
+  rating_kbra: string | null;
+  rating_fitch: string | null;
+
+  benchmark: string | null;
+  benchmark_rate: number | null;
+  spread_to_benchmark: number | null;
+  implied_yield: number | null;
+}
+
+export interface AbsNewIssueListResponse {
+  items: AbsNewIssue[];
+  count: number;
+}
+
+export type AbsRatingBucket = 'AAA' | 'AA' | 'A' | 'BBB' | 'BB_and_below';
+export type AbsSpreadMetric =
+  | 'spread_to_benchmark'
+  | 'implied_yield'
+  | 'floating_spread_bps'
+  | 'coupon_rate';
+
+export interface AbsSpreadSeriesPoint {
+  week: string;       // 'YYYY-WNN'
+  week_start: string; // earliest filing_date in the week
+  avg_spread: number | null;
+  min_spread: number | null;
+  max_spread: number | null;
+  n_tranches: number;
+}
+
+export interface AbsSpreadSeriesResponse {
+  asset_class: string;
+  rating_bucket: AbsRatingBucket;
+  metric: AbsSpreadMetric;
+  series: AbsSpreadSeriesPoint[];
+}
+
+export interface AbsDealSummaryRow {
+  asset_class: string;
+  deal_count: number;
+  total_volume: number | null;
+  avg_spread_bps: number | null;
+  earliest: string | null;
+  latest: string | null;
 }
 
 export interface EdgarFiling {

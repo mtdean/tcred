@@ -8,7 +8,12 @@ import type {
   EdgarFiling,
   EdgarParams,
   AbsDeal,
+  AbsDealSummaryRow,
   AbsMomentumDelta,
+  AbsNewIssueListResponse,
+  AbsRatingBucket,
+  AbsSpreadMetric,
+  AbsSpreadSeriesResponse,
   FeedHealth,
   ForwardCurveData,
   MarketRow,
@@ -54,6 +59,34 @@ export const getAbsPricing = (segment?: string) =>
   api.get<AbsDeal[]>('/abs/pricing', { params: { segment: segment || undefined } });
 export const getAbsMomentumDeltas = () =>
   api.get<AbsMomentumDelta[]>('/abs/spread-momentum/deltas');
+
+// ── 424B5 new-issue parser ─────────────────────────────────
+export const getAbsNewIssues = (params: {
+  asset_class?: string;
+  days_back?: number;
+  min_confidence?: 'low' | 'medium' | 'high';
+  limit?: number;
+} = {}) => api.get<AbsNewIssueListResponse>('/abs/new-issues', { params });
+
+export const getAbsSpreadSeries = (params: {
+  asset_class: string;
+  rating_bucket?: AbsRatingBucket;
+  metric?: AbsSpreadMetric;
+  days_back?: number;
+}) => api.get<AbsSpreadSeriesResponse>('/abs/spread-series', { params });
+
+export const getAbsDealSummary = (days_back = 90) =>
+  api.get<AbsDealSummaryRow[]>('/abs/deal-summary', { params: { days_back } });
+
+export const triggerAbsNewIssuesRefresh = (days_back = 14) =>
+  api.post<{ tranches_stored: number }>('/abs/new-issues/refresh', null, {
+    params: { days_back },
+  });
+
+export const triggerAbsPricingRefresh = (days_back = 30) =>
+  api.post<{ tranches: number }>('/abs/pricing/refresh', null, {
+    params: { days_back },
+  });
 
 // ── Deals ──────────────────────────────────────────────
 export const getDeals = () => api.get('/deals');

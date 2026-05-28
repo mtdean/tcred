@@ -2,11 +2,16 @@
 // spreads. Subordinate subprime-auto spreads are the consumer-risk-premium read.
 
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { ExternalLink } from 'lucide-react';
-import { getAbsPricing, getAbsMomentumDeltas } from '../../lib/api';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ExternalLink, RefreshCw } from 'lucide-react';
+import {
+  getAbsPricing,
+  getAbsMomentumDeltas,
+  getStatus,
+  triggerAbsPricingRefresh,
+} from '../../lib/api';
 import { qk } from '../../lib/queryKeys';
-import { fmtDate } from '../../lib/utils';
+import { fmtDate, fmtRelative } from '../../lib/utils';
 import type { AbsDeal, AbsTranche, AbsMomentumDelta } from '../../lib/types';
 import Panel from '../shared/Panel';
 import LoadingCursor from '../shared/LoadingCursor';
@@ -177,6 +182,7 @@ function MomentumDeltas({ deltas }: { deltas: AbsMomentumDelta[] }) {
 
 export default function AbsPricingPanel() {
   const [segment, setSegment] = useState('');
+  const queryClient = useQueryClient();
 
   const { data, isLoading, isError } = useQuery({
     queryKey: qk.absPricing(segment),
@@ -190,31 +196,77 @@ export default function AbsPricingPanel() {
     staleTime: 30 * 60_000,
   });
 
+  // Status drives the last-refreshed stamp; shares the TopBar's query cache.
+  const statusQ = useQuery({
+    queryKey: qk.status,
+    queryFn: () => getStatus().then((r) => r.data),
+    refetchInterval: 30_000,
+  });
+  const lastRefresh = statusQ.data?.last_abs_pricing_refresh ?? null;
+
+  // Manual refresh: discover + parse the trailing 30d of FWP term sheets, then
+  // invalidate this panel's queries. Mirrors the 424B5 panel's refresh wiring.
+  const refresh = useMutation({
+    mutationFn: () => triggerAbsPricingRefresh(30).then((r) => r.data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['abs', 'pricing'] });
+      queryClient.invalidateQueries({ queryKey: qk.absMomentumDeltas });
+      queryClient.invalidateQueries({ queryKey: qk.status });
+    },
+  });
+
   const deals: AbsDeal[] = data ?? [];
   const allDeltas: AbsMomentumDelta[] = momentumData ?? [];
   // Honor the segment filter for the momentum strip too.
   const deltas = segment ? allDeltas.filter((d) => d.segment === segment) : allDeltas;
 
   const actions = (
-    <select
-      value={segment}
-      onChange={(e) => setSegment(e.target.value)}
-      className="mono"
-      style={{
-        background: 'var(--bg-panel-alt)',
-        color: 'var(--text-primary)',
-        border: '1px solid var(--border-bright)',
-        padding: '3px 6px',
-        fontSize: 11,
-        borderRadius: 2,
-      }}
-    >
-      {SEGMENTS.map((s) => (
-        <option key={s.value} value={s.value} style={{ background: 'var(--bg-panel)' }}>
-          {s.label}
-        </option>
-      ))}
-    </select>
+    <div style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+      <select
+        value={segment}
+        onChange={(e) => setSegment(e.target.value)}
+        className="mono"
+        style={{
+          background: 'var(--bg-panel-alt)',
+          color: 'var(--text-primary)',
+          border: '1px solid var(--border-bright)',
+          padding: '3px 6px',
+          fontSize: 11,
+          borderRadius: 2,
+        }}
+      >
+        {SEGMENTS.map((s) => (
+          <option key={s.value} value={s.value} style={{ background: 'var(--bg-panel)' }}>
+            {s.label}
+          </option>
+        ))}
+      </select>
+      <span
+        className="mono"
+        style={{
+          fontSize: 10,
+          color: lastRefresh ? 'var(--text-secondary)' : 'var(--warning)',
+          whiteSpace: 'nowrap',
+          letterSpacing: 0.5,
+        }}
+        title={lastRefresh ?? 'never refreshed'}
+      >
+        {lastRefresh ? fmtRelative(lastRefresh).toUpperCase() : 'NEVER'}
+      </span>
+      <button
+        className="btn"
+        onClick={() => refresh.mutate()}
+        disabled={refresh.isPending}
+        title="Discover and parse the last 30 days of FWP pricing term sheets"
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10 }}
+      >
+        <RefreshCw
+          size={11}
+          style={refresh.isPending ? { animation: 'spin 1s linear infinite' } : undefined}
+        />
+        {refresh.isPending ? 'PARSING' : 'REFRESH'}
+      </button>
+    </div>
   );
 
   return (

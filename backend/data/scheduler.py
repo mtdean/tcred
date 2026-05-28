@@ -59,11 +59,18 @@ def _job_fred():
 def _job_edgar():
     from data.edgar import fetch_abs_filings
     from data.abs_pricing import fetch_abs_pricing
+    from data.abs_parser import fetch_and_parse_abs_424b5
     try:
         n = fetch_abs_filings(days_back=2)
         # New-issue spread tracker shares EDGAR's cadence (token-free, regex parse).
         p = fetch_abs_pricing(days_back=10)
-        logger.info(f"Scheduler: EDGAR — {n} filings, ABS pricing — {p} tranches")
+        # Richer 424B5 parse (CUSIPs, ratings, derived treasury spread). Claude
+        # fallback fires only on low-confidence parses, so token spend is small.
+        n4 = fetch_and_parse_abs_424b5(days_back=2)
+        logger.info(
+            f"Scheduler: EDGAR — {n} filings, ABS pricing — {p} tranches, "
+            f"424B5 — {n4} tranches"
+        )
     except Exception as e:
         logger.error(f"Scheduler: EDGAR job error: {e}")
 

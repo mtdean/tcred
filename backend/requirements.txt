@@ -24,6 +24,9 @@ openpyxl==3.1.5
 # HTML table parsing (ABS pricing term sheets via pandas.read_html)
 lxml==6.1.1
 
+# HTML soup parsing (424B5 prospectus extractor in data/abs_parser.py)
+beautifulsoup4==4.13.5
+
 # Config
 pyyaml==6.0.3
 python-dotenv==1.2.2

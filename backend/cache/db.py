@@ -93,6 +93,54 @@ CREATE TABLE IF NOT EXISTS abs_pricing (
 CREATE INDEX IF NOT EXISTS idx_abs_pricing_date ON abs_pricing(pricing_date DESC);
 CREATE INDEX IF NOT EXISTS idx_abs_pricing_seg  ON abs_pricing(segment);
 
+-- 424B5 new-issue parser (richer schema than abs_pricing's FWP feed):
+-- one row per tranche, with deal-level fields denormalized so the chart
+-- queries don't need to join. Spread is computed against the maturity-matched
+-- treasury when WAL is present; otherwise spread_to_benchmark stays null.
+CREATE TABLE IF NOT EXISTS abs_new_issues (
+    id                  TEXT PRIMARY KEY,        -- SHA256(accession_no + class_name)[:16]
+    accession_no        TEXT NOT NULL,
+    edgar_url           TEXT NOT NULL,
+    filing_date         TEXT NOT NULL,
+
+    issuer_name         TEXT,
+    depositor           TEXT,
+    servicer            TEXT,
+    asset_class         TEXT,                    -- taxonomy bucket
+    closing_date        TEXT,
+    cutoff_date         TEXT,
+    total_deal_size     REAL,
+    underwriters        TEXT,                    -- JSON array
+    parse_confidence    TEXT,                    -- 'high' | 'medium' | 'low'
+
+    class_name          TEXT NOT NULL,
+    principal_amount    REAL,
+    coupon_type         TEXT,                    -- 'fixed' | 'floating'
+    coupon_rate         REAL,
+    floating_index      TEXT,                    -- 'SOFR' | 'LIBOR' | null
+    floating_spread_bps REAL,
+    wal_years           REAL,
+    final_payment_date  TEXT,
+    legal_maturity_date TEXT,
+    price_to_public     REAL,
+    cusip               TEXT,
+
+    rating_sp           TEXT,
+    rating_moodys       TEXT,
+    rating_kbra         TEXT,
+    rating_fitch        TEXT,
+
+    benchmark           TEXT,                    -- 'UST2Y' | 'SOFR' | ...
+    benchmark_rate      REAL,
+    spread_to_benchmark REAL,                    -- bps
+    implied_yield       REAL,
+
+    fetched_at          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_abs_ni_filing_date ON abs_new_issues(filing_date DESC);
+CREATE INDEX IF NOT EXISTS idx_abs_ni_asset_class ON abs_new_issues(asset_class);
+CREATE INDEX IF NOT EXISTS idx_abs_ni_class_name  ON abs_new_issues(class_name);
+
 CREATE TABLE IF NOT EXISTS digests (
     date          TEXT NOT NULL,      -- YYYY-MM-DD in US/Eastern
     session       TEXT NOT NULL,      -- 'AM' (before noon ET) or 'PM' (noon+)
@@ -282,6 +330,51 @@ def upsert_abs_pricing_tranche(row: dict) -> None:
             """,
             row,
         )
+
+
+def upsert_abs_tranche(row: dict) -> None:
+    """Insert one tranche row from a 424B5 parse. Idempotent on `id` PK."""
+    cols = ", ".join(row.keys())
+    placeholders = ", ".join(f":{k}" for k in row.keys())
+    with get_conn() as conn:
+        conn.execute(
+            f"INSERT OR IGNORE INTO abs_new_issues ({cols}) VALUES ({placeholders})",
+            row,
+        )
+
+
+def get_abs_new_issues(
+    asset_class: Optional[str] = None,
+    days_back: int = 365,
+    min_confidence: str = "medium",
+    limit: int = 500,
+) -> list[dict]:
+    """Return 424B5 tranche records filtered by asset class and confidence."""
+    from datetime import datetime, timedelta
+
+    since = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+    conf_order = {"low": 0, "medium": 1, "high": 2}
+    min_conf_val = conf_order.get(min_confidence, 1)
+
+    sql = """
+        SELECT * FROM abs_new_issues
+        WHERE filing_date >= ?
+          AND CASE parse_confidence
+              WHEN 'high'   THEN 2
+              WHEN 'medium' THEN 1
+              ELSE 0
+          END >= ?
+    """
+    params: list = [since, min_conf_val]
+    if asset_class:
+        sql += " AND asset_class = ?"
+        params.append(asset_class)
+    sql += " ORDER BY filing_date DESC LIMIT ?"
+    params.append(limit)
+
+    with get_conn() as conn:
+        rows = conn.execute(sql, params).fetchall()
+    return [dict(r) for r in rows]
 
 
 def upsert_feed_health(row: dict) -> None:

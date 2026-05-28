@@ -17,6 +17,10 @@ export const qk = {
   edgarFacets: ['edgar', 'facets'] as const,
   absPricing: (segment: string) => ['abs', 'pricing', segment] as const,
   absMomentumDeltas: ['abs', 'momentum-deltas'] as const,
+  absNewIssues: (params: Record<string, unknown>) => ['abs', 'new-issues', params] as const,
+  absSpreadSeries: (params: Record<string, unknown>) =>
+    ['abs', 'spread-series', params] as const,
+  absDealSummary: (daysBack: number) => ['abs', 'deal-summary', daysBack] as const,
   deals: ['deals'] as const,
   deal: (id: string, view: string) => ['deals', id, view] as const,
 };
