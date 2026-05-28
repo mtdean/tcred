@@ -35,6 +35,38 @@ def _hash_url(url: str) -> str:
     return hashlib.sha256(url.encode()).hexdigest()[:16]
 
 
+# Map a feed_name prefix to a granular source slug. Order matters: more
+# specific prefixes first. The slug is what the frontend chip filter uses,
+# so keep it short, lowercase, and stable.
+_SOURCE_PREFIXES: tuple[tuple[str, str], ...] = (
+    ("Bloomberg",     "bloomberg"),
+    ("WSJ",           "wsj"),
+    ("FT ",           "ft"),
+    ("Financial Times", "ft"),
+    ("MarketWatch",   "marketwatch"),
+    ("CNBC",          "cnbc"),
+    ("NYT",           "nyt"),
+    ("Reuters",       "reuters"),
+)
+
+
+def derive_source_type(feed_name: str, kind: str = "news") -> str:
+    """Map a feed_name → granular source slug.
+
+    kind: 'news' (publisher feeds) or 'letter' (newsletters). Newsletter feeds
+    are all collapsed under 'letter' so the chip set stays small; publisher
+    feeds map by prefix (Bloomberg, WSJ, FT, MarketWatch, CNBC, NYT, Reuters).
+    Anything that doesn't match falls back to 'news' (a catch-all for things
+    like the 'Securitization & ABS News' Google-News aggregator).
+    """
+    if kind == "letter":
+        return "letter"
+    for prefix, slug in _SOURCE_PREFIXES:
+        if feed_name.startswith(prefix):
+            return slug
+    return "news"
+
+
 _TAG_RE = re.compile(r"<[^>]+>")
 _WS_RE = re.compile(r"\s+")
 
@@ -62,12 +94,17 @@ def _parse_date(entry) -> Optional[str]:
 async def _fetch_feed(
     session: aiohttp.ClientSession,
     feed_cfg: dict,
-    source_type: str = "news",
+    kind: str = "news",
 ) -> list[dict]:
-    """Fetch a single RSS feed and return parsed article dicts."""
+    """Fetch a single RSS feed and return parsed article dicts.
+
+    `kind` is the structural family — 'news' or 'letter'. The per-article
+    source_type slug is derived from the feed name (see derive_source_type).
+    """
     url = feed_cfg.get("url", "")
     name = feed_cfg["name"]
     category = feed_cfg.get("category", "uncategorized")
+    source_type = derive_source_type(name, kind)
 
     if url == "NEEDS_URL" or not url:
         logger.warning(f"[{name}] No URL configured — skipping")
@@ -215,7 +252,7 @@ async def fetch_all_feeds() -> int:
     ]
 
     async with aiohttp.ClientSession() as session:
-        tasks = [_fetch_feed(session, f, st) for f, st in tagged]
+        tasks = [_fetch_feed(session, f, kind) for f, kind in tagged]
         results = await asyncio.gather(*tasks)
 
     inserted = 0

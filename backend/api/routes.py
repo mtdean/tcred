@@ -15,7 +15,10 @@ router = APIRouter()
 def get_articles(
     min_score: int = Query(default=4, ge=1, le=5),
     category: Optional[str] = Query(default=None),
-    source_type: Optional[str] = Query(default=None, pattern="^(news|letter)$"),
+    source_type: Optional[str] = Query(
+        default=None,
+        description="Single slug or comma-separated list (e.g. 'wsj,ft,bloomberg').",
+    ),
     limit: int = Query(default=50, le=200),
     offset: int = Query(default=0),
 ):
@@ -40,8 +43,11 @@ def get_articles(
             params.append(category)
 
         if source_type:
-            base += " AND source_type = ?"
-            params.append(source_type)
+            slugs = [s.strip() for s in source_type.split(",") if s.strip()]
+            if slugs:
+                placeholders = ",".join("?" * len(slugs))
+                base += f" AND source_type IN ({placeholders})"
+                params.extend(slugs)
 
         base += " ORDER BY COALESCE(published_at, fetched_at) DESC LIMIT ? OFFSET ?"
         params += [limit, offset]
