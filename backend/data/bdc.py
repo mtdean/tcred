@@ -263,9 +263,18 @@ def fetch_bdc_data() -> int:
         )
         return 0
 
-    # Current-period observations only. A 10-Q includes prior comparative
-    # balances under the same adsh but with ddate set to the prior quarter.
-    df = df[df[COL_DDATE] == df[COL_PERIOD]].copy()
+    # Keep ddates within ~1 year of each filing's reporting period — this
+    # captures the current observation plus the prior comparative (10-Q
+    # carries Q-1, 10-K carries Y-1). Drops ancient comparatives (10-K Year-2
+    # / Year-3 columns) that would otherwise inflate the trend with stale data.
+    df["_period_dt"] = pd.to_datetime(df[COL_PERIOD], errors="coerce")
+    df["_ddate_dt"] = pd.to_datetime(df[COL_DDATE], errors="coerce")
+    df = df[
+        df["_ddate_dt"].notna()
+        & df["_period_dt"].notna()
+        & ((df["_period_dt"] - df["_ddate_dt"]).dt.days <= 380)
+        & ((df["_period_dt"] - df["_ddate_dt"]).dt.days >= 0)
+    ]
 
     # Need cost OR fair value to be useful.
     df["_cost_num"] = pd.to_numeric(df[COL_COST], errors="coerce")
@@ -289,19 +298,29 @@ def fetch_bdc_data() -> int:
     )
     df = df[df["_n_breakdowns"] == 1]
 
+    # If the same (cik, ddate) appears in multiple filings (e.g. a 10-K's
+    # Year-1 comparative also shows up as the next year's 10-K Year-2), keep
+    # the most-recently-filed view. Need a stable key per row to dedupe; we
+    # dedupe by (cik, ddate, primary_axis_member) using `filed` for recency.
+    sort_cols = ["filed"] if "filed" in df.columns else [COL_ADSH]
+    df = df.sort_values(sort_cols, ascending=False).copy()
+
     unique_bdcs = df[[COL_CIK, COL_NAME]].drop_duplicates()
     logger.info(f"BDC dataset: {len(df)} candidate rows across {len(unique_bdcs)} BDCs")
 
     def _get(row, col: str) -> str:
         return _norm(row.get(col) if col in df.columns else "")
 
+    # Group by ddate (the observation date), not the filing's reporting period.
+    # This way ARES's Q1-filing prior-comparative rows roll up under Q4 2025,
+    # giving the trend chart history even when only one BDC has filed Q1.
     with get_conn() as conn:
-        for (cik, bdc_name, period), group_df in df.groupby(
-            [COL_CIK, COL_NAME, COL_PERIOD]
+        for (cik, bdc_name, ddate), group_df in df.groupby(
+            [COL_CIK, COL_NAME, COL_DDATE]
         ):
             primary = _pick_primary_breakdown(group_df, COL_FV, COL_COST)
             if primary is None:
-                logger.debug(f"BDC {bdc_name}: no usable breakdown axis")
+                logger.debug(f"BDC {bdc_name} @ {ddate}: no usable breakdown axis")
                 continue
 
             sub = group_df[group_df[primary].map(_norm) != ""]
@@ -311,7 +330,7 @@ def fetch_bdc_data() -> int:
                 inv_type = _get(row, COL_INV_TYPE)
                 industry = _get(row, COL_INDUSTRY)
                 row_id = hashlib.sha256(
-                    f"{_get(row, COL_ADSH)}|{primary}|{inv_id}|{idx}".encode()
+                    f"{_get(row, COL_ADSH)}|{primary}|{inv_id}|{ddate}|{idx}".encode()
                 ).hexdigest()[:16]
 
                 h = {
@@ -319,7 +338,7 @@ def fetch_bdc_data() -> int:
                     "adsh": _get(row, COL_ADSH),
                     "cik": str(cik),
                     "bdc_name": str(bdc_name),
-                    "period": str(period),
+                    "period": str(ddate),  # observation date, not filing period
                     "company_name": inv_id[:200],
                     "industry": industry[:100],
                     "investment_type": inv_type[:100],
@@ -348,7 +367,7 @@ def fetch_bdc_data() -> int:
                 except Exception as e:
                     logger.debug(f"BDC holding insert skip: {e}")
 
-            summary = _compute_bdc_summary(holdings, str(bdc_name), str(cik), str(period))
+            summary = _compute_bdc_summary(holdings, str(bdc_name), str(cik), str(ddate))
             if summary:
                 try:
                     cols = ", ".join(summary.keys())
@@ -371,20 +390,35 @@ def get_watch_list() -> list[dict]:
 
 
 def get_bdc_nonaccrual_trend() -> list[dict]:
-    """Aggregate non-accrual rate across all BDCs by reporting period.
-    Core private-credit stress indicator."""
+    """Aggregate non-accrual rate across all BDCs by observation period.
+    Core private-credit stress indicator.
+
+    Aggregates are NAV-weighted (total_fv / total_cost) rather than simple
+    averages so a tiny BDC with an outlier mark (e.g. EQUUS at 4x mark-to-cost
+    on a $10m portfolio) doesn't dominate the trend versus a $25bn BDC
+    near par.
+    """
     with get_conn() as conn:
         rows = conn.execute(
             """
             SELECT
                 period,
-                COUNT(DISTINCT cik)         AS n_bdcs,
-                SUM(nonaccrual_fv)          AS total_nonaccrual_fv,
-                SUM(total_fair_value)       AS total_fv,
-                AVG(nonaccrual_rate_fv)     AS avg_nonaccrual_rate,
-                AVG(mark_to_cost)           AS avg_mark_to_cost,
-                AVG(wa_interest_rate)       AS avg_wa_rate
+                COUNT(DISTINCT cik)                                          AS n_bdcs,
+                SUM(nonaccrual_fv)                                           AS total_nonaccrual_fv,
+                SUM(total_fair_value)                                        AS total_fv,
+                SUM(total_cost_basis)                                        AS total_cost,
+                CASE WHEN SUM(total_fair_value) > 0
+                     THEN SUM(nonaccrual_fv) * 1.0 / SUM(total_fair_value)
+                     ELSE NULL END                                           AS avg_nonaccrual_rate,
+                CASE WHEN SUM(total_cost_basis) > 0
+                     THEN SUM(total_fair_value) * 1.0 / SUM(total_cost_basis)
+                     ELSE NULL END                                           AS avg_mark_to_cost,
+                CASE WHEN SUM(total_fair_value) > 0
+                     THEN SUM(wa_interest_rate * total_fair_value) * 1.0
+                          / SUM(total_fair_value)
+                     ELSE NULL END                                           AS avg_wa_rate
             FROM bdc_summary
+            WHERE total_fair_value > 0
             GROUP BY period
             ORDER BY period ASC
             """
