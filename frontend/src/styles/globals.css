@@ -107,6 +107,7 @@ a:hover { text-decoration: underline; }
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh; /* iOS Safari: account for the dynamic address bar */
   overflow: hidden;
 }
 .app-main {
@@ -350,3 +351,57 @@ a:hover { text-decoration: underline; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
 .stack  { display: flex; flex-direction: column; gap: 12px; }
+
+/* ── Responsive ────────────────────────────────────────────
+   Targeted mobile pass. Desktop (>768px) is unchanged.
+   - 768px: multi-col grids collapse to single column (iPad portrait + below)
+   - 480px: full mobile pass — compact TopBar, smaller paddings, tighter type
+*/
+@media (max-width: 768px) {
+  .grid-2,
+  .grid-3 { grid-template-columns: 1fr; }
+  .app-main { padding: 8px; }
+}
+
+@media (max-width: 480px) {
+  body { font-size: 12px; }
+  .app-main { padding: 6px; }
+
+  /* TopBar: keep the whole strip on one row but allow horizontal swipe.
+     The elastic spacer is removed so everything bunches to the left. */
+  .topbar {
+    padding: 0 8px;
+    gap: 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .topbar::-webkit-scrollbar { display: none; }
+  .topbar-title { font-size: 12px; }
+  .topbar-spacer { display: none; }
+  .topbar-meta { font-size: 9px; letter-spacing: 0.03em; }
+
+  .tabnav { gap: 0; flex-shrink: 0; }
+  .tabnav a {
+    padding: 0 8px;
+    font-size: 10px;
+    letter-spacing: 0.04em;
+  }
+
+  /* Panel header filters/actions overflow easily on phone — let them wrap. */
+  .panel-header { flex-wrap: wrap; gap: 6px; padding: 6px 8px; }
+  .panel-actions { flex-wrap: wrap; }
+  .panel-body { padding: 8px; }
+
+  /* Status bar: tighter type so it doesn't elbow the home-indicator area. */
+  .statusbar { padding: 0 8px; font-size: 9px; }
+
+  /* Slightly larger tap targets without changing the look much. */
+  .btn { padding: 6px 10px; }
+
+  /* Subtabs are horizontal — let them scroll instead of wrapping. */
+  .subtabs { overflow-x: auto; scrollbar-width: none; flex-wrap: nowrap; }
+  .subtabs::-webkit-scrollbar { display: none; }
+  .subtabs button { flex-shrink: 0; padding: 8px 10px; }
+}
