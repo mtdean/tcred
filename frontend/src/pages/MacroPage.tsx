@@ -43,6 +43,9 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 export default function MacroPage() {
   return (
     <div className="stack">
+      <SectionLabel>Headline Indicators</SectionLabel>
+      <MacroIndicators />
+
       <SectionLabel>Activity & Recession Risk</SectionLabel>
       <div className="grid-2">
         <RecessionEnsemblePanel />
@@ -86,9 +89,6 @@ export default function MacroPage() {
         <StockMomentumPanel />
         <DollarPanel />
       </div>
-
-      <SectionLabel>Headline Indicators</SectionLabel>
-      <MacroIndicators />
     </div>
   );
 }
