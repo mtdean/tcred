@@ -337,6 +337,36 @@ fred_series:
     category: fx
     frequency: daily
 
+  # ── Fed H.8 — Weekly Bank Credit (Phase 7) ───────────────────────
+  # Published every Friday 4:15pm ET for the prior Wednesday. Drives the
+  # H8CreditPanel on the Macro tab; raw series go through the existing FRED
+  # fetcher, derived metrics (WoW, YoY, 4w MA, credit impulse) are computed
+  # on-demand in data/h8.py.
+  - id: "TOTLL"
+    label: "Total Bank Loans & Leases"
+    category: h8_bank_credit
+    frequency: weekly
+  - id: "CONSUMER"
+    label: "Consumer Loans (All Banks)"
+    category: h8_bank_credit
+    frequency: weekly
+  - id: "CCLACBW027SBOG"
+    label: "Credit Card Loans (All Banks)"
+    category: h8_bank_credit
+    frequency: weekly
+  - id: "CILACBW027SBOG"
+    label: "C&I Loans (All Banks)"
+    category: h8_bank_credit
+    frequency: weekly
+  - id: "REALLN"
+    label: "Real Estate Loans (All Banks)"
+    category: h8_bank_credit
+    frequency: weekly
+  - id: "DPSACBW027SBOG"
+    label: "Total Deposits (All Banks)"
+    category: h8_bank_credit
+    frequency: weekly
+
 # ── MARKET DATA (via yfinance) ───────────────────────────────
 market_tickers:
 
@@ -404,6 +434,26 @@ market_tickers:
     label: "Discover Financial"
     category: consumer_credit_proxy
 
+  # ── CLO ETF Proxies (Phase 7 — CLO Stress Monitor) ────────────────
+  # JBBB vs JAAA price ratio is a real-time CLO mezz-vs-AAA spread proxy that
+  # moves before trustee reports publish. BKLN is the leveraged-loan collateral
+  # proxy (most CLO assets are senior secured loans).
+  - ticker: "JAAA"
+    label: "Janus Henderson AAA CLO ETF"
+    category: clo_proxy
+
+  - ticker: "CLOA"
+    label: "BlackRock AAA CLO ETF"
+    category: clo_proxy
+
+  - ticker: "JBBB"
+    label: "Janus Henderson B-BB CLO ETF"
+    category: clo_proxy
+
+  - ticker: "CLOZ"
+    label: "Panagram BBB-B CLO ETF"
+    category: clo_proxy
+
 # ── SEC EDGAR ────────────────────────────────────────────────
 # Free API — https://data.sec.gov
 # No key required; must set User-Agent header (see backend config)
@@ -431,6 +481,11 @@ edgar:
     - "whole business"
     - "aircraft"
     - "container"
+    # Phase 7 — CLO surveillance
+    - "collateralized loan obligation"
+    - "CLO"
+    - "broadly syndicated"
+    - "middle market CLO"
 
   # Known ABS issuers CIKs to monitor directly (add more as discovered)
   # Find at: https://efts.sec.gov/LATEST/search-index?q=%22asset-backed%22&dateRange=custom
@@ -452,6 +507,64 @@ abs_pricing:
     - "card funding"
     - "master trust"
     - "student loan"
+
+# ── Phase 7 — BDC Portfolio Monitor ──────────────────────────
+# SEC publishes a free monthly bulk dataset of BDC XBRL Schedule of Investments
+# (SOI) at https://www.sec.gov/data-research/sec-markets-data/bdc-data-sets.
+# We ingest the ZIP, parse SOI.tsv, and roll up per-BDC summary metrics. The
+# watch list is informational — the parser stores all BDCs in the dataset and
+# the watch list determines the default sort/highlight order in the UI.
+bdc:
+  data_index_url: "https://www.sec.gov/data-research/sec-markets-data/bdc-data-sets"
+  # Major BDCs by AUM. CIKs verified via EDGAR company search; PHASE7.md placeholder
+  # list had duplicates so this is curated fresh.
+  watch_list:
+    - { cik: "0001287750", ticker: "ARCC", name: "Ares Capital Corp" }
+    - { cik: "0001655888", ticker: "OBDC", name: "Blue Owl Capital Corp" }
+    - { cik: "0001422183", ticker: "FSK",  name: "FS KKR Capital Corp" }
+    - { cik: "0001476765", ticker: "GBDC", name: "Golub Capital BDC" }
+    - { cik: "0001280776", ticker: "HTGC", name: "Hercules Capital" }
+    - { cik: "0001287032", ticker: "PSEC", name: "Prospect Capital Corp" }
+    - { cik: "0001396440", ticker: "MAIN", name: "Main Street Capital" }
+    - { cik: "0001508655", ticker: "TSLX", name: "Sixth Street Specialty Lending" }
+    - { cik: "0001580345", ticker: "TPVG", name: "TriplePoint Venture Growth" }
+    - { cik: "0001786108", ticker: "TRIN", name: "Trinity Capital" }
+    - { cik: "0001655050", ticker: "BCSF", name: "Bain Capital Specialty Finance" }
+    - { cik: "0001544206", ticker: "CGBD", name: "Carlyle Secured Lending" }
+    - { cik: "0001414932", ticker: "OCSL", name: "Oaktree Specialty Lending" }
+    - { cik: "0001278752", ticker: "MFIC", name: "MidCap Financial Investment Corp" }
+    - { cik: "0001609280", ticker: "CCAP", name: "Crescent Capital BDC" }
+    - { cik: "0001379785", ticker: "BBDC", name: "Barings BDC" }
+    - { cik: "0001377936", ticker: "SAR",  name: "Saratoga Investment" }
+    - { cik: "0001345126", ticker: "GAIN", name: "Gladstone Investment" }
+    - { cik: "0001508655", ticker: "BXSL", name: "Blackstone Secured Lending" }
+    - { cik: "0001655888", ticker: "OBDE", name: "Blue Owl Capital Corp III" }
+
+# ── Phase 7 — Regulatory Flow Monitor ────────────────────────
+# Federal Register API: free, no key. Filterable by agency slug + type.
+# Agency RSS feeds: free, no key. Press releases lead Federal Register publication
+# by 1-2 days for major actions. Claude scoring is MANUAL (button), not scheduled.
+regulatory:
+  federal_register_api: "https://www.federalregister.gov/api/v1/documents.json"
+  fr_agencies:
+    - { slug: "consumer-financial-protection-bureau",  short: "CFPB" }
+    - { slug: "comptroller-of-the-currency",           short: "OCC" }
+    - { slug: "federal-deposit-insurance-corporation", short: "FDIC" }
+    - { slug: "federal-reserve-system",                short: "Fed" }
+    - { slug: "securities-and-exchange-commission",    short: "SEC" }
+  agency_rss:
+    CFPB: "https://www.consumerfinance.gov/about-us/newsroom/feed/"
+    OCC:  "https://occ.gov/rss/occ-news-issuances.xml"
+    FDIC: "https://www.fdic.gov/news/press-releases/rss.xml"
+    Fed:  "https://www.federalreserve.gov/feeds/press_all.xml"
+    SEC:  "https://www.sec.gov/news/pressreleases.rss"
+
+# ── Phase 7 — KBRA Presale Parser ────────────────────────────
+# Manual ingest workflow: user downloads presale PDFs to data/kbra/presales/,
+# button on the KBRA sub-tab triggers PDF → text → Claude → structured row.
+# (Auto-parsing would call Claude for every dropped PDF without consent.)
+kbra:
+  presale_dir: "data/kbra/presales"
 
 # ── SIFMA ────────────────────────────────────────────────────
 # Manual download — no public API; scrape the stats pages

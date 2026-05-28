@@ -14,10 +14,19 @@ import type {
   AbsRatingBucket,
   AbsSpreadMetric,
   AbsSpreadSeriesResponse,
+  BdcNonaccrualHolding,
+  BdcNonaccrualTrendPoint,
+  BdcSummaryRow,
+  BdcWatchEntry,
+  CloSpreadProxyPoint,
+  CreditImpulsePoint,
   FeedHealth,
   ForwardCurveData,
+  H8SeriesMetrics,
+  KbraPresale,
   MarketRow,
   MetricPoint,
+  RegulatoryAction,
   SofrPoint,
   StatusResponse,
 } from './types';
@@ -94,6 +103,52 @@ export const getDealOverview = (id: string) => api.get(`/deals/${id}/overview`);
 export const getDealReplines = (id: string) => api.get(`/deals/${id}/replines`);
 export const getDealPerformance = (id: string) => api.get(`/deals/${id}/performance`);
 export const getDealCovenants = (id: string) => api.get(`/deals/${id}/covenants`);
+
+// ── Phase 7: BDC Portfolio Monitor ─────────────────────
+export const getBdcWatchList = () =>
+  api.get<BdcWatchEntry[]>('/bdc/watch-list');
+export const getBdcNonaccrualTrend = () =>
+  api.get<BdcNonaccrualTrendPoint[]>('/bdc/nonaccrual-trend');
+export const getBdcSummary = (period?: string) =>
+  api.get<BdcSummaryRow[]>('/bdc/summary', { params: period ? { period } : undefined });
+export const getBdcNonaccruals = (limit = 100) =>
+  api.get<BdcNonaccrualHolding[]>('/bdc/nonaccruals', { params: { limit } });
+export const triggerBdcRefresh = () =>
+  api.post<{ holdings_stored: number }>('/bdc/refresh');
+
+// ── Phase 7: Regulatory Flow Monitor ───────────────────
+export const getRegulatoryActions = (params: {
+  agency?: string;
+  action_type?: string;
+  min_score?: number;
+  days_back?: number;
+  limit?: number;
+} = {}) => api.get<RegulatoryAction[]>('/regulatory/actions', { params });
+export const triggerRegulatoryRefresh = (days_back = 7) =>
+  api.post<{ actions_stored: number }>('/regulatory/refresh', null, {
+    params: { days_back },
+  });
+export const triggerRegulatoryScore = (limit = 100) =>
+  api.post<{ actions_scored: number }>('/regulatory/score', null, {
+    params: { limit },
+  });
+
+// ── Phase 7: Fed H.8 Bank Credit Monitor ───────────────
+export const getH8Metrics = () => api.get<H8SeriesMetrics[]>('/h8/metrics');
+export const getCreditImpulse = () =>
+  api.get<CreditImpulsePoint[]>('/h8/credit-impulse');
+
+// ── Phase 7: CLO Stress Monitor ────────────────────────
+export const getCloSpreadProxy = () =>
+  api.get<CloSpreadProxyPoint[]>('/clo/spread-proxy');
+export const getCloFilings = (limit = 50) =>
+  api.get<EdgarFiling[]>('/clo/filings', { params: { limit } });
+
+// ── Phase 7: KBRA Presale Parser ───────────────────────
+export const getKbraPresales = (params: { asset_class?: string; limit?: number } = {}) =>
+  api.get<KbraPresale[]>('/kbra/presales', { params });
+export const triggerKbraRefresh = () =>
+  api.post<{ presales_processed: number }>('/kbra/refresh');
 
 // ── System ─────────────────────────────────────────────
 export const getStatus = () => api.get<StatusResponse>('/status');

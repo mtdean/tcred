@@ -164,6 +164,34 @@ a:hover { text-decoration: underline; }
   border-bottom-color: var(--text-accent);
 }
 
+/* Sub-tabs (used inside a page, e.g. ABS/EDGAR sub-tabs).
+   Smaller, less prominent than the top-level .tabnav.            */
+.subtabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--border);
+  align-items: stretch;
+}
+.subtabs button {
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  padding: 8px 14px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;          /* overlap the .subtabs bottom border  */
+  transition: color 0.1s;
+}
+.subtabs button:hover { color: var(--text-primary); }
+.subtabs button[data-state='active'] {
+  color: var(--text-accent);
+  border-bottom-color: var(--text-accent);
+}
+
 /* ── Buttons ───────────────────────────────────────────── */
 .btn {
   font-family: inherit;

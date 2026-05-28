@@ -23,4 +23,18 @@ export const qk = {
   absDealSummary: (daysBack: number) => ['abs', 'deal-summary', daysBack] as const,
   deals: ['deals'] as const,
   deal: (id: string, view: string) => ['deals', id, view] as const,
+
+  // Phase 7
+  bdcWatchList: ['bdc', 'watch-list'] as const,
+  bdcNonaccrualTrend: ['bdc', 'nonaccrual-trend'] as const,
+  bdcSummary: (period: string | undefined) => ['bdc', 'summary', period ?? 'latest'] as const,
+  bdcNonaccruals: (limit: number) => ['bdc', 'nonaccruals', limit] as const,
+  regulatoryActions: (params: Record<string, unknown>) =>
+    ['regulatory', 'actions', params] as const,
+  h8Metrics: ['h8', 'metrics'] as const,
+  h8CreditImpulse: ['h8', 'credit-impulse'] as const,
+  cloSpreadProxy: ['clo', 'spread-proxy'] as const,
+  cloFilings: (limit: number) => ['clo', 'filings', limit] as const,
+  kbraPresales: (assetClass: string | undefined) =>
+    ['kbra', 'presales', assetClass ?? 'all'] as const,
 };

@@ -96,6 +96,30 @@ async def _job_health():
         logger.error(f"Scheduler: health check error: {e}")
 
 
+# ── Phase 7 jobs ──────────────────────────────────────────────────────
+# Token-free ingest only. Claude scoring (regulatory) and Claude extraction
+# (KBRA) are MANUAL endpoints — they never run on a timer.
+
+def _job_bdc():
+    """Monthly SEC BDC bulk-dataset pull (token-free)."""
+    from data.bdc import fetch_bdc_data
+    try:
+        n = fetch_bdc_data()
+        logger.info(f"Scheduler: BDC — {n} holdings")
+    except Exception as e:
+        logger.error(f"Scheduler: BDC error: {e}")
+
+
+def _job_regulatory():
+    """Daily Federal Register + agency RSS pull (token-free; scoring is manual)."""
+    from data.regulatory import fetch_regulatory_actions
+    try:
+        n = fetch_regulatory_actions(days_back=2)
+        logger.info(f"Scheduler: Regulatory — {n} actions")
+    except Exception as e:
+        logger.error(f"Scheduler: Regulatory error: {e}")
+
+
 async def start_scheduler():
     global _scheduler
     cfg = load_data_sources()
@@ -155,6 +179,25 @@ async def start_scheduler():
         replace_existing=True,
     )
 
+    # Phase 7: BDC bulk dataset is published monthly. Daily check is cheap and
+    # picks up the release within hours of SEC posting.
+    _scheduler.add_job(
+        _job_bdc,
+        IntervalTrigger(hours=24),
+        id="bdc",
+        max_instances=1,
+        replace_existing=True,
+    )
+
+    # Phase 7: Federal Register + agency RSS updates daily. Token-free.
+    _scheduler.add_job(
+        _job_regulatory,
+        IntervalTrigger(hours=12),
+        id="regulatory",
+        max_instances=1,
+        replace_existing=True,
+    )
+
     _scheduler.start()
     logger.info(
         "Scheduler started (auto news fetch/classify: %s)",
@@ -175,11 +218,13 @@ async def _initial_fetch(auto_news: bool) -> None:
     """
     logger.info("Initial data fetch started (background)")
     tasks = [
-        _job_health(),                  # async (aiohttp)
-        asyncio.to_thread(_job_market),  # blocking → thread
-        asyncio.to_thread(_job_fred),    # blocking → thread
-        asyncio.to_thread(_job_edgar),   # blocking → thread
-        asyncio.to_thread(_job_hhdc),    # blocking → thread
+        _job_health(),                       # async (aiohttp)
+        asyncio.to_thread(_job_market),       # blocking → thread
+        asyncio.to_thread(_job_fred),         # blocking → thread
+        asyncio.to_thread(_job_edgar),        # blocking → thread
+        asyncio.to_thread(_job_hhdc),         # blocking → thread
+        asyncio.to_thread(_job_regulatory),   # blocking → thread (Phase 7)
+        asyncio.to_thread(_job_bdc),          # blocking → thread (Phase 7, ~50MB ZIP)
     ]
     if auto_news:
         tasks.append(_job_feeds())       # async

@@ -7,6 +7,8 @@ import MarketsPage from './pages/MarketsPage';
 import MacroPage from './pages/MacroPage';
 import ABSPage from './pages/ABSPage';
 import DealsPage from './pages/DealsPage';
+import PrivateCreditPage from './pages/PrivateCreditPage';
+import RegulatoryPage from './pages/RegulatoryPage';
 
 export default function App() {
   return (
@@ -18,6 +20,8 @@ export default function App() {
           <Route path="/news" element={<NewsPage />} />
           <Route path="/markets" element={<MarketsPage />} />
           <Route path="/macro" element={<MacroPage />} />
+          <Route path="/private-credit" element={<PrivateCreditPage />} />
+          <Route path="/regulatory" element={<RegulatoryPage />} />
           <Route path="/abs" element={<ABSPage />} />
           <Route path="/deals" element={<DealsPage />} />
         </Routes>

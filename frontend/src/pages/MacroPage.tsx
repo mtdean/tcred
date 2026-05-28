@@ -2,6 +2,8 @@ import DelinquencyPanel from '../components/macro/DelinquencyPanel';
 import ChargeOffPanel from '../components/macro/ChargeOffPanel';
 import RatesPanel from '../components/macro/RatesPanel';
 import MacroIndicators from '../components/macro/MacroIndicators';
+import H8CreditPanel from '../components/macro/H8CreditPanel';
+import CloStressPanel from '../components/macro/CloStressPanel';
 import {
   NationalActivityPanel,
   RecessionEnsemblePanel,
@@ -65,6 +67,12 @@ export default function MacroPage() {
         <CreditImpulsePanel />
         <CreditGapPanel />
       </div>
+
+      <SectionLabel>Bank Credit Supply (Fed H.8)</SectionLabel>
+      <H8CreditPanel />
+
+      <SectionLabel>CLO Stress</SectionLabel>
+      <CloStressPanel />
 
       <SectionLabel>Lending Standards & Inflation</SectionLabel>
       <div className="grid-2">

@@ -472,6 +472,145 @@ def trigger_edgar_refresh():
     return {"inserted": n}
 
 
+# ── PHASE 7: BDC PORTFOLIO MONITOR ───────────────────────────
+
+@router.get("/bdc/watch-list")
+def get_bdc_watch_list():
+    """Curated BDC watch list (CIK / ticker / name) for UI sorting/highlight."""
+    from data.bdc import get_watch_list
+    return get_watch_list()
+
+
+@router.get("/bdc/nonaccrual-trend")
+def get_bdc_nonaccrual_trend():
+    """Aggregate non-accrual rate across BDCs by reporting period — core stress signal."""
+    from data.bdc import get_bdc_nonaccrual_trend as _trend
+    return _trend()
+
+
+@router.get("/bdc/summary")
+def get_bdc_summary(period: Optional[str] = Query(default=None)):
+    """Per-BDC roll-up for the latest (or specified) reporting period."""
+    from data.bdc import get_bdc_summary as _summary
+    return _summary(period=period)
+
+
+@router.get("/bdc/nonaccruals")
+def get_bdc_nonaccruals(limit: int = Query(default=100, le=500)):
+    """Individual non-accrual holdings across all BDCs, latest period."""
+    from data.bdc import get_bdc_nonaccruals as _na
+    return _na(limit=limit)
+
+
+@router.post("/bdc/refresh")
+def trigger_bdc_refresh():
+    """Download + parse SEC BDC bulk dataset. Token-free."""
+    from datetime import datetime, timezone
+    from data.bdc import fetch_bdc_data
+    from cache.db import set_meta
+    n = fetch_bdc_data()
+    set_meta("last_bdc_refresh", datetime.now(timezone.utc).isoformat())
+    return {"holdings_stored": n}
+
+
+# ── PHASE 7: REGULATORY FLOW MONITOR ─────────────────────────
+
+@router.get("/regulatory/actions")
+def get_regulatory_actions(
+    agency: Optional[str] = Query(default=None),
+    action_type: Optional[str] = Query(default=None),
+    min_score: int = Query(default=1, ge=1, le=5),
+    days_back: int = Query(default=90, le=365),
+    limit: int = Query(default=100, le=500),
+):
+    """Recent regulatory actions, filterable by agency / type / relevance score."""
+    from data.regulatory import get_regulatory_actions as _list
+    return _list(
+        agency=agency, action_type=action_type,
+        min_score=min_score, days_back=days_back, limit=limit,
+    )
+
+
+@router.post("/regulatory/refresh")
+def trigger_regulatory_refresh(days_back: int = Query(default=7, le=60)):
+    """Fetch new Federal Register documents + agency RSS. Token-free.
+
+    Claude scoring is a separate manual step — POST /regulatory/score.
+    """
+    from datetime import datetime, timezone
+    from data.regulatory import fetch_regulatory_actions
+    from cache.db import set_meta
+    n = fetch_regulatory_actions(days_back=days_back)
+    set_meta("last_regulatory_refresh", datetime.now(timezone.utc).isoformat())
+    return {"actions_stored": n}
+
+
+@router.post("/regulatory/score")
+def trigger_regulatory_score(limit: int = Query(default=100, le=500)):
+    """Manually score unscored regulatory actions with Claude (token-spending)."""
+    from datetime import datetime, timezone
+    from data.regulatory import score_regulatory_actions
+    from cache.db import set_meta
+    n = score_regulatory_actions(limit=limit)
+    set_meta("last_regulatory_score", datetime.now(timezone.utc).isoformat())
+    return {"actions_scored": n}
+
+
+# ── PHASE 7: FED H.8 BANK CREDIT MONITOR ─────────────────────
+
+@router.get("/h8/metrics")
+def get_h8_metrics():
+    """Latest H.8 series with WoW, YoY, 4w moving average computed on the fly."""
+    from data.h8 import compute_h8_metrics
+    return compute_h8_metrics()
+
+
+@router.get("/h8/credit-impulse")
+def get_credit_impulse():
+    """Quarterly credit impulse (QoQ change in bank loans / GDP, annualized %)."""
+    from data.h8 import compute_credit_impulse
+    return compute_credit_impulse()
+
+
+# ── PHASE 7: CLO STRESS MONITOR ──────────────────────────────
+
+@router.get("/clo/spread-proxy")
+def get_clo_spread_proxy():
+    """Daily JBBB/JAAA price-ratio as a CLO mezz-vs-AAA stress proxy."""
+    from data.clo import compute_clo_spread_proxy
+    return compute_clo_spread_proxy()
+
+
+@router.get("/clo/filings")
+def get_clo_filings(limit: int = Query(default=50, le=200)):
+    """Recent CLO-tagged EDGAR filings (matched via asset_class_keywords)."""
+    from data.clo import get_clo_edgar_filings
+    return get_clo_edgar_filings(limit=limit)
+
+
+# ── PHASE 7: KBRA PRESALE PARSER ─────────────────────────────
+
+@router.get("/kbra/presales")
+def get_kbra_presales(
+    asset_class: Optional[str] = Query(default=None),
+    limit: int = Query(default=100, le=500),
+):
+    """Parsed KBRA presale assumptions (CDR, CPR, loss, CE by tranche)."""
+    from data.kbra import get_kbra_presales as _list
+    return _list(asset_class=asset_class, limit=limit)
+
+
+@router.post("/kbra/refresh")
+def trigger_kbra_refresh():
+    """Process any new PDFs in data/kbra/presales/ via Claude (token-spending)."""
+    from datetime import datetime, timezone
+    from data.kbra import process_kbra_presales
+    from cache.db import set_meta
+    n = process_kbra_presales()
+    set_meta("last_kbra_refresh", datetime.now(timezone.utc).isoformat())
+    return {"presales_processed": n}
+
+
 # ── SYSTEM ───────────────────────────────────────────────────
 
 @router.get("/status")
@@ -499,4 +638,8 @@ def get_status():
         "last_news_refresh": get_meta("last_news_refresh"),
         "last_abs_pricing_refresh": get_meta("last_abs_pricing_refresh"),
         "last_abs_424b5_refresh": get_meta("last_abs_424b5_refresh"),
+        "last_bdc_refresh": get_meta("last_bdc_refresh"),
+        "last_regulatory_refresh": get_meta("last_regulatory_refresh"),
+        "last_regulatory_score": get_meta("last_regulatory_score"),
+        "last_kbra_refresh": get_meta("last_kbra_refresh"),
     }

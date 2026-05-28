@@ -89,6 +89,10 @@ export interface StatusResponse {
   last_news_refresh: string | null;
   last_abs_pricing_refresh: string | null;
   last_abs_424b5_refresh: string | null;
+  last_bdc_refresh: string | null;
+  last_regulatory_refresh: string | null;
+  last_regulatory_score: string | null;
+  last_kbra_refresh: string | null;
 }
 
 export interface MarketRow {
@@ -237,4 +241,135 @@ export interface EdgarParams {
 export interface EdgarFacets {
   form_types: string[];
   asset_classes: string[];
+}
+
+// ── Phase 7: BDC Portfolio Monitor ───────────────────────────────
+export interface BdcWatchEntry {
+  cik: string;
+  ticker: string;
+  name: string;
+}
+
+export interface BdcNonaccrualTrendPoint {
+  period: string;
+  n_bdcs: number;
+  total_nonaccrual_fv: number | null;
+  total_fv: number | null;
+  avg_nonaccrual_rate: number | null;
+  avg_mark_to_cost: number | null;
+  avg_wa_rate: number | null;
+}
+
+export interface BdcSummaryRow {
+  id: string;
+  cik: string;
+  bdc_name: string;
+  period: string;
+  total_fair_value: number | null;
+  total_cost_basis: number | null;
+  nonaccrual_fv: number | null;
+  nonaccrual_cost: number | null;
+  nonaccrual_rate_fv: number | null;
+  nonaccrual_rate_cost: number | null;
+  pct_first_lien: number | null;
+  pct_second_lien: number | null;
+  pct_equity: number | null;
+  wa_interest_rate: number | null;
+  mark_to_cost: number | null;
+  n_holdings: number | null;
+  fetched_at: string;
+}
+
+export interface BdcNonaccrualHolding {
+  bdc_name: string;
+  company_name: string | null;
+  industry: string | null;
+  investment_type: string | null;
+  cost_basis: number | null;
+  fair_value: number | null;
+  period: string;
+}
+
+// ── Phase 7: Regulatory Flow Monitor ─────────────────────────────
+export type RegulatoryAgency = 'CFPB' | 'OCC' | 'FDIC' | 'Fed' | 'SEC';
+export type RegulatoryActionType =
+  | 'RULE'
+  | 'PROPOSED_RULE'
+  | 'NOTICE'
+  | 'PRESS_RELEASE';
+
+export interface RegulatoryAction {
+  id: string;
+  agency: RegulatoryAgency | string;
+  action_type: RegulatoryActionType | string;
+  title: string;
+  abstract: string | null;
+  publication_date: string | null;
+  effective_date: string | null;
+  comment_close_date: string | null;
+  document_number: string | null;
+  docket_id: string | null;
+  cfr_references: string | null;
+  html_url: string | null;
+  pdf_url: string | null;
+  relevance_score: number | null;
+  relevance_tags: string | null;
+  fetched_at: string;
+}
+
+// ── Phase 7: Fed H.8 Bank Credit Monitor ─────────────────────────
+export interface H8MetricPoint {
+  date: string;
+  value: number | null;
+  yoy_pct: number | null;
+}
+
+export interface H8SeriesMetrics {
+  series_id: string;
+  label: string;
+  latest_date: string;
+  latest_value: number | null;
+  wow_change: number | null;
+  wow_pct: number | null;
+  yoy_pct: number | null;
+  ma4w: number | null;
+  history: H8MetricPoint[];
+}
+
+export interface CreditImpulsePoint {
+  date: string;
+  total_loans: number;
+  qoq_change: number | null;
+  credit_impulse: number | null;
+}
+
+// ── Phase 7: CLO Stress Monitor ──────────────────────────────────
+export interface CloSpreadProxyPoint {
+  date: string;
+  aaa_series: string;
+  mezz_series: string;
+  aaa_price: number;
+  mezz_price: number;
+  price_ratio: number | null;
+}
+
+// ── Phase 7: KBRA Presale Parser ─────────────────────────────────
+export interface KbraPresale {
+  id: string;
+  deal_name: string | null;
+  issuer: string | null;
+  asset_class: string | null;
+  closing_date: string | null;
+  pdf_filename: string | null;
+  base_cdr: number | null;
+  base_cpr: number | null;
+  base_loss_rate: number | null;
+  base_severity: number | null;
+  ce_aaa: number | null;
+  ce_aa: number | null;
+  ce_a: number | null;
+  ce_bbb: number | null;
+  ce_bb: number | null;
+  parse_confidence: 'high' | 'medium' | 'low' | null;
+  parsed_at: string | null;
 }

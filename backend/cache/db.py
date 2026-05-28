@@ -154,6 +154,104 @@ CREATE TABLE IF NOT EXISTS digests (
     generated_at  TEXT NOT NULL,
     PRIMARY KEY (date, session)
 );
+
+-- ── Phase 7: BDC Portfolio Monitor (SEC bulk dataset, XBRL SOI.tsv) ──
+-- One row per portfolio holding across all BDC filings in the dataset.
+CREATE TABLE IF NOT EXISTS bdc_holdings (
+    id                  TEXT PRIMARY KEY,  -- SHA256(adsh + InvestmentIdentifier)[:16]
+    adsh                TEXT NOT NULL,
+    cik                 TEXT NOT NULL,
+    bdc_name            TEXT NOT NULL,
+    period              TEXT NOT NULL,     -- YYYYMMDD reporting period
+    company_name        TEXT,
+    industry            TEXT,
+    investment_type     TEXT,              -- First Lien, Second Lien, Equity, ...
+    interest_rate       REAL,
+    pik_rate            REAL,
+    cost_basis          REAL,
+    fair_value          REAL,
+    fair_value_pct_nav  REAL,
+    maturity_date       TEXT,
+    is_nonaccrual       INTEGER DEFAULT 0,
+    fetched_at          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_bdc_period      ON bdc_holdings(period DESC);
+CREATE INDEX IF NOT EXISTS idx_bdc_cik         ON bdc_holdings(cik);
+CREATE INDEX IF NOT EXISTS idx_bdc_nonaccrual  ON bdc_holdings(is_nonaccrual);
+
+CREATE TABLE IF NOT EXISTS bdc_summary (
+    id                   TEXT PRIMARY KEY,  -- SHA256(cik + period)[:16]
+    cik                  TEXT NOT NULL,
+    bdc_name             TEXT NOT NULL,
+    period               TEXT NOT NULL,
+    total_fair_value     REAL,
+    total_cost_basis     REAL,
+    nonaccrual_fv        REAL,
+    nonaccrual_cost      REAL,
+    nonaccrual_rate_fv   REAL,             -- nonaccrual_fv / total_fv
+    nonaccrual_rate_cost REAL,
+    pct_first_lien       REAL,
+    pct_second_lien      REAL,
+    pct_equity           REAL,
+    wa_interest_rate     REAL,
+    mark_to_cost         REAL,             -- total_fv / total_cost (portfolio mark)
+    n_holdings           INTEGER,
+    fetched_at           TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_bdc_summary_period ON bdc_summary(period DESC);
+CREATE INDEX IF NOT EXISTS idx_bdc_summary_cik    ON bdc_summary(cik);
+
+-- ── Phase 7: Regulatory Flow Monitor ──
+-- Federal Register API documents + agency RSS press releases.
+-- relevance_score is Claude-set and ONLY filled when the manual SCORE button fires.
+CREATE TABLE IF NOT EXISTS regulatory_actions (
+    id                  TEXT PRIMARY KEY,  -- document_number or rss hash
+    agency              TEXT NOT NULL,     -- CFPB|OCC|FDIC|Fed|SEC
+    action_type         TEXT NOT NULL,     -- RULE|PROPOSED_RULE|NOTICE|PRESS_RELEASE
+    title               TEXT NOT NULL,
+    abstract            TEXT,
+    publication_date    TEXT,
+    effective_date      TEXT,
+    comment_close_date  TEXT,
+    document_number     TEXT,
+    docket_id           TEXT,              -- JSON array
+    cfr_references      TEXT,              -- JSON array
+    html_url            TEXT,
+    pdf_url             TEXT,
+    relevance_score     INTEGER,           -- 1-5, manual Claude scoring only
+    relevance_tags      TEXT,              -- JSON array
+    fetched_at          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_reg_pub_date ON regulatory_actions(publication_date DESC);
+CREATE INDEX IF NOT EXISTS idx_reg_agency   ON regulatory_actions(agency);
+CREATE INDEX IF NOT EXISTS idx_reg_type     ON regulatory_actions(action_type);
+CREATE INDEX IF NOT EXISTS idx_reg_score    ON regulatory_actions(relevance_score DESC);
+
+-- ── Phase 7: KBRA Presale Parser ──
+-- Structured assumptions extracted from manually downloaded KBRA presale PDFs.
+-- Claude extraction only fires when the manual PARSE button is pressed.
+CREATE TABLE IF NOT EXISTS kbra_presales (
+    id                  TEXT PRIMARY KEY,  -- SHA256(pdf_filename)[:16]
+    deal_name           TEXT,
+    issuer              TEXT,
+    asset_class         TEXT,
+    closing_date        TEXT,
+    pdf_filename        TEXT,
+    base_cdr            REAL,
+    base_cpr            REAL,
+    base_loss_rate      REAL,
+    base_severity       REAL,
+    ce_aaa              REAL,
+    ce_aa               REAL,
+    ce_a                REAL,
+    ce_bbb              REAL,
+    ce_bb               REAL,
+    extracted_text      TEXT,
+    parse_confidence    TEXT,              -- 'high' | 'medium' | 'low' | null
+    parsed_at           TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_kbra_asset_class ON kbra_presales(asset_class);
+CREATE INDEX IF NOT EXISTS idx_kbra_parsed_at   ON kbra_presales(parsed_at DESC);
 """
 
 
