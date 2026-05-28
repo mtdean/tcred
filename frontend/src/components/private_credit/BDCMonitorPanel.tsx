@@ -1,20 +1,483 @@
-// BDC Portfolio Monitor — foundation stub. The bdc worktree fills in:
-//   - Aggregate non-accrual trend chart (multi-line: all BDCs + average)
-//   - Mark-to-cost trend chart
-//   - Per-BDC summary table (latest period)
-//   - Individual non-accrual holdings table
+// BDC Portfolio Monitor — Phase 7 Module 1.
 //
-// Data path: /api/bdc/nonaccrual-trend, /api/bdc/summary, /api/bdc/nonaccruals.
-// Refresh button hits POST /api/bdc/refresh (token-free SEC bulk download).
+// Three stacked panels driven by /api/bdc/*:
+//   1. Non-accrual rate trend (line chart, dual Y-axis for mark-to-cost)
+//   2. Per-BDC summary table (latest period, sorted by NAV)
+//   3. Current non-accruals (latest period, top 100 by cost)
+//
+// Refresh button hits POST /api/bdc/refresh — downloads ~50MB SEC bulk ZIP,
+// parses SOI.tsv, re-computes summaries. Token-free.
 
+import { useMemo } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
+import { RefreshCw } from 'lucide-react';
+
+import {
+  getBdcNonaccrualTrend,
+  getBdcNonaccruals,
+  getBdcSummary,
+  getBdcWatchList,
+  triggerBdcRefresh,
+} from '../../lib/api';
+import { qk } from '../../lib/queryKeys';
+import type {
+  BdcNonaccrualHolding,
+  BdcNonaccrualTrendPoint,
+  BdcSummaryRow,
+  BdcWatchEntry,
+} from '../../lib/types';
+import { COLORS } from '../../lib/colors';
+import { currency, num } from '../../lib/utils';
 import Panel from '../shared/Panel';
+import LoadingCursor from '../shared/LoadingCursor';
+import EmptyState from '../shared/EmptyState';
+
+// SEC reports period as YYYYMMDD; show MMM YYYY (or fall back to the raw string).
+function fmtPeriod(period: string | null | undefined): string {
+  if (!period) return '—';
+  const s = String(period);
+  if (/^\d{8}$/.test(s)) {
+    const y = s.slice(0, 4);
+    const m = Number(s.slice(4, 6));
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    if (m >= 1 && m <= 12) return `${months[m - 1]} ${y}`;
+  }
+  return s;
+}
+
+// Dollars-to-millions (table cells store raw dollars from SEC XBRL).
+function mm(value: number | null | undefined, digits = 0): string {
+  if (value == null || Number.isNaN(value)) return '—';
+  return currency(value / 1_000_000, digits);
+}
+
+function pctOf(value: number | null | undefined, digits = 2): string {
+  if (value == null || Number.isNaN(value)) return '—';
+  return `${(value * 100).toFixed(digits)}%`;
+}
+
+// Color thresholds — risk levels for credit health, mirrors how the spec
+// reads them: mark <95 cents = stressed, non-accrual >2% = elevated.
+function markColor(mark: number | null | undefined): string {
+  if (mark == null) return 'var(--text-secondary)';
+  if (mark < 0.95) return 'var(--negative)';
+  return 'var(--text-primary)';
+}
+
+function nonaccrualColor(rate: number | null | undefined): string {
+  if (rate == null) return 'var(--text-secondary)';
+  if (rate > 0.02) return 'var(--negative)';
+  if (rate > 0.01) return 'var(--warning)';
+  return 'var(--text-primary)';
+}
+
+const WARNING_HEX = '#ffaa00';   // matches --warning in globals.css
+const NEUTRAL_HEX = COLORS.chartSecondary;  // #4a90d9
+
+function ChartTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: { payload: BdcNonaccrualTrendPoint }[];
+}) {
+  if (!active || !payload?.length) return null;
+  const row = payload[0].payload;
+  return (
+    <div
+      style={{
+        background: COLORS.bgPanel,
+        border: `1px solid ${COLORS.borderBright}`,
+        padding: '4px 8px',
+        fontSize: 11,
+        fontVariantNumeric: 'tabular-nums',
+      }}
+    >
+      <div style={{ color: COLORS.textSecondary }}>{fmtPeriod(row.period)}</div>
+      <div style={{ color: WARNING_HEX }}>
+        non-accrual: {row.avg_nonaccrual_rate != null
+          ? `${(row.avg_nonaccrual_rate * 100).toFixed(2)}%`
+          : '—'}
+      </div>
+      <div style={{ color: NEUTRAL_HEX }}>
+        mark-to-cost: {row.avg_mark_to_cost != null
+          ? row.avg_mark_to_cost.toFixed(3)
+          : '—'}
+      </div>
+      <div style={{ color: COLORS.textSecondary }}>n = {row.n_bdcs}</div>
+    </div>
+  );
+}
 
 export default function BDCMonitorPanel() {
+  const queryClient = useQueryClient();
+
+  const watchQ = useQuery({
+    queryKey: qk.bdcWatchList,
+    queryFn: () => getBdcWatchList().then((r) => r.data),
+    staleTime: 24 * 3_600_000,
+  });
+
+  const trendQ = useQuery({
+    queryKey: qk.bdcNonaccrualTrend,
+    queryFn: () => getBdcNonaccrualTrend().then((r) => r.data),
+    staleTime: 60 * 60_000,
+  });
+
+  const summaryQ = useQuery({
+    queryKey: qk.bdcSummary(undefined),
+    queryFn: () => getBdcSummary().then((r) => r.data),
+    staleTime: 60 * 60_000,
+  });
+
+  const nonaccrualsQ = useQuery({
+    queryKey: qk.bdcNonaccruals(100),
+    queryFn: () => getBdcNonaccruals(100).then((r) => r.data),
+    staleTime: 60 * 60_000,
+  });
+
+  const refresh = useMutation({
+    mutationFn: () => triggerBdcRefresh().then((r) => r.data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bdc'] });
+      queryClient.invalidateQueries({ queryKey: qk.status });
+    },
+  });
+
+  // CIK → ticker for watch-list highlight on the summary table.
+  const tickerByCik = useMemo(() => {
+    const m = new Map<string, string>();
+    (watchQ.data ?? []).forEach((w: BdcWatchEntry) => {
+      // CIK can arrive zero-padded or unpadded — index both.
+      const cik = String(w.cik || '');
+      m.set(cik, w.ticker);
+      m.set(cik.replace(/^0+/, ''), w.ticker);
+    });
+    return m;
+  }, [watchQ.data]);
+
+  const trend = trendQ.data ?? [];
+  const summary = summaryQ.data ?? [];
+  const nonaccruals = nonaccrualsQ.data ?? [];
+
+  const latestTrend = trend.length > 0 ? trend[trend.length - 1] : null;
+  const latestPeriod = latestTrend?.period
+    ?? (summary[0]?.period ?? null)
+    ?? (nonaccruals[0]?.period ?? null);
+
+  const noDataAnywhere =
+    !trendQ.isLoading && !summaryQ.isLoading && !nonaccrualsQ.isLoading
+    && trend.length === 0 && summary.length === 0 && nonaccruals.length === 0;
+
+  const refreshButton = (
+    <button
+      className="btn"
+      onClick={() => refresh.mutate()}
+      disabled={refresh.isPending}
+      title="Downloads ~50MB SEC bulk dataset (takes 60-90s)"
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10 }}
+    >
+      <RefreshCw
+        size={11}
+        style={refresh.isPending ? { animation: 'spin 1s linear infinite' } : undefined}
+      />
+      {refresh.isPending ? 'DOWNLOADING' : 'REFRESH'}
+    </button>
+  );
+
+  // Single empty state when there's truly nothing to show.
+  if (noDataAnywhere) {
+    return (
+      <Panel
+        title="BDC Non-Accrual Rate"
+        subtitle="SEC BDC BULK DATASET · TOKEN-FREE"
+        actions={refreshButton}
+      >
+        <EmptyState message="NO BDC DATA YET — PRESS REFRESH TO DOWNLOAD THE LATEST SEC BULK DATASET" />
+      </Panel>
+    );
+  }
+
   return (
-    <Panel title="BDC Portfolio Monitor" subtitle="Module not yet implemented">
-      <div className="muted" style={{ padding: 8, fontSize: 12 }}>
-        Pending implementation in the bdc-portfolio-monitor worktree.
-      </div>
-    </Panel>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* ── Panel 1: Non-Accrual Trend ──────────────────────────────── */}
+      <Panel
+        title="BDC Non-Accrual Rate"
+        subtitle={
+          latestTrend
+            ? `LATEST ${fmtPeriod(latestTrend.period).toUpperCase()} · AVG ${
+                latestTrend.avg_nonaccrual_rate != null
+                  ? `${(latestTrend.avg_nonaccrual_rate * 100).toFixed(2)}%`
+                  : '—'
+              }`
+            : 'SEC BDC BULK DATASET · TOKEN-FREE'
+        }
+        actions={refreshButton}
+      >
+        {trendQ.isLoading ? (
+          <LoadingCursor />
+        ) : trendQ.isError ? (
+          <EmptyState message="FAILED TO LOAD NON-ACCRUAL TREND" />
+        ) : trend.length === 0 ? (
+          <EmptyState message="NO TREND DATA YET — PRESS REFRESH" />
+        ) : (
+          <ResponsiveContainer width="100%" height={240}>
+            <LineChart data={trend} margin={{ top: 6, right: 12, bottom: 0, left: 0 }}>
+              <CartesianGrid stroke={COLORS.border} vertical={false} />
+              <XAxis
+                dataKey="period"
+                tick={{ fill: COLORS.axis, fontSize: 10 }}
+                stroke={COLORS.axis}
+                minTickGap={36}
+                tickFormatter={(v) => fmtPeriod(String(v))}
+              />
+              <YAxis
+                yAxisId="left"
+                tick={{ fill: COLORS.axis, fontSize: 10 }}
+                tickFormatter={(v) => `${(v * 100).toFixed(1)}%`}
+                width={48}
+                stroke={WARNING_HEX}
+                domain={['auto', 'auto']}
+              />
+              <YAxis
+                yAxisId="right"
+                orientation="right"
+                tick={{ fill: COLORS.axis, fontSize: 10 }}
+                tickFormatter={(v) => v.toFixed(2)}
+                width={48}
+                stroke={NEUTRAL_HEX}
+                domain={['auto', 'auto']}
+              />
+              <Tooltip content={<ChartTooltip />} cursor={{ stroke: COLORS.borderBright }} />
+              <Line
+                yAxisId="left"
+                type="monotone"
+                dataKey="avg_nonaccrual_rate"
+                name="non-accrual rate"
+                stroke={WARNING_HEX}
+                strokeWidth={1.5}
+                dot={{ r: 2.5, fill: WARNING_HEX, stroke: 'none' }}
+                isAnimationActive={false}
+                connectNulls
+              />
+              <Line
+                yAxisId="right"
+                type="monotone"
+                dataKey="avg_mark_to_cost"
+                name="mark-to-cost"
+                stroke={NEUTRAL_HEX}
+                strokeWidth={1.5}
+                strokeDasharray="3 3"
+                dot={{ r: 2.5, fill: NEUTRAL_HEX, stroke: 'none' }}
+                isAnimationActive={false}
+                connectNulls
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        )}
+        <div
+          className="mono"
+          style={{
+            fontSize: 10,
+            color: 'var(--text-secondary)',
+            letterSpacing: 0.5,
+            marginTop: 6,
+            display: 'flex',
+            gap: 16,
+          }}
+        >
+          <span><span style={{ color: WARNING_HEX }}>■</span> NON-ACCRUAL RATE (LEFT)</span>
+          <span><span style={{ color: NEUTRAL_HEX }}>■</span> MARK-TO-COST · 1.00 = PAR (RIGHT)</span>
+        </div>
+      </Panel>
+
+      {/* ── Panel 2: Per-BDC Summary ────────────────────────────────── */}
+      <Panel
+        title="Per-BDC Summary"
+        subtitle={latestPeriod ? `LATEST ${fmtPeriod(latestPeriod).toUpperCase()}` : undefined}
+      >
+        {summaryQ.isLoading ? (
+          <LoadingCursor />
+        ) : summaryQ.isError ? (
+          <EmptyState message="FAILED TO LOAD BDC SUMMARY" />
+        ) : summary.length === 0 ? (
+          <EmptyState message="NO SUMMARY DATA YET — PRESS REFRESH" />
+        ) : (
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>BDC</th>
+                <th style={{ textAlign: 'right' }}>NAV ($mm)</th>
+                <th style={{ textAlign: 'right' }}>Mark %</th>
+                <th style={{ textAlign: 'right' }}>Non-Accrual %</th>
+                <th style={{ textAlign: 'right' }}>1st Lien %</th>
+                <th style={{ textAlign: 'right' }}>WA Rate</th>
+                <th style={{ textAlign: 'right' }}>n Holdings</th>
+              </tr>
+            </thead>
+            <tbody>
+              {summary.map((r: BdcSummaryRow) => {
+                const ticker = tickerByCik.get(r.cik) ?? tickerByCik.get(r.cik.replace(/^0+/, ''));
+                return (
+                  <tr key={r.id}>
+                    <td>
+                      {ticker && (
+                        <span
+                          className="mono"
+                          style={{
+                            fontSize: 10,
+                            padding: '1px 4px',
+                            border: '1px solid var(--border-bright)',
+                            borderRadius: 2,
+                            marginRight: 6,
+                            color: 'var(--accent)',
+                            letterSpacing: 0.5,
+                          }}
+                          title={`watch-list ticker for CIK ${r.cik}`}
+                        >
+                          {ticker}
+                        </span>
+                      )}
+                      <span
+                        title={r.bdc_name}
+                        style={{
+                          display: 'inline-block',
+                          maxWidth: 260,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          verticalAlign: 'bottom',
+                        }}
+                      >
+                        {r.bdc_name}
+                      </span>
+                    </td>
+                    <td className="mono" style={{ textAlign: 'right' }}>
+                      {mm(r.total_fair_value, 0)}
+                    </td>
+                    <td
+                      className="mono"
+                      style={{ textAlign: 'right', color: markColor(r.mark_to_cost) }}
+                    >
+                      {r.mark_to_cost != null ? `${(r.mark_to_cost * 100).toFixed(1)}%` : '—'}
+                    </td>
+                    <td
+                      className="mono"
+                      style={{ textAlign: 'right', color: nonaccrualColor(r.nonaccrual_rate_fv) }}
+                    >
+                      {pctOf(r.nonaccrual_rate_fv)}
+                    </td>
+                    <td className="mono" style={{ textAlign: 'right' }}>
+                      {pctOf(r.pct_first_lien, 1)}
+                    </td>
+                    <td className="mono" style={{ textAlign: 'right' }}>
+                      {r.wa_interest_rate != null
+                        ? `${(r.wa_interest_rate * 100).toFixed(2)}%`
+                        : '—'}
+                    </td>
+                    <td className="mono" style={{ textAlign: 'right' }}>
+                      {r.n_holdings != null ? num(r.n_holdings, 0) : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </Panel>
+
+      {/* ── Panel 3: Current Non-Accruals ───────────────────────────── */}
+      <Panel
+        title="Current Non-Accruals"
+        subtitle={
+          nonaccruals.length > 0
+            ? `${nonaccruals.length} HOLDING${nonaccruals.length === 1 ? '' : 'S'} · LATEST ${
+                fmtPeriod(nonaccruals[0].period).toUpperCase()
+              }`
+            : undefined
+        }
+      >
+        {nonaccrualsQ.isLoading ? (
+          <LoadingCursor />
+        ) : nonaccrualsQ.isError ? (
+          <EmptyState message="FAILED TO LOAD NON-ACCRUALS" />
+        ) : nonaccruals.length === 0 ? (
+          <EmptyState message="NO NON-ACCRUALS IN LATEST PERIOD" />
+        ) : (
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Company</th>
+                <th>BDC</th>
+                <th>Industry</th>
+                <th>Type</th>
+                <th style={{ textAlign: 'right' }}>Cost ($mm)</th>
+                <th style={{ textAlign: 'right' }}>FV ($mm)</th>
+                <th style={{ textAlign: 'right' }}>Mark %</th>
+              </tr>
+            </thead>
+            <tbody>
+              {nonaccruals.map((r: BdcNonaccrualHolding, i: number) => {
+                const mark =
+                  r.fair_value != null && r.cost_basis != null && r.cost_basis !== 0
+                    ? r.fair_value / r.cost_basis
+                    : null;
+                return (
+                  <tr key={`${r.bdc_name}-${r.company_name}-${i}`}>
+                    <td
+                      title={r.company_name ?? ''}
+                      style={{
+                        maxWidth: 260,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {r.company_name ?? '—'}
+                    </td>
+                    <td
+                      className="dim"
+                      title={r.bdc_name}
+                      style={{
+                        maxWidth: 200,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {r.bdc_name}
+                    </td>
+                    <td className="dim">{r.industry || '—'}</td>
+                    <td className="dim">{r.investment_type || '—'}</td>
+                    <td className="mono" style={{ textAlign: 'right' }}>
+                      {mm(r.cost_basis, 1)}
+                    </td>
+                    <td className="mono" style={{ textAlign: 'right' }}>
+                      {mm(r.fair_value, 1)}
+                    </td>
+                    <td
+                      className="mono"
+                      style={{ textAlign: 'right', color: markColor(mark) }}
+                    >
+                      {mark != null ? `${(mark * 100).toFixed(1)}%` : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </Panel>
+    </div>
   );
 }
