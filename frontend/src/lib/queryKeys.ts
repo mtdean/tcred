@@ -39,4 +39,9 @@ export const qk = {
   cloFilings: (limit: number) => ['clo', 'filings', limit] as const,
   kbraPresales: (assetClass: string | undefined) =>
     ['kbra', 'presales', assetClass ?? 'all'] as const,
+
+  // Analyst briefings
+  briefings: ['briefings'] as const,
+  briefing: (id: string) => ['briefings', id] as const,
+  latestBriefing: ['briefings', 'latest'] as const,
 };

@@ -127,6 +127,76 @@ export const generateDigest = (body: DigestParams) =>
 export const getDigests = (limit = 60) =>
   api.get<DigestResponse[]>('/digests', { params: { limit } });
 
+// ── Analyst Briefings ──────────────────────────────────
+export interface BriefingListItem {
+  id: string;
+  period_label: string;
+  generated_at: string;
+  model: string;
+  preview: string;
+  input_tokens: number | null;
+  output_tokens: number | null;
+}
+
+export interface BriefingWatchItem {
+  title: string;
+  severity: 'info' | 'watch' | 'warn';
+  why: string;
+}
+
+export interface Briefing {
+  id: string;
+  period_label: string;
+  generated_at: string;
+  model: string;
+  briefing_md: string;
+  watch_items: BriefingWatchItem[] | null;
+  snapshot?: Record<string, unknown>;
+  usage: {
+    input_tokens: number | null;
+    output_tokens: number | null;
+    cache_read_input_tokens: number | null;
+    cache_creation_input_tokens: number | null;
+  };
+}
+
+export interface BriefingChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface BriefingChatResponse {
+  reply: string;
+  tool_calls: { name: string; input: Record<string, unknown> }[];
+  usage: {
+    input_tokens: number;
+    output_tokens: number;
+    cache_read_input_tokens: number;
+    cache_creation_input_tokens: number;
+  };
+}
+
+export const listBriefings = (limit = 30) =>
+  api.get<{ items: BriefingListItem[] }>('/briefings', { params: { limit } });
+
+export const getLatestBriefing = () =>
+  api.get<Briefing>('/briefings/latest');
+
+export const getBriefing = (id: string) =>
+  api.get<Briefing>(`/briefings/${id}`);
+
+export const generateBriefing = (period_label?: string) =>
+  api.post<Briefing>('/briefings/generate', null, {
+    params: period_label ? { period_label } : undefined,
+  });
+
+export const chatWithBriefing = (
+  id: string,
+  message: string,
+  history: BriefingChatMessage[],
+) =>
+  api.post<BriefingChatResponse>(`/briefings/${id}/chat`, { message, history });
+
 // ── Market ─────────────────────────────────────────────
 export const getMarketSnapshot = () => api.get<MarketRow[]>('/market/snapshot');
 export const getMarketHistory = (ticker: string, limit = 252) =>

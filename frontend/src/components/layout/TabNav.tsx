@@ -9,6 +9,7 @@ const TABS: { to: string; label: string }[] = [
   { to: '/regulatory', label: 'Regulatory' },
   { to: '/abs', label: 'ABS/EDGAR' },
   { to: '/deals', label: 'Deals' },
+  { to: '/analyst', label: 'Analyst' },
 ];
 
 export default function TabNav() {

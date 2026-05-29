@@ -716,6 +716,106 @@ def get_status():
     }
 
 
+# ── ANALYST BRIEFINGS ────────────────────────────────────────
+
+class ChatMessage(BaseModel):
+    role: str = Field(pattern="^(user|assistant)$")
+    content: str
+
+
+class BriefingChatRequest(BaseModel):
+    message: str = Field(min_length=1)
+    history: list[ChatMessage] = Field(default_factory=list)
+
+
+def _briefing_to_api(b: dict, include_snapshot: bool = True) -> dict:
+    """Shape a DB row for the API: parse JSON fields, drop noise."""
+    import json as _json
+    out = {
+        "id": b["id"],
+        "period_label": b["period_label"],
+        "generated_at": b["generated_at"],
+        "model": b["model"],
+        "briefing_md": b["briefing_md"],
+        "watch_items": _json.loads(b["watch_items"]) if b.get("watch_items") else None,
+        "usage": {
+            "input_tokens": b.get("input_tokens"),
+            "output_tokens": b.get("output_tokens"),
+            "cache_read_input_tokens": b.get("cache_read_tokens"),
+            "cache_creation_input_tokens": b.get("cache_write_tokens"),
+        },
+    }
+    if include_snapshot and b.get("snapshot_json"):
+        out["snapshot"] = _json.loads(b["snapshot_json"])
+    return out
+
+
+@router.get("/briefings")
+def list_briefings(limit: int = Query(default=30, le=200)):
+    """List past briefings (newest first), with a short preview."""
+    return {"items": db_list_briefings(limit=limit)}
+
+
+@router.get("/briefings/latest")
+def get_latest_briefing():
+    """Most recent briefing, including the full snapshot it was built on."""
+    from cache.db import get_latest_briefing as _latest
+    row = _latest()
+    if row is None:
+        raise HTTPException(status_code=404, detail="No briefings yet — generate one first.")
+    return _briefing_to_api(row)
+
+
+@router.get("/briefings/{briefing_id}")
+def get_briefing(briefing_id: str):
+    from cache.db import get_briefing as _get
+    row = _get(briefing_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="briefing not found")
+    return _briefing_to_api(row)
+
+
+@router.post("/briefings/generate")
+def trigger_briefing_generate(period_label: Optional[str] = Query(default=None)):
+    """Build a new briefing (synchronous; uses Claude Opus 4.7 tokens)."""
+    from data.analyst import BriefingError, generate_briefing
+    try:
+        briefing = generate_briefing(period_label=period_label)
+    except BriefingError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Briefing generation failed: {e}")
+    return _briefing_to_api(briefing)
+
+
+@router.post("/briefings/{briefing_id}/chat")
+def chat_with_briefing(briefing_id: str, body: BriefingChatRequest):
+    """One chat turn against a briefing. History is client-held — pass the full
+    transcript (excluding this turn's user message) every time."""
+    from data.analyst import ChatError, chat_with_briefing as _chat
+    try:
+        result = _chat(
+            briefing_id=briefing_id,
+            history=[m.model_dump() for m in body.history],
+            user_message=body.message,
+        )
+    except ChatError as e:
+        # 404 if the briefing is missing; 422 for everything else (no key, etc.)
+        if "not found" in str(e):
+            raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Chat failed: {e}")
+    return result
+
+
+# Local import to keep `from cache.db import list_briefings as ...` out of the
+# module top-level (routes.py already lazy-imports many helpers in route bodies).
+def db_list_briefings(limit: int = 30) -> list[dict]:
+    from cache.db import list_briefings as _list
+    return _list(limit=limit)
+
+
 @router.get("/jobs/status")
 def jobs_status():
     """Latest run per scheduled job: status, duration, rows ingested, last error."""

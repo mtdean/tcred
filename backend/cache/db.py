@@ -257,6 +257,27 @@ CREATE TABLE IF NOT EXISTS kbra_presales (
 CREATE INDEX IF NOT EXISTS idx_kbra_asset_class ON kbra_presales(asset_class);
 CREATE INDEX IF NOT EXISTS idx_kbra_parsed_at   ON kbra_presales(parsed_at DESC);
 
+-- ── Analyst briefings ────────────────────────────────────────────────────────
+-- A briefing is a Claude-synthesized macro/credit narrative built from a
+-- structured snapshot of recent indicators + digests + ABS/BDC/regulatory state.
+-- The chat layer attached to a briefing is ephemeral (per-session, client-held)
+-- so we only persist the briefing itself + the snapshot it was built on (for
+-- audit / regenerate-from-snapshot).
+CREATE TABLE IF NOT EXISTS briefings (
+    id              TEXT PRIMARY KEY,        -- 'brf_' + hex(8)
+    period_label    TEXT NOT NULL,           -- e.g. '2026-05' (snapshot window)
+    generated_at    TEXT NOT NULL,           -- ISO UTC
+    model           TEXT NOT NULL,
+    briefing_md     TEXT NOT NULL,           -- the narrative
+    watch_items     TEXT,                    -- JSON: [{title, severity, why}]
+    snapshot_json   TEXT NOT NULL,           -- the structured inputs fed to Claude
+    input_tokens    INTEGER,
+    output_tokens   INTEGER,
+    cache_read_tokens   INTEGER,
+    cache_write_tokens  INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_briefings_generated ON briefings(generated_at DESC);
+
 -- ── Scheduler job observability ──────────────────────────────────────────────
 -- One row per scheduled-job invocation. Lets the dashboard answer "did the
 -- BDC pull actually run today, and did it succeed?" without tailing logs.
@@ -516,6 +537,54 @@ def upsert_feed_health(row: dict) -> None:
             """,
             row,
         )
+
+
+# ── Analyst briefings ────────────────────────────────────────────────────────
+
+def insert_briefing(row: dict) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO briefings
+              (id, period_label, generated_at, model, briefing_md, watch_items,
+               snapshot_json, input_tokens, output_tokens,
+               cache_read_tokens, cache_write_tokens)
+            VALUES
+              (:id, :period_label, :generated_at, :model, :briefing_md, :watch_items,
+               :snapshot_json, :input_tokens, :output_tokens,
+               :cache_read_tokens, :cache_write_tokens)
+            """,
+            {"watch_items": None, "input_tokens": None, "output_tokens": None,
+             "cache_read_tokens": None, "cache_write_tokens": None, **row},
+        )
+
+
+def list_briefings(limit: int = 30) -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, period_label, generated_at, model, "
+            "substr(briefing_md, 1, 200) AS preview, "
+            "input_tokens, output_tokens "
+            "FROM briefings ORDER BY generated_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_briefing(briefing_id: str) -> Optional[dict]:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM briefings WHERE id = ?", (briefing_id,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def get_latest_briefing() -> Optional[dict]:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM briefings ORDER BY generated_at DESC LIMIT 1"
+        ).fetchone()
+    return dict(row) if row else None
 
 
 # ── Scheduler job observability ──────────────────────────────────────────────
