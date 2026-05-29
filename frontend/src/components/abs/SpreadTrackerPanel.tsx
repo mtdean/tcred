@@ -16,6 +16,7 @@ import {
   YAxis,
 } from 'recharts';
 import { ExternalLink, RefreshCw } from 'lucide-react';
+import { format, parseISO } from 'date-fns';
 
 import {
   getAbsDealSummary,
@@ -257,6 +258,24 @@ export default function SpreadTrackerPanel() {
 
   const actions = (
     <div style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+      <a
+        href="https://github.com/mtdean/tcred/blob/main/docs/ABS_SPREADS.md"
+        target="_blank"
+        rel="noreferrer"
+        className="mono"
+        title="how spread, implied vs parsed, and rating-bucket coverage are computed"
+        style={{
+          fontSize: 10,
+          color: 'var(--text-secondary)',
+          letterSpacing: 0.5,
+          textDecoration: 'none',
+          padding: '3px 6px',
+          border: '1px solid var(--border-bright)',
+          borderRadius: 2,
+        }}
+      >
+        METHODOLOGY ↗
+      </a>
       <select
         value={assetClass}
         onChange={(e) => setAssetClass(e.target.value)}
@@ -351,14 +370,19 @@ export default function SpreadTrackerPanel() {
             <ComposedChart data={data} margin={{ top: 6, right: 12, bottom: 0, left: 0 }}>
               <CartesianGrid stroke={COLORS.border} vertical={false} />
               <XAxis
-                dataKey="week"
+                dataKey="week_start"
                 tick={{ fill: COLORS.axis, fontSize: 10 }}
                 stroke={COLORS.axis}
                 minTickGap={48}
                 tickFormatter={(v) => {
-                  // 'YYYY-WNN' → 'WNN' for compactness; tooltip carries the full date.
-                  const [, w] = String(v).split('-W');
-                  return w ? `W${w}` : String(v);
+                  // 'YYYY-MM-DD' → "MMM ''yy" (e.g. Jul '24). Compact enough
+                  // to fit a 3-year axis without rotation; tooltip shows the
+                  // full week-start date.
+                  try {
+                    return format(parseISO(String(v)), "MMM ''yy");
+                  } catch {
+                    return String(v);
+                  }
                 }}
               />
               <YAxis

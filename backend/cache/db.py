@@ -55,7 +55,8 @@ CREATE TABLE IF NOT EXISTS edgar_filings (
     filed_at        TEXT,
     description     TEXT,
     url             TEXT,
-    asset_class     TEXT,   -- matched keyword
+    asset_class     TEXT,   -- name-derived asset class (mortgage / royalty / auto / etc.)
+    issuance_type   TEXT,   -- 'debt' | 'equity' (debt for ABS forms + trust-style names)
     fetched_at      TEXT NOT NULL
 );
 
@@ -133,6 +134,7 @@ CREATE TABLE IF NOT EXISTS abs_new_issues (
     benchmark           TEXT,                    -- 'UST2Y' | 'SOFR' | ...
     benchmark_rate      REAL,
     spread_to_benchmark REAL,                    -- bps
+    spread_source       TEXT,                    -- 'parsed' | 'implied'
     implied_yield       REAL,
 
     fetched_at          TEXT NOT NULL
@@ -184,6 +186,8 @@ CREATE TABLE IF NOT EXISTS bdc_summary (
     cik                  TEXT NOT NULL,
     bdc_name             TEXT NOT NULL,
     period               TEXT NOT NULL,
+    adsh                 TEXT,              -- source filing accession (most recent for this period)
+    filed                TEXT,              -- source filing date
     total_fair_value     REAL,
     total_cost_basis     REAL,
     nonaccrual_fv        REAL,
@@ -280,6 +284,10 @@ def _migrate(conn) -> None:
     _add_column_if_missing(conn, "articles", "is_read", "INTEGER DEFAULT 0")
     _add_column_if_missing(conn, "articles", "source_type", "TEXT DEFAULT 'news'")
     _add_column_if_missing(conn, "feed_health", "platform", "TEXT")
+    _add_column_if_missing(conn, "bdc_summary", "adsh", "TEXT")
+    _add_column_if_missing(conn, "bdc_summary", "filed", "TEXT")
+    _add_column_if_missing(conn, "abs_new_issues", "spread_source", "TEXT")
+    _add_column_if_missing(conn, "edgar_filings", "issuance_type", "TEXT")
 
     # digests: migrate the original (date PRIMARY KEY, one/day) schema to the
     # (date, session) composite — two slots per day (AM/PM, US/Eastern).
@@ -401,15 +409,17 @@ def upsert_metric(row: dict) -> None:
 
 
 def upsert_edgar_filing(row: dict) -> None:
+    # Callers that don't compute issuance_type yet (older code paths) get None.
+    row = {"issuance_type": None, **row}
     with get_conn() as conn:
         conn.execute(
             """
             INSERT OR IGNORE INTO edgar_filings
               (accession_no, company_name, form_type, filed_at,
-               description, url, asset_class, fetched_at)
+               description, url, asset_class, issuance_type, fetched_at)
             VALUES
               (:accession_no, :company_name, :form_type, :filed_at,
-               :description, :url, :asset_class, :fetched_at)
+               :description, :url, :asset_class, :issuance_type, :fetched_at)
             """,
             row,
         )

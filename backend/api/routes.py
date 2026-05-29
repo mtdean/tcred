@@ -254,11 +254,13 @@ def get_edgar_filings(
     offset: int = Query(default=0, ge=0),
     form_type: Optional[str] = Query(default=None),
     asset_class: Optional[str] = Query(default=None),
+    issuance_type: Optional[str] = Query(default=None, pattern="^(debt|equity)$"),
 ):
     """Recent ABS-related EDGAR filings, newest first, with optional filters."""
     from data.edgar import get_recent_filings
     return get_recent_filings(
-        limit=limit, offset=offset, form_type=form_type, asset_class=asset_class
+        limit=limit, offset=offset, form_type=form_type,
+        asset_class=asset_class, issuance_type=issuance_type,
     )
 
 
@@ -546,6 +548,21 @@ def get_bdc_summary(period: Optional[str] = Query(default=None)):
     """Per-BDC roll-up for the latest (or specified) reporting period."""
     from data.bdc import get_bdc_summary as _summary
     return _summary(period=period)
+
+
+@router.get("/bdc/latest-per-bdc")
+def get_bdc_latest_per_bdc():
+    """Per-BDC roll-up, one row per BDC at each BDC's freshest available period.
+    Includes filing_url for the source EDGAR filing."""
+    from data.bdc import get_bdc_summary_latest_per_bdc as _latest
+    return _latest()
+
+
+@router.get("/bdc/aggregate-trend")
+def get_bdc_aggregate_trend():
+    """Industry-wide per-period aggregates: NAV total, WA rate, portfolio mix."""
+    from data.bdc import get_bdc_aggregate_trend as _agg
+    return _agg()
 
 
 @router.get("/bdc/nonaccruals")

@@ -14,6 +14,7 @@ import type {
   AbsRatingBucket,
   AbsSpreadMetric,
   AbsSpreadSeriesResponse,
+  BdcAggregateTrendPoint,
   BdcNonaccrualHolding,
   BdcNonaccrualTrendPoint,
   BdcSummaryRow,
@@ -154,6 +155,10 @@ export const getBdcNonaccrualTrend = () =>
   api.get<BdcNonaccrualTrendPoint[]>('/bdc/nonaccrual-trend');
 export const getBdcSummary = (period?: string) =>
   api.get<BdcSummaryRow[]>('/bdc/summary', { params: period ? { period } : undefined });
+export const getBdcLatestPerBdc = () =>
+  api.get<BdcSummaryRow[]>('/bdc/latest-per-bdc');
+export const getBdcAggregateTrend = () =>
+  api.get<BdcAggregateTrendPoint[]>('/bdc/aggregate-trend');
 export const getBdcNonaccruals = (limit = 100) =>
   api.get<BdcNonaccrualHolding[]>('/bdc/nonaccruals', { params: { limit } });
 export const triggerBdcRefresh = () =>

@@ -27,7 +27,9 @@ export const qk = {
   // Phase 7
   bdcWatchList: ['bdc', 'watch-list'] as const,
   bdcNonaccrualTrend: ['bdc', 'nonaccrual-trend'] as const,
+  bdcAggregateTrend: ['bdc', 'aggregate-trend'] as const,
   bdcSummary: (period: string | undefined) => ['bdc', 'summary', period ?? 'latest'] as const,
+  bdcLatestPerBdc: ['bdc', 'latest-per-bdc'] as const,
   bdcNonaccruals: (limit: number) => ['bdc', 'nonaccruals', limit] as const,
   regulatoryActions: (params: Record<string, unknown>) =>
     ['regulatory', 'actions', params] as const,

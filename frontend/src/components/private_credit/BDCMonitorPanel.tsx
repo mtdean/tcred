@@ -11,6 +11,8 @@
 import { useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  Area,
+  AreaChart,
   CartesianGrid,
   Line,
   LineChart,
@@ -22,9 +24,10 @@ import {
 import { RefreshCw } from 'lucide-react';
 
 import {
+  getBdcAggregateTrend,
+  getBdcLatestPerBdc,
   getBdcNonaccrualTrend,
   getBdcNonaccruals,
-  getBdcSummary,
   getBdcWatchList,
   triggerBdcRefresh,
 } from '../../lib/api';
@@ -136,8 +139,14 @@ export default function BDCMonitorPanel() {
   });
 
   const summaryQ = useQuery({
-    queryKey: qk.bdcSummary(undefined),
-    queryFn: () => getBdcSummary().then((r) => r.data),
+    queryKey: qk.bdcLatestPerBdc,
+    queryFn: () => getBdcLatestPerBdc().then((r) => r.data),
+    staleTime: 60 * 60_000,
+  });
+
+  const aggregateQ = useQuery({
+    queryKey: qk.bdcAggregateTrend,
+    queryFn: () => getBdcAggregateTrend().then((r) => r.data),
     staleTime: 60 * 60_000,
   });
 
@@ -169,11 +178,10 @@ export default function BDCMonitorPanel() {
 
   const trend = trendQ.data ?? [];
   const summary = summaryQ.data ?? [];
+  const aggregate = aggregateQ.data ?? [];
   const nonaccruals = nonaccrualsQ.data ?? [];
 
   const latestTrend = trend.length > 0 ? trend[trend.length - 1] : null;
-  const latestPeriod: string | null =
-    latestTrend?.period ?? summary[0]?.period ?? nonaccruals[0]?.period ?? null;
 
   const noDataAnywhere =
     !trendQ.isLoading && !summaryQ.isLoading && !nonaccrualsQ.isLoading
@@ -302,10 +310,234 @@ export default function BDCMonitorPanel() {
         </div>
       </Panel>
 
-      {/* ── Panel 2: Per-BDC Summary ────────────────────────────────── */}
+      {/* ── Panel 1.5: Industry Aggregates (NAV / WA rate / mix) ───── */}
+      <Panel
+        title="Industry Aggregates"
+        subtitle="NAV-WEIGHTED · PERIODS WITH ≥5 BDCS REPORTING"
+      >
+        {aggregateQ.isLoading ? (
+          <LoadingCursor />
+        ) : aggregateQ.isError ? (
+          <EmptyState message="FAILED TO LOAD AGGREGATE TREND" />
+        ) : aggregate.length === 0 ? (
+          <EmptyState message="NO AGGREGATE DATA YET — PRESS REFRESH" />
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {/* NAV ($B) trend */}
+            <div>
+              <div
+                className="mono"
+                style={{
+                  fontSize: 10,
+                  color: 'var(--text-secondary)',
+                  letterSpacing: 0.5,
+                  marginBottom: 2,
+                }}
+              >
+                TOTAL INDUSTRY NAV ($B)
+              </div>
+              <ResponsiveContainer width="100%" height={150}>
+                <LineChart
+                  data={aggregate}
+                  margin={{ top: 4, right: 12, bottom: 0, left: 0 }}
+                >
+                  <CartesianGrid stroke={COLORS.border} vertical={false} />
+                  <XAxis
+                    dataKey="period"
+                    tick={{ fill: COLORS.axis, fontSize: 10 }}
+                    stroke={COLORS.axis}
+                    minTickGap={36}
+                    tickFormatter={(v) => fmtPeriod(String(v))}
+                  />
+                  <YAxis
+                    tick={{ fill: COLORS.axis, fontSize: 10 }}
+                    tickFormatter={(v: number) => `${(v / 1e9).toFixed(0)}`}
+                    width={36}
+                    stroke={COLORS.axis}
+                    domain={['auto', 'auto']}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      background: COLORS.bgPanel,
+                      border: `1px solid ${COLORS.borderBright}`,
+                      fontSize: 11,
+                    }}
+                    labelFormatter={(v) => fmtPeriod(String(v))}
+                    formatter={(v) => [`$${(Number(v) / 1e9).toFixed(1)}B`, 'NAV']}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="total_fv"
+                    stroke={COLORS.chartPrimary}
+                    strokeWidth={1.5}
+                    dot={{ r: 2, fill: COLORS.chartPrimary, stroke: 'none' }}
+                    isAnimationActive={false}
+                    connectNulls
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* WA interest rate (%) */}
+            <div>
+              <div
+                className="mono"
+                style={{
+                  fontSize: 10,
+                  color: 'var(--text-secondary)',
+                  letterSpacing: 0.5,
+                  marginBottom: 2,
+                }}
+              >
+                NAV-WEIGHTED INTEREST RATE (%)
+              </div>
+              <ResponsiveContainer width="100%" height={150}>
+                <LineChart
+                  data={aggregate}
+                  margin={{ top: 4, right: 12, bottom: 0, left: 0 }}
+                >
+                  <CartesianGrid stroke={COLORS.border} vertical={false} />
+                  <XAxis
+                    dataKey="period"
+                    tick={{ fill: COLORS.axis, fontSize: 10 }}
+                    stroke={COLORS.axis}
+                    minTickGap={36}
+                    tickFormatter={(v) => fmtPeriod(String(v))}
+                  />
+                  <YAxis
+                    tick={{ fill: COLORS.axis, fontSize: 10 }}
+                    tickFormatter={(v: number) => `${(v * 100).toFixed(1)}%`}
+                    width={42}
+                    stroke={COLORS.axis}
+                    domain={['auto', 'auto']}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      background: COLORS.bgPanel,
+                      border: `1px solid ${COLORS.borderBright}`,
+                      fontSize: 11,
+                    }}
+                    labelFormatter={(v) => fmtPeriod(String(v))}
+                    formatter={(v) => [`${(Number(v) * 100).toFixed(2)}%`, 'WA rate']}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="wa_interest_rate"
+                    stroke={COLORS.chartSecondary}
+                    strokeWidth={1.5}
+                    dot={{ r: 2, fill: COLORS.chartSecondary, stroke: 'none' }}
+                    isAnimationActive={false}
+                    connectNulls
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Portfolio mix: 1L / 2L / Equity stacked area */}
+            <div>
+              <div
+                className="mono"
+                style={{
+                  fontSize: 10,
+                  color: 'var(--text-secondary)',
+                  letterSpacing: 0.5,
+                  marginBottom: 2,
+                }}
+              >
+                PORTFOLIO MIX (1L / 2L / EQUITY · % OF NAV)
+              </div>
+              <ResponsiveContainer width="100%" height={170}>
+                <AreaChart
+                  data={aggregate}
+                  margin={{ top: 4, right: 12, bottom: 0, left: 0 }}
+                >
+                  <CartesianGrid stroke={COLORS.border} vertical={false} />
+                  <XAxis
+                    dataKey="period"
+                    tick={{ fill: COLORS.axis, fontSize: 10 }}
+                    stroke={COLORS.axis}
+                    minTickGap={36}
+                    tickFormatter={(v) => fmtPeriod(String(v))}
+                  />
+                  <YAxis
+                    tick={{ fill: COLORS.axis, fontSize: 10 }}
+                    tickFormatter={(v: number) => `${(v * 100).toFixed(0)}%`}
+                    width={42}
+                    stroke={COLORS.axis}
+                    domain={[0, 'auto']}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      background: COLORS.bgPanel,
+                      border: `1px solid ${COLORS.borderBright}`,
+                      fontSize: 11,
+                    }}
+                    labelFormatter={(v) => fmtPeriod(String(v))}
+                    formatter={(v, name) => [
+                      `${(Number(v) * 100).toFixed(1)}%`,
+                      String(name),
+                    ]}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="pct_first_lien"
+                    name="1st lien"
+                    stackId="mix"
+                    stroke={COLORS.positive}
+                    fill={COLORS.positive}
+                    fillOpacity={0.6}
+                    isAnimationActive={false}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="pct_second_lien"
+                    name="2nd lien"
+                    stackId="mix"
+                    stroke={WARNING_HEX}
+                    fill={WARNING_HEX}
+                    fillOpacity={0.6}
+                    isAnimationActive={false}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="pct_equity"
+                    name="equity"
+                    stackId="mix"
+                    stroke={COLORS.negative}
+                    fill={COLORS.negative}
+                    fillOpacity={0.6}
+                    isAnimationActive={false}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+              <div
+                className="mono"
+                style={{
+                  fontSize: 10,
+                  color: 'var(--text-secondary)',
+                  letterSpacing: 0.5,
+                  marginTop: 2,
+                  display: 'flex',
+                  gap: 12,
+                }}
+              >
+                <span><span style={{ color: COLORS.positive }}>■</span> 1L</span>
+                <span><span style={{ color: WARNING_HEX }}>■</span> 2L</span>
+                <span><span style={{ color: COLORS.negative }}>■</span> EQUITY</span>
+              </div>
+            </div>
+          </div>
+        )}
+      </Panel>
+
+      {/* ── Panel 2: Per-BDC Summary (most recent per BDC) ──────────── */}
       <Panel
         title="Per-BDC Summary"
-        subtitle={latestPeriod ? `LATEST ${fmtPeriod(latestPeriod).toUpperCase()}` : undefined}
+        subtitle={
+          summary.length > 0
+            ? `MOST RECENT FILING PER BDC · ${summary.length} BDC${summary.length === 1 ? '' : 'S'}`
+            : undefined
+        }
       >
         {summaryQ.isLoading ? (
           <LoadingCursor />
@@ -318,6 +550,7 @@ export default function BDCMonitorPanel() {
             <thead>
               <tr>
                 <th>BDC</th>
+                <th>As of</th>
                 <th style={{ textAlign: 'right' }}>NAV ($mm)</th>
                 <th style={{ textAlign: 'right' }}>Mark %</th>
                 <th style={{ textAlign: 'right' }}>Non-Accrual %</th>
@@ -329,25 +562,37 @@ export default function BDCMonitorPanel() {
             <tbody>
               {summary.map((r: BdcSummaryRow) => {
                 const ticker = tickerByCik.get(r.cik) ?? tickerByCik.get(r.cik.replace(/^0+/, ''));
+                const tickerChip = ticker ? (
+                  <span
+                    className="mono"
+                    style={{
+                      fontSize: 10,
+                      padding: '1px 4px',
+                      border: '1px solid var(--border-bright)',
+                      borderRadius: 2,
+                      marginRight: 6,
+                      color: 'var(--accent)',
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    {ticker}
+                  </span>
+                ) : null;
                 return (
                   <tr key={r.id}>
                     <td>
-                      {ticker && (
-                        <span
-                          className="mono"
-                          style={{
-                            fontSize: 10,
-                            padding: '1px 4px',
-                            border: '1px solid var(--border-bright)',
-                            borderRadius: 2,
-                            marginRight: 6,
-                            color: 'var(--accent)',
-                            letterSpacing: 0.5,
-                          }}
-                          title={`watch-list ticker for CIK ${r.cik}`}
+                      {tickerChip && r.filing_url ? (
+                        <a
+                          href={r.filing_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={`open EDGAR filing ${r.adsh ?? ''}`}
+                          style={{ textDecoration: 'none' }}
                         >
-                          {ticker}
-                        </span>
+                          {tickerChip}
+                        </a>
+                      ) : (
+                        tickerChip
                       )}
                       <span
                         title={r.bdc_name}
@@ -362,6 +607,9 @@ export default function BDCMonitorPanel() {
                       >
                         {r.bdc_name}
                       </span>
+                    </td>
+                    <td className="mono dim" style={{ fontSize: 11 }}>
+                      {fmtPeriod(r.period)}
                     </td>
                     <td className="mono" style={{ textAlign: 'right' }}>
                       {mm(r.total_fair_value, 0)}

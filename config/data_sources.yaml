@@ -612,8 +612,8 @@ bdc:
     - { cik: "0001379785", ticker: "BBDC", name: "Barings BDC" }
     - { cik: "0001377936", ticker: "SAR",  name: "Saratoga Investment" }
     - { cik: "0001345126", ticker: "GAIN", name: "Gladstone Investment" }
-    - { cik: "0001508655", ticker: "BXSL", name: "Blackstone Secured Lending" }
-    - { cik: "0001655888", ticker: "OBDE", name: "Blue Owl Capital Corp III" }
+    - { cik: "0001736035", ticker: "BXSL", name: "Blackstone Secured Lending" }
+    - { cik: "0001807427", ticker: "OBDE", name: "Blue Owl Capital Corp III" }
 
 # ── Phase 7 — Regulatory Flow Monitor ────────────────────────
 # Federal Register API: free, no key. Filterable by agency slug + type.

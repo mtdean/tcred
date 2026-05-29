@@ -20,11 +20,10 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { ExternalLink } from 'lucide-react';
 
-import { getCloFilings, getCloSpreadProxy } from '../../lib/api';
+import { getCloSpreadProxy } from '../../lib/api';
 import { qk } from '../../lib/queryKeys';
-import type { CloSpreadProxyPoint, EdgarFiling } from '../../lib/types';
+import type { CloSpreadProxyPoint } from '../../lib/types';
 import { COLORS } from '../../lib/colors';
 import { fmtDate } from '../../lib/utils';
 import Panel from '../shared/Panel';
@@ -33,18 +32,6 @@ import EmptyState from '../shared/EmptyState';
 
 const PRIMARY_PAIR = { aaa: 'mkt_JAAA', mezz: 'mkt_JBBB' } as const;
 const SECONDARY_PAIR = { aaa: 'mkt_CLOA', mezz: 'mkt_JBBB' } as const;
-
-const FORM_COLOR: Record<string, string> = {
-  'ABS-15G': 'var(--warning)',
-  'ABS-EE': 'var(--neutral)',
-  '424B5': 'var(--positive)',
-  'S-3': 'var(--text-secondary)',
-  '8-K': 'var(--cat-fintech)',
-};
-
-function formColor(form: string | null): string {
-  return FORM_COLOR[form ?? ''] ?? 'var(--text-secondary)';
-}
 
 // Pivot the long-form API rows into one row per date with one column per pair.
 function toChartData(points: CloSpreadProxyPoint[]) {
@@ -233,94 +220,9 @@ function SpreadProxyPanel() {
   );
 }
 
-function FilingsPanel() {
-  const { data, isLoading, isError } = useQuery({
-    queryKey: qk.cloFilings(50),
-    queryFn: () => getCloFilings(50).then((r) => r.data),
-    staleTime: 10 * 60_000,
-  });
-
-  const rows: EdgarFiling[] = data ?? [];
-
-  return (
-    <Panel title="Recent CLO Filings" subtitle="CLO-TAGGED EDGAR FILINGS">
-      {isLoading ? (
-        <LoadingCursor />
-      ) : isError ? (
-        <EmptyState message="FAILED TO LOAD CLO FILINGS" />
-      ) : rows.length === 0 ? (
-        <EmptyState message="NO CLO FILINGS YET" />
-      ) : (
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Filed</th>
-              <th>Form</th>
-              <th>Company</th>
-              <th>Description</th>
-              <th style={{ textAlign: 'center' }}>Link</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((f) => (
-              <tr key={f.accession_no}>
-                <td className="dim" style={{ whiteSpace: 'nowrap' }}>
-                  {fmtDate(f.filed_at)}
-                </td>
-                <td>
-                  <span className="cat-chip" style={{ color: formColor(f.form_type) }}>
-                    {f.form_type ?? '—'}
-                  </span>
-                </td>
-                <td
-                  title={f.company_name ?? ''}
-                  style={{
-                    maxWidth: 280,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {f.company_name || '—'}
-                </td>
-                <td
-                  title={f.description ?? ''}
-                  className="dim"
-                  style={{
-                    maxWidth: 360,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {f.description || '—'}
-                </td>
-                <td style={{ textAlign: 'center' }}>
-                  {f.url && (
-                    <a
-                      href={f.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      title="Open on SEC.gov"
-                    >
-                      <ExternalLink size={12} />
-                    </a>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </Panel>
-  );
-}
-
 export default function CloStressPanel() {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <SpreadProxyPanel />
-      <FilingsPanel />
-    </div>
-  );
+  // The recent-CLO-filings list lived here too; it duplicated the same data
+  // the ABS page's EDGAR FEED already surfaces, so we render just the spread
+  // proxy here now.
+  return <SpreadProxyPanel />;
 }

@@ -92,6 +92,8 @@ def run(base: str, out_dir: Path) -> int:
     s.snap("/bdc/watch-list")
     s.snap("/bdc/nonaccrual-trend")
     s.snap("/bdc/summary")
+    s.snap("/bdc/latest-per-bdc")
+    s.snap("/bdc/aggregate-trend")
     s.snap("/bdc/nonaccruals", {"limit": 100})
     s.snap("/h8/metrics")
     s.snap("/h8/credit-impulse")

@@ -239,6 +239,7 @@ export interface EdgarFiling {
   description: string | null;
   url: string | null;
   asset_class: string | null;
+  issuance_type: 'debt' | 'equity' | null;
 }
 
 export interface EdgarParams {
@@ -246,11 +247,13 @@ export interface EdgarParams {
   offset?: number;
   form_type?: string;
   asset_class?: string;
+  issuance_type?: 'debt' | 'equity';
 }
 
 export interface EdgarFacets {
   form_types: string[];
   asset_classes: string[];
+  issuance_types: string[];
 }
 
 // ── Phase 7: BDC Portfolio Monitor ───────────────────────────────
@@ -275,6 +278,9 @@ export interface BdcSummaryRow {
   cik: string;
   bdc_name: string;
   period: string;
+  adsh: string | null;
+  filed: string | null;
+  filing_url: string | null;
   total_fair_value: number | null;
   total_cost_basis: number | null;
   nonaccrual_fv: number | null;
@@ -288,6 +294,18 @@ export interface BdcSummaryRow {
   mark_to_cost: number | null;
   n_holdings: number | null;
   fetched_at: string;
+}
+
+export interface BdcAggregateTrendPoint {
+  period: string;
+  n_bdcs: number;
+  total_fv: number | null;
+  total_cost: number | null;
+  mark_to_cost: number | null;
+  wa_interest_rate: number | null;
+  pct_first_lien: number | null;
+  pct_second_lien: number | null;
+  pct_equity: number | null;
 }
 
 export interface BdcNonaccrualHolding {

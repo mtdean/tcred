@@ -118,8 +118,14 @@ def _compute_bdc_summary(
     bdc_name: str,
     cik: str,
     period: str,
+    adsh: Optional[str] = None,
+    filed: Optional[str] = None,
 ) -> dict:
-    """Roll holdings up to BDC-level summary. Returns {} for empty input."""
+    """Roll holdings up to BDC-level summary. Returns {} for empty input.
+
+    `adsh` / `filed` identify the source filing (most-recent for this period).
+    They're used by the API to build a canonical EDGAR filing-index URL.
+    """
     if not holdings:
         return {}
 
@@ -129,17 +135,49 @@ def _compute_bdc_summary(
     nonaccrual_fv = sum(h["fair_value"] or 0 for h in nonaccrual)
     nonaccrual_cost = sum(h["cost_basis"] or 0 for h in nonaccrual)
 
-    by_type: dict[str, float] = {}
+    # Lien classification: BDCs encode the lien position in different columns
+    # depending on their breakdown axis. Some put it in Investment Type Axis
+    # ("Senior Secured Loans, First Lien"); most put it inline in the
+    # identifier ("Acme Corp, First lien term loan"). Scan both fields.
+    # `tagged_fv` tracks holdings we *could* classify — if it's 0 the entire
+    # BDC's lien mix is unknown (not "0% first lien"), so we return NULL.
+    by_lien: dict[str, float] = {"first": 0.0, "second": 0.0, "equity": 0.0}
+    tagged_fv = 0.0
     for h in holdings:
-        t = (h.get("investment_type") or "Other").lower()
-        by_type[t] = by_type.get(t, 0) + (h["fair_value"] or 0)
+        blob = (
+            (h.get("investment_type") or "")
+            + " | "
+            + (h.get("company_name") or "")
+        ).lower()
+        fv = h["fair_value"] or 0
+        if "first lien" in blob or "1st lien" in blob or "first-lien" in blob:
+            by_lien["first"] += fv
+            tagged_fv += fv
+        elif "second lien" in blob or "2nd lien" in blob or "second-lien" in blob:
+            by_lien["second"] += fv
+            tagged_fv += fv
+        elif (
+            "common stock" in blob
+            or "preferred stock" in blob
+            or "common shares" in blob
+            or "preferred shares" in blob
+            or "warrant" in blob
+            or "equity interest" in blob
+        ):
+            by_lien["equity"] += fv
+            tagged_fv += fv
 
-    # Weighted average coupon, weighted by fair value.
+    # Weighted average yield over INCOME-GENERATING holdings only.
+    # Including the equity/warrant FV in the denominator dilutes the rate
+    # toward zero and misrepresents what the debt portfolio is earning.
     wa_rate_num = sum(
         (h["interest_rate"] or 0) * (h["fair_value"] or 0)
         for h in holdings if h["interest_rate"]
     )
-    wa_rate = wa_rate_num / total_fv if total_fv else None
+    rate_bearing_fv = sum(
+        h["fair_value"] or 0 for h in holdings if h["interest_rate"]
+    )
+    wa_rate = wa_rate_num / rate_bearing_fv if rate_bearing_fv else None
 
     row_id = hashlib.sha256(f"{cik}_{period}".encode()).hexdigest()[:16]
 
@@ -148,15 +186,22 @@ def _compute_bdc_summary(
         "cik": cik,
         "bdc_name": bdc_name,
         "period": period,
+        "adsh": adsh,
+        "filed": filed,
         "total_fair_value": total_fv,
         "total_cost_basis": total_cost,
         "nonaccrual_fv": nonaccrual_fv,
         "nonaccrual_cost": nonaccrual_cost,
         "nonaccrual_rate_fv": nonaccrual_fv / total_fv if total_fv else None,
         "nonaccrual_rate_cost": nonaccrual_cost / total_cost if total_cost else None,
-        "pct_first_lien": by_type.get("first lien", 0) / total_fv if total_fv else None,
-        "pct_second_lien": by_type.get("second lien", 0) / total_fv if total_fv else None,
-        "pct_equity": by_type.get("equity", 0) / total_fv if total_fv else None,
+        # When nothing classified, the BDC's lien mix is unknown (NULL),
+        # not "0% in every bucket". Largest BDCs (BPCF / ARCC) hit this path.
+        "pct_first_lien":
+            by_lien["first"] / total_fv if (total_fv and tagged_fv) else None,
+        "pct_second_lien":
+            by_lien["second"] / total_fv if (total_fv and tagged_fv) else None,
+        "pct_equity":
+            by_lien["equity"] / total_fv if (total_fv and tagged_fv) else None,
         "wa_interest_rate": wa_rate,
         "mark_to_cost": total_fv / total_cost if total_cost else None,
         "n_holdings": len(holdings),
@@ -218,25 +263,23 @@ def _pick_primary_breakdown(group_df: pd.DataFrame, fv_col: str, cost_col: str) 
     return best_axis
 
 
-def fetch_bdc_data() -> int:
-    """Pipeline: discover URL → download → parse → persist holdings + summaries.
-    Returns total holdings inserted.
+def _ingest_dataframe(df: pd.DataFrame, source: str = "") -> int:
+    """Clean SOI.tsv DataFrame, dedupe across XBRL breakdown axes, persist
+    holdings + per-(cik, ddate) summaries. Returns total holdings inserted.
 
-    The SOI.tsv schema does NOT match PHASE7.md's spec. It's a sparse fact table
-    in XBRL long-form, with each total repeated under multiple breakdown axes.
-    See _pick_primary_breakdown for the de-duplication strategy.
+    Extracted from fetch_bdc_data so both single-zip fetch and multi-zip
+    backfill share one pipeline. `source` is used only for log messages.
+
+    The SOI.tsv schema does NOT match PHASE7.md's spec. It's a sparse fact
+    table in XBRL long-form, with each total repeated under multiple
+    breakdown axes. See _pick_primary_breakdown for the de-duplication strategy.
     """
-    zip_url = _get_latest_bdc_zip_url()
-    if not zip_url:
-        logger.error("Could not determine BDC ZIP URL")
-        return 0
-
-    df = _download_and_parse_soi(zip_url)
     if df is None or df.empty:
         return 0
 
     now = datetime.now(timezone.utc).isoformat()
     stored = 0
+    tag = f" [{source}]" if source else ""
 
     df.columns = [c.strip() for c in df.columns]
 
@@ -249,16 +292,28 @@ def fetch_bdc_data() -> int:
     COL_INV_TYPE = "Investment Type Axis"
     COL_RATE     = "Investment Interest Rate"
     COL_PIK      = "Investment, Interest Rate, Paid in Kind"
-    COL_COST     = "Adjusted cost basis"
-    COL_FV       = "Initial fair value of Investment"
     COL_PCT_NAV  = "Investment Owned, Net Assets, Percentage"
     COL_MATURITY = "Investment Maturity Date"
 
-    required = [COL_ADSH, COL_CIK, COL_NAME, COL_DDATE, COL_PERIOD, COL_COST, COL_FV]
+    # Cost / fair-value column names changed across SOI vintages. Pre-2025 ZIPs
+    # only have "Investment Owned, Cost" / "...Fair Value". The 2026_04 ZIP
+    # carries both old and new names; we prefer the new XBRL tags where
+    # present and fall back to the legacy names otherwise.
+    def _pick_col(*candidates: str) -> Optional[str]:
+        for c in candidates:
+            if c in df.columns:
+                return c
+        return None
+
+    COL_COST = _pick_col("Adjusted cost basis", "Investment Owned, Cost")
+    COL_FV   = _pick_col("Initial fair value of Investment", "Investment Owned, Fair Value")
+
+    required = [COL_ADSH, COL_CIK, COL_NAME, COL_DDATE, COL_PERIOD]
     missing = [c for c in required if c not in df.columns]
-    if missing:
+    if missing or COL_COST is None or COL_FV is None:
         logger.error(
-            f"BDC SOI missing expected columns: {missing}. "
+            f"BDC SOI{tag} missing expected columns: "
+            f"required={missing} cost={COL_COST} fv={COL_FV}. "
             f"Available: {list(df.columns)[:20]}"
         )
         return 0
@@ -287,7 +342,7 @@ def fetch_bdc_data() -> int:
             df = df[df[axis].map(_norm) == ""]
 
     if df.empty:
-        logger.warning("BDC SOI produced 0 usable holdings after rollup filter")
+        logger.warning(f"BDC SOI{tag} produced 0 usable holdings after rollup filter")
         return 0
 
     # Each row should have exactly one breakdown axis populated; multi-axis
@@ -306,7 +361,7 @@ def fetch_bdc_data() -> int:
     df = df.sort_values(sort_cols, ascending=False).copy()
 
     unique_bdcs = df[[COL_CIK, COL_NAME]].drop_duplicates()
-    logger.info(f"BDC dataset: {len(df)} candidate rows across {len(unique_bdcs)} BDCs")
+    logger.info(f"BDC dataset{tag}: {len(df)} candidate rows across {len(unique_bdcs)} BDCs")
 
     def _get(row, col: str) -> str:
         return _norm(row.get(col) if col in df.columns else "")
@@ -333,6 +388,17 @@ def fetch_bdc_data() -> int:
                     f"{_get(row, COL_ADSH)}|{primary}|{inv_id}|{ddate}|{idx}".encode()
                 ).hexdigest()[:16]
 
+                # Non-accrual: not a typed XBRL fact in SOI. Some BDCs do
+                # append "Non-accrual status" / "Non-Accrual Loans" inline to
+                # the Identifier or Type axis, so we text-scan those strings.
+                # Catches the explicit-tagger BDCs; silent on the rest.
+                is_na_text = (
+                    "non-accrual" in inv_id.lower()
+                    or "nonaccrual" in inv_id.lower()
+                    or "non-accrual" in inv_type.lower()
+                    or "nonaccrual" in inv_type.lower()
+                )
+
                 h = {
                     "id": row_id,
                     "adsh": _get(row, COL_ADSH),
@@ -348,10 +414,7 @@ def fetch_bdc_data() -> int:
                     "fair_value": _safe_float(_get(row, COL_FV)),
                     "fair_value_pct_nav": _safe_float(_get(row, COL_PCT_NAV)),
                     "maturity_date": _get(row, COL_MATURITY)[:20],
-                    # Non-accrual is not reliably tagged as a typed XBRL fact in
-                    # SOI.tsv — most BDCs disclose status in footnote text. Left
-                    # as 0 until a text-extraction path is wired.
-                    "is_nonaccrual": 0,
+                    "is_nonaccrual": 1 if is_na_text else 0,
                     "fetched_at": now,
                 }
                 holdings.append(h)
@@ -360,14 +423,27 @@ def fetch_bdc_data() -> int:
                     cols = ", ".join(h.keys())
                     placeholders = ", ".join(f":{k}" for k in h.keys())
                     conn.execute(
-                        f"INSERT OR IGNORE INTO bdc_holdings ({cols}) VALUES ({placeholders})",
+                        f"INSERT OR REPLACE INTO bdc_holdings ({cols}) VALUES ({placeholders})",
                         h,
                     )
                     stored += 1
                 except Exception as e:
                     logger.debug(f"BDC holding insert skip: {e}")
 
-            summary = _compute_bdc_summary(holdings, str(bdc_name), str(cik), str(ddate))
+            # Source filing: rows are sorted by 'filed' DESC, so the first
+            # row of each group came from the most-recently-filed view.
+            first_row = sub.iloc[0] if not sub.empty else None
+            src_adsh = _get(first_row, COL_ADSH) if first_row is not None else None
+            src_filed = (
+                _get(first_row, "filed")
+                if first_row is not None and "filed" in df.columns
+                else None
+            )
+
+            summary = _compute_bdc_summary(
+                holdings, str(bdc_name), str(cik), str(ddate),
+                adsh=src_adsh or None, filed=src_filed or None,
+            )
             if summary:
                 try:
                     cols = ", ".join(summary.keys())
@@ -379,8 +455,76 @@ def fetch_bdc_data() -> int:
                 except Exception as e:
                     logger.debug(f"BDC summary insert skip: {e}")
 
-    logger.info(f"BDC data stored: {stored} holdings")
+    logger.info(f"BDC data stored{tag}: {stored} holdings")
     return stored
+
+
+def fetch_bdc_data() -> int:
+    """Discover the latest BDC ZIP, download, parse, ingest. Returns holdings stored."""
+    zip_url = _get_latest_bdc_zip_url()
+    if not zip_url:
+        logger.error("Could not determine BDC ZIP URL")
+        return 0
+
+    df = _download_and_parse_soi(zip_url)
+    if df is None or df.empty:
+        return 0
+
+    source = zip_url.rsplit("/", 1)[-1]
+    return _ingest_dataframe(df, source=source)
+
+
+def _list_all_bdc_zip_urls() -> list[str]:
+    """Scrape the index page for all ZIP links (quarterly + monthly), sorted
+    oldest → newest. Backfill iterates these in chronological order so newer
+    filings overwrite older ones in bdc_summary's INSERT OR REPLACE."""
+    try:
+        resp = requests.get(BDC_DATA_INDEX, headers=HEADERS, timeout=15)
+        resp.raise_for_status()
+        matches = re.findall(
+            rf'href="({re.escape(BDC_BASE_PATH)}/[^"]+\.zip)"', resp.text
+        )
+        unique = sorted(set(matches), key=_sort_key)  # oldest first
+        return [f"https://www.sec.gov{p}" for p in unique]
+    except Exception as e:
+        logger.error(f"BDC ZIP list discovery error: {e}")
+        return []
+
+
+def backfill_bdc_data(since_year: Optional[int] = None) -> dict:
+    """Iterate every historical BDC ZIP in chronological order, ingest each.
+
+    `since_year`: optional 4-digit year; ZIPs older than Jan of that year are skipped.
+    Returns {"zips_processed": n, "total_holdings": n, "per_zip": [...]}.
+
+    Ingestion uses INSERT OR IGNORE on bdc_holdings (deduped by adsh+axis+id)
+    and INSERT OR REPLACE on bdc_summary (per cik+ddate). Going oldest →
+    newest means the most recently filed view of any (cik, ddate) wins, which
+    matches the dedupe logic in _ingest_dataframe.
+    """
+    urls = _list_all_bdc_zip_urls()
+    if since_year is not None:
+        urls = [u for u in urls if _sort_key(u)[0] >= since_year]
+    if not urls:
+        logger.error("No BDC ZIPs discovered for backfill")
+        return {"zips_processed": 0, "total_holdings": 0, "per_zip": []}
+
+    logger.info(f"BDC backfill starting: {len(urls)} ZIPs")
+    per_zip: list[dict] = []
+    total = 0
+    for i, zip_url in enumerate(urls, 1):
+        name = zip_url.rsplit("/", 1)[-1]
+        logger.info(f"BDC backfill [{i}/{len(urls)}] {name}")
+        df = _download_and_parse_soi(zip_url)
+        if df is None or df.empty:
+            per_zip.append({"zip": name, "holdings": 0, "status": "empty"})
+            continue
+        n = _ingest_dataframe(df, source=name)
+        total += n
+        per_zip.append({"zip": name, "holdings": n, "status": "ok"})
+
+    logger.info(f"BDC backfill complete: {total} holdings across {len(urls)} ZIPs")
+    return {"zips_processed": len(urls), "total_holdings": total, "per_zip": per_zip}
 
 
 def get_watch_list() -> list[dict]:
@@ -393,10 +537,15 @@ def get_bdc_nonaccrual_trend() -> list[dict]:
     """Aggregate non-accrual rate across all BDCs by observation period.
     Core private-credit stress indicator.
 
-    Aggregates are NAV-weighted (total_fv / total_cost) rather than simple
-    averages so a tiny BDC with an outlier mark (e.g. EQUUS at 4x mark-to-cost
-    on a $10m portfolio) doesn't dominate the trend versus a $25bn BDC
-    near par.
+    Aggregates are NAV-weighted rather than simple averages so a tiny BDC with
+    an outlier mark doesn't dominate the trend versus a $25bn BDC near par.
+    Filtered to periods with ≥5 BDCs so off-cycle single-BDC ddates (e.g.
+    Saratoga's Feb fiscal close) don't whipsaw the mark-to-cost line.
+
+    The WA-rate aggregate excludes BDCs with wa_interest_rate = 0/NULL from
+    both numerator and denominator; many of the largest BDCs aggregate at
+    issuer level and don't tag tranche rates, which would otherwise dilute
+    the industry rate toward zero.
     """
     with get_conn() as conn:
         rows = conn.execute(
@@ -413,17 +562,51 @@ def get_bdc_nonaccrual_trend() -> list[dict]:
                 CASE WHEN SUM(total_cost_basis) > 0
                      THEN SUM(total_fair_value) * 1.0 / SUM(total_cost_basis)
                      ELSE NULL END                                           AS avg_mark_to_cost,
-                CASE WHEN SUM(total_fair_value) > 0
-                     THEN SUM(wa_interest_rate * total_fair_value) * 1.0
-                          / SUM(total_fair_value)
+                CASE WHEN SUM(CASE WHEN wa_interest_rate > 0
+                                   THEN total_fair_value ELSE 0 END) > 0
+                     THEN SUM(CASE WHEN wa_interest_rate > 0
+                                   THEN wa_interest_rate * total_fair_value
+                                   ELSE 0 END) * 1.0
+                          / SUM(CASE WHEN wa_interest_rate > 0
+                                     THEN total_fair_value ELSE 0 END)
                      ELSE NULL END                                           AS avg_wa_rate
             FROM bdc_summary
             WHERE total_fair_value > 0
             GROUP BY period
+            HAVING COUNT(DISTINCT cik) >= 5
             ORDER BY period ASC
             """
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+def _edgar_filing_url(cik: Optional[str], adsh: Optional[str]) -> Optional[str]:
+    """Canonical EDGAR filing-index URL from CIK + accession number.
+
+    Example: cik=1287750, adsh=0001287750-25-000026 →
+    https://www.sec.gov/Archives/edgar/data/1287750/000128775025000026/0001287750-25-000026-index.htm
+    """
+    if not cik or not adsh:
+        return None
+    try:
+        cik_int = int(str(cik).lstrip("0") or "0")
+        if cik_int == 0:
+            return None
+    except ValueError:
+        return None
+    adsh_clean = str(adsh).replace("-", "")
+    if len(adsh_clean) != 18:
+        return None
+    return (
+        f"https://www.sec.gov/Archives/edgar/data/{cik_int}/"
+        f"{adsh_clean}/{adsh}-index.htm"
+    )
+
+
+def _attach_filing_url(row: dict) -> dict:
+    """Annotate a bdc_summary row with `filing_url` if cik+adsh are present."""
+    row["filing_url"] = _edgar_filing_url(row.get("cik"), row.get("adsh"))
+    return row
 
 
 def get_bdc_summary(period: Optional[str] = None) -> list[dict]:
@@ -442,6 +625,96 @@ def get_bdc_summary(period: Optional[str] = None) -> list[dict]:
                 ORDER BY total_fair_value DESC
                 """
             ).fetchall()
+    return [_attach_filing_url(dict(r)) for r in rows]
+
+
+def get_bdc_summary_latest_per_bdc() -> list[dict]:
+    """Each BDC's most-recent observation across all periods.
+
+    Different BDCs report on different fiscal calendars (Saratoga is off-cycle,
+    some haven't filed Q1 yet), so a single global "latest period" leaves most
+    BDCs missing. Joining bdc_summary against MAX(period) per cik gives the
+    freshest available snapshot per BDC. Sorted by NAV desc.
+    """
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT s.*
+            FROM bdc_summary s
+            JOIN (
+                SELECT cik, MAX(period) AS max_period
+                FROM bdc_summary
+                WHERE total_fair_value > 0
+                GROUP BY cik
+            ) m
+              ON s.cik = m.cik AND s.period = m.max_period
+            ORDER BY s.total_fair_value DESC
+            """
+        ).fetchall()
+    return [_attach_filing_url(dict(r)) for r in rows]
+
+
+def get_bdc_aggregate_trend() -> list[dict]:
+    """Per-period industry aggregates: NAV total ($), NAV-weighted WA rate,
+    NAV-weighted portfolio mix (1st lien / 2nd lien / equity), mark-to-cost.
+
+    Filters to periods with at least 5 reporting BDCs so off-cycle single-BDC
+    observations (e.g. Saratoga's Feb fiscal close) don't add spikes to the chart.
+    """
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT
+                period,
+                COUNT(DISTINCT cik) AS n_bdcs,
+                SUM(total_fair_value) AS total_fv,
+                SUM(total_cost_basis) AS total_cost,
+                CASE WHEN SUM(total_fair_value) > 0
+                     THEN SUM(total_fair_value) * 1.0 / SUM(total_cost_basis)
+                     ELSE NULL END AS mark_to_cost,
+                -- WA rate: exclude BDCs with no rate data (NULL/0) from
+                -- both numerator and denominator to avoid zero-dilution.
+                CASE WHEN SUM(CASE WHEN wa_interest_rate > 0
+                                   THEN total_fair_value ELSE 0 END) > 0
+                     THEN SUM(CASE WHEN wa_interest_rate > 0
+                                   THEN wa_interest_rate * total_fair_value
+                                   ELSE 0 END) * 1.0
+                          / SUM(CASE WHEN wa_interest_rate > 0
+                                     THEN total_fair_value ELSE 0 END)
+                     ELSE NULL END AS wa_interest_rate,
+                -- Lien %s: NULL rows (BDCs we couldn't classify) are
+                -- excluded from both sides; NAV-weighted over classifiable BDCs.
+                CASE WHEN SUM(CASE WHEN pct_first_lien IS NOT NULL
+                                   THEN total_fair_value ELSE 0 END) > 0
+                     THEN SUM(CASE WHEN pct_first_lien IS NOT NULL
+                                   THEN pct_first_lien * total_fair_value
+                                   ELSE 0 END) * 1.0
+                          / SUM(CASE WHEN pct_first_lien IS NOT NULL
+                                     THEN total_fair_value ELSE 0 END)
+                     ELSE NULL END AS pct_first_lien,
+                CASE WHEN SUM(CASE WHEN pct_second_lien IS NOT NULL
+                                   THEN total_fair_value ELSE 0 END) > 0
+                     THEN SUM(CASE WHEN pct_second_lien IS NOT NULL
+                                   THEN pct_second_lien * total_fair_value
+                                   ELSE 0 END) * 1.0
+                          / SUM(CASE WHEN pct_second_lien IS NOT NULL
+                                     THEN total_fair_value ELSE 0 END)
+                     ELSE NULL END AS pct_second_lien,
+                CASE WHEN SUM(CASE WHEN pct_equity IS NOT NULL
+                                   THEN total_fair_value ELSE 0 END) > 0
+                     THEN SUM(CASE WHEN pct_equity IS NOT NULL
+                                   THEN pct_equity * total_fair_value
+                                   ELSE 0 END) * 1.0
+                          / SUM(CASE WHEN pct_equity IS NOT NULL
+                                     THEN total_fair_value ELSE 0 END)
+                     ELSE NULL END AS pct_equity
+            FROM bdc_summary
+            WHERE total_fair_value > 0
+            GROUP BY period
+            HAVING COUNT(DISTINCT cik) >= 5
+            ORDER BY period ASC
+            """
+        ).fetchall()
     return [dict(r) for r in rows]
 
 

@@ -53,6 +53,93 @@ def edgar_index_url(hit_id: str, company_str: str) -> str:
     return ""
 
 
+# Company-name → asset_class rules, evaluated in order. The first regex that
+# matches wins. Each entry is (regex, asset_class). Earlier text-keyword
+# matching (e.g. q="royalty") was indiscriminate — CMBS deals that mention
+# "royalty payments" in boilerplate were getting tagged 'royalty'. Name-based
+# matching is far more reliable because deal trusts encode the asset type in
+# their name (e.g. "Wells Fargo Commercial Mortgage Trust 2026-5C9").
+_NAME_CLASS_RULES: list[tuple[re.Pattern, str]] = [
+    # Mortgage / RMBS / CMBS — added because these were miscategorized as
+    # "royalty" before. "BANK 20XX-BNKn" is the common name for CMBS conduit
+    # deals jointly sponsored by Wells / BAML / JPM / Morgan Stanley.
+    (re.compile(r"\b(?:commercial|residential|multifamily)\s+mortgage\b", re.I), "mortgage"),
+    (re.compile(r"\bmortgage trust\b", re.I), "mortgage"),
+    (re.compile(r"\b(?:RMBS|CMBS|MBS)\b"), "mortgage"),
+    (re.compile(r"^BANK\s+20\d{2}-\w+", re.I), "mortgage"),
+    (re.compile(r"\bFEDERAL HOME LOAN MORTGAGE\b", re.I), "mortgage"),
+    (re.compile(r"\bFANNIE MAE\b|\bFREDDIE MAC\b", re.I), "mortgage"),
+    (re.compile(r"\bground lease\b|\bland lease\b", re.I), "ground lease"),
+    # Royalty — narrow to the actual royalty securitization patterns. Drug
+    # royalty LPs, music royalty trusts, Royalty Pharma, etc. Otherwise the
+    # mere word "royalty" anywhere in a CMBS doc would tag the deal as one.
+    (re.compile(r"\bdrug royalty\b|\bmusic royalty\b|\broyalty pharma\b", re.I), "royalty"),
+    (re.compile(r"\broyalty rights?\b|\broyalty trust\b|\broyalty receivables?\b", re.I), "royalty"),
+    # CLO
+    (re.compile(r"\b(?:CLO|collateralized loan obligation)\b", re.I), "CLO"),
+    # Auto
+    (re.compile(r"\bauto (?:receivables|owner trust|lease)\b", re.I), "auto loan"),
+    (re.compile(r"\bvehicle owner trust\b", re.I), "auto loan"),
+    # Credit card
+    (re.compile(r"\bcredit card\b|\bcard funding\b|\bcard issuance\b", re.I), "credit card"),
+    # Equipment
+    (re.compile(r"\bequipment (?:finance|trust|collateral|leasing)\b", re.I), "equipment finance"),
+    # Aircraft / aviation
+    (re.compile(r"\baircraft\b|\baviation\b", re.I), "aircraft"),
+    # Student loan
+    (re.compile(r"\bstudent loan\b|\beducation loan\b", re.I), "student loan"),
+    # Marketplace / consumer
+    (re.compile(r"\bmarketplace\b", re.I), "marketplace lending"),
+    (re.compile(r"\bconsumer (?:receivables|loan)\b|\bpersonal loan\b", re.I), "consumer loan"),
+    # Solar / specialty
+    (re.compile(r"\bsolar\b", re.I), "solar"),
+    (re.compile(r"\bdata center\b", re.I), "data center"),
+    (re.compile(r"\bcontainer (?:lease|trust)\b|\bmarine container\b", re.I), "container"),
+    (re.compile(r"\bfiber|tower\b|\bwireless\b|\bspectrum\b", re.I), "wireless"),
+    (re.compile(r"\bwhole business\b", re.I), "whole business"),
+    (re.compile(r"\bfloorplan\b|\bfloor plan\b", re.I), "floorplan"),
+]
+
+
+def _classify_asset_class(company_name: str, fallback: str) -> str:
+    """Return the asset class implied by the deal-trust's name. Falls back to
+    the EDGAR FTS keyword that surfaced the filing if no name pattern matches."""
+    if not company_name:
+        return fallback
+    for pat, label in _NAME_CLASS_RULES:
+        if pat.search(company_name):
+            return label
+    return fallback
+
+
+# Trust / vehicle naming patterns that mark a 424B5 / S-3 / 8-K as a
+# securitization (i.e. debt) rather than a corporate offering (often equity).
+# ABS-15G and ABS-EE are always debt by form type.
+_DEBT_NAME_PATTERN = re.compile(
+    r"\btrust\b|\breceivables?\b|\bfunding (?:co|corp|llc)\b|"
+    r"\bissuance\b|\bnote(?:s)? trust\b|\bcollateral\b|\bowner trust\b|"
+    r"\bmaster trust\b|\bcard funding\b",
+    re.IGNORECASE,
+)
+_ABS_FORMS = {"ABS-15G", "ABS-EE"}
+
+
+def _classify_issuance_type(company_name: str, form_type: str) -> str:
+    """Best-effort debt/equity tag for an EDGAR filing.
+
+    ABS-specific forms (ABS-15G / ABS-EE) are always debt. For 424B5 / S-3 /
+    8-K, the trust/vehicle naming convention is the most reliable signal —
+    securitization issuers are almost always named with 'Trust', 'Receivables',
+    'Funding LLC', etc. Plain corporates doing the same form types are
+    usually equity offerings.
+    """
+    if form_type in _ABS_FORMS:
+        return "debt"
+    if company_name and _DEBT_NAME_PATTERN.search(company_name):
+        return "debt"
+    return "equity"
+
+
 def _search_filings(
     form_type: str,
     keywords: list[str],
@@ -97,7 +184,13 @@ def _search_filings(
                         "filed_at": src.get("file_date", ""),
                         "description": f'Keyword match: "{keyword}"',
                         "url": edgar_index_url(hit_id, company),
-                        "asset_class": keyword,
+                        # Asset class is derived from the deal-trust name when
+                        # possible — the FTS keyword that surfaced the filing
+                        # is only the fallback. Stops mortgage trusts from
+                        # being tagged 'royalty' just because the doc text
+                        # contains the word.
+                        "asset_class": _classify_asset_class(company, keyword),
+                        "issuance_type": _classify_issuance_type(company, form_type),
                         "fetched_at": _now(),
                     }
                 )
@@ -141,13 +234,14 @@ def get_recent_filings(
     offset: int = 0,
     form_type: Optional[str] = None,
     asset_class: Optional[str] = None,
+    issuance_type: Optional[str] = None,
 ) -> list[dict]:
     """Return ABS-related filings from the DB, newest first, with optional filters."""
     from cache.db import get_conn
 
     sql = """
         SELECT accession_no, company_name, form_type, filed_at,
-               description, url, asset_class
+               description, url, asset_class, issuance_type
         FROM edgar_filings
         WHERE 1=1
     """
@@ -158,6 +252,9 @@ def get_recent_filings(
     if asset_class:
         sql += " AND asset_class = ?"
         params.append(asset_class)
+    if issuance_type:
+        sql += " AND issuance_type = ?"
+        params.append(issuance_type)
     sql += " ORDER BY filed_at DESC LIMIT ? OFFSET ?"
     params += [limit, offset]
 
@@ -167,7 +264,7 @@ def get_recent_filings(
 
 
 def get_edgar_facets() -> dict:
-    """Distinct form types and asset classes present, for filter dropdowns."""
+    """Distinct form types, asset classes, and issuance types — for filter dropdowns."""
     from cache.db import get_conn
 
     with get_conn() as conn:
@@ -183,4 +280,10 @@ def get_edgar_facets() -> dict:
                 "SELECT DISTINCT asset_class FROM edgar_filings WHERE asset_class IS NOT NULL ORDER BY asset_class"
             )
         ]
-    return {"form_types": forms, "asset_classes": classes}
+        issuance_types = [
+            r[0]
+            for r in conn.execute(
+                "SELECT DISTINCT issuance_type FROM edgar_filings WHERE issuance_type IS NOT NULL ORDER BY issuance_type"
+            )
+        ]
+    return {"form_types": forms, "asset_classes": classes, "issuance_types": issuance_types}
