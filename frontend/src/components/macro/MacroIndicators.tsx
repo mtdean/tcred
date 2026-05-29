@@ -1,12 +1,13 @@
 // Headline macro indicators: latest / prev / YoY change / updated.
 
-import { useQueries } from '@tanstack/react-query';
-import { getFredHistory } from '../../lib/api';
+import { useQueries, useQuery } from '@tanstack/react-query';
+import { getFredHistory, getFreshness } from '../../lib/api';
 import { qk } from '../../lib/queryKeys';
 import type { MetricPoint } from '../../lib/types';
 import { fmtMonth, signClass } from '../../lib/utils';
 import Panel from '../shared/Panel';
 import LoadingCursor from '../shared/LoadingCursor';
+import FreshnessChip from '../shared/FreshnessChip';
 
 type Mode = 'rate' | 'yoy' | 'index';
 
@@ -17,6 +18,16 @@ interface IndicatorDef {
   periods: number; // observations back for "year ago"
 }
 
+interface Computed {
+  label: string;
+  seriesId: string;
+  latest: string;
+  prev: string;
+  yoy: number | null; // change vs year ago (pp)
+  yoyUnit: string;
+  updated: string;
+}
+
 const INDICATORS: IndicatorDef[] = [
   { seriesId: 'UNRATE', label: 'Unemployment Rate', mode: 'rate', periods: 12 },
   { seriesId: 'CPIAUCSL', label: 'CPI (YoY)', mode: 'yoy', periods: 12 },
@@ -24,15 +35,6 @@ const INDICATORS: IndicatorDef[] = [
   { seriesId: 'GDPC1', label: 'Real GDP (YoY)', mode: 'yoy', periods: 4 },
   { seriesId: 'UMCSENT', label: 'U. Michigan Sentiment', mode: 'index', periods: 12 },
 ];
-
-interface Computed {
-  label: string;
-  latest: string;
-  prev: string;
-  yoy: number | null; // change vs year ago (pp)
-  yoyUnit: string;
-  updated: string;
-}
 
 function compute(def: IndicatorDef, data: MetricPoint[]): Computed | null {
   const pts = data.filter((p) => p.value != null);
@@ -49,6 +51,7 @@ function compute(def: IndicatorDef, data: MetricPoint[]): Computed | null {
     const prevYoY = prevYearAgo ? (prev / prevYearAgo - 1) * 100 : null;
     return {
       label: def.label,
+      seriesId: def.seriesId,
       latest: latestYoY != null ? `${latestYoY.toFixed(1)}%` : '—',
       prev: prevYoY != null ? `${prevYoY.toFixed(1)}%` : '—',
       yoy: latestYoY != null && prevYoY != null ? latestYoY - prevYoY : null,
@@ -63,6 +66,7 @@ function compute(def: IndicatorDef, data: MetricPoint[]): Computed | null {
   const fmtLevel = (v: number) => (isRate ? `${v.toFixed(1)}%` : v.toFixed(1));
   return {
     label: def.label,
+    seriesId: def.seriesId,
     latest: fmtLevel(last),
     prev: fmtLevel(prev),
     yoy: yearAgo != null ? last - yearAgo : null,
@@ -85,6 +89,15 @@ export default function MacroIndicators() {
     (r): r is Computed => r !== null,
   );
 
+  const { data: freshness } = useQuery({
+    queryKey: qk.freshness,
+    queryFn: () => getFreshness().then((r) => r.data),
+    refetchInterval: 5 * 60_000,
+  });
+  const freshBySeries = new Map(
+    (freshness?.series ?? []).map((s) => [s.series_id, s]),
+  );
+
   return (
     <Panel title="Macro Indicators">
       {loading && rows.length === 0 ? (
@@ -101,19 +114,34 @@ export default function MacroIndicators() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
-              <tr key={r.label}>
-                <td>{r.label}</td>
-                <td className="num" style={{ color: 'var(--text-primary)' }}>{r.latest}</td>
-                <td className="num muted">{r.prev}</td>
-                <td className="num">
-                  <span className={signClass(r.yoy)}>
-                    {r.yoy == null ? '—' : `${r.yoy > 0 ? '+' : ''}${r.yoy.toFixed(1)}${r.yoyUnit}`}
-                  </span>
-                </td>
-                <td className="num dim">{r.updated}</td>
-              </tr>
-            ))}
+            {rows.map((r) => {
+              const f = freshBySeries.get(r.seriesId);
+              return (
+                <tr key={r.label}>
+                  <td>{r.label}</td>
+                  <td className="num" style={{ color: 'var(--text-primary)' }}>{r.latest}</td>
+                  <td className="num muted">{r.prev}</td>
+                  <td className="num">
+                    <span className={signClass(r.yoy)}>
+                      {r.yoy == null ? '—' : `${r.yoy > 0 ? '+' : ''}${r.yoy.toFixed(1)}${r.yoyUnit}`}
+                    </span>
+                  </td>
+                  <td className="num dim" style={{ whiteSpace: 'nowrap' }}>
+                    {r.updated}
+                    {f && f.status !== 'fresh' && (
+                      <>
+                        {' '}
+                        <FreshnessChip
+                          status={f.status}
+                          daysSince={f.days_since}
+                          frequency={f.frequency}
+                        />
+                      </>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}

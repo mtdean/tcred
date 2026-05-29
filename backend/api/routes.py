@@ -816,6 +816,31 @@ def db_list_briefings(limit: int = 30) -> list[dict]:
     return _list(limit=limit)
 
 
+# ── DB BACKUPS ───────────────────────────────────────────────
+
+@router.get("/backups")
+def list_db_backups():
+    """All SQLite snapshots currently on disk, newest first."""
+    from data.backups import list_backups
+    return {"backups": list_backups()}
+
+
+@router.post("/backups/run")
+def trigger_db_backup():
+    """Take a snapshot of monitor.db now, prune the retention window."""
+    from data.backups import backup_database
+    return backup_database()
+
+
+# ── DATA FRESHNESS ───────────────────────────────────────────
+
+@router.get("/freshness")
+def get_freshness():
+    """Per-series staleness assessment + summary counts + last-run-per-job."""
+    from data.freshness import freshness_report
+    return freshness_report()
+
+
 @router.get("/jobs/status")
 def jobs_status():
     """Latest run per scheduled job: status, duration, rows ingested, last error."""

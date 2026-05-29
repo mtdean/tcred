@@ -1,7 +1,7 @@
-// Bottom bar: live feed health, DB row counts. Polls the backend.
+// Bottom bar: live feed health, DB row counts, data-freshness rollup.
 
 import { useQuery } from '@tanstack/react-query';
-import { getStatus } from '../../lib/api';
+import { getFreshness, getStatus } from '../../lib/api';
 import { qk } from '../../lib/queryKeys';
 
 export default function StatusBar() {
@@ -9,6 +9,12 @@ export default function StatusBar() {
     queryKey: qk.status,
     queryFn: () => getStatus().then((r) => r.data),
     refetchInterval: 30_000,
+  });
+
+  const { data: freshness } = useQuery({
+    queryKey: qk.freshness,
+    queryFn: () => getFreshness().then((r) => r.data),
+    refetchInterval: 5 * 60_000,
   });
 
   if (isLoading) {
@@ -34,6 +40,18 @@ export default function StatusBar() {
   const allLive = feeds.total > 0 && feeds.live === feeds.total;
   const feedDot = feeds.total === 0 ? 'dot-warn' : allLive ? 'dot-live' : 'dot-warn';
 
+  const s = freshness?.summary;
+  const stale = (s?.stale ?? 0) + (s?.missing ?? 0);
+  const dead = s?.dead ?? 0;
+  // Color the data badge by the worst current status (dead > stale > clean).
+  const dataDotClass = dead > 0 ? 'dot-dead' : stale > 0 ? 'dot-warn' : 'dot-live';
+  const dataLabel =
+    dead > 0
+      ? `${dead} DEAD${stale > 0 ? ` · ${stale} STALE` : ''}`
+      : stale > 0
+        ? `${stale} STALE`
+        : 'ALL FRESH';
+
   return (
     <footer className="statusbar">
       <span>
@@ -50,6 +68,12 @@ export default function StatusBar() {
       <span>
         EDGAR <span className="mono">{edgar_filings.toLocaleString()}</span>
       </span>
+      {freshness && (
+        <span title="Per-series staleness across configured FRED series">
+          <span className={`dot ${dataDotClass}`} />
+          DATA {dataLabel}
+        </span>
+      )}
     </footer>
   );
 }

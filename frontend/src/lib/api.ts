@@ -176,6 +176,39 @@ export interface BriefingChatResponse {
   };
 }
 
+// ── Freshness ──────────────────────────────────────────
+export type FreshnessStatus = 'fresh' | 'stale' | 'dead' | 'missing';
+
+export interface FreshnessSeries {
+  series_id: string;
+  label: string | null;
+  category: string | null;
+  frequency: string;
+  latest_date: string | null;
+  days_since: number | null;
+  status: FreshnessStatus;
+}
+
+export interface FreshnessJob {
+  job_id: string;
+  status: string | null;
+  started_at: string | null;
+  ended_at: string | null;
+  duration_ms: number | null;
+  rows_ingested: number | null;
+  hours_since: number | null;
+  error: string | null;
+}
+
+export interface FreshnessReport {
+  as_of: string;
+  series: FreshnessSeries[];
+  summary: { fresh: number; stale: number; dead: number; missing: number };
+  jobs: FreshnessJob[];
+}
+
+export const getFreshness = () => api.get<FreshnessReport>('/freshness');
+
 export const listBriefings = (limit = 30) =>
   api.get<{ items: BriefingListItem[] }>('/briefings', { params: { limit } });
 

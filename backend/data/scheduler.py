@@ -154,6 +154,17 @@ def _regulatory_inner() -> int:
     return n
 
 
+def _backup_inner() -> int:
+    """Nightly SQLite snapshot of monitor.db with rolling retention."""
+    from data.backups import backup_database
+    result = backup_database()
+    logger.info(
+        "Scheduler: DB backup — %s (%.1f MB)",
+        result["backup_path"], result["size_bytes"] / 1_048_576,
+    )
+    return result["kept"]
+
+
 # Instrumented entry points the scheduler / initial fetch invoke.
 _job_feeds = _instrument("feeds", _feeds_inner)
 _job_market = _instrument("market", _market_inner)
@@ -163,6 +174,7 @@ _job_hhdc = _instrument("hhdc", _hhdc_inner)
 _job_health = _instrument("health", _health_inner)
 _job_bdc = _instrument("bdc", _bdc_inner)
 _job_regulatory = _instrument("regulatory", _regulatory_inner)
+_job_backup = _instrument("backup", _backup_inner)
 
 
 async def start_scheduler():
@@ -239,6 +251,16 @@ async def start_scheduler():
         _job_regulatory,
         IntervalTrigger(hours=12),
         id="regulatory",
+        max_instances=1,
+        replace_existing=True,
+    )
+
+    # Nightly DB backup with rolling retention. SQLite's online backup API is
+    # safe against concurrent writes — no shutdown needed.
+    _scheduler.add_job(
+        _job_backup,
+        IntervalTrigger(hours=24),
+        id="backup",
         max_instances=1,
         replace_existing=True,
     )

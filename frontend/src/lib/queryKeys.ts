@@ -44,4 +44,7 @@ export const qk = {
   briefings: ['briefings'] as const,
   briefing: (id: string) => ['briefings', id] as const,
   latestBriefing: ['briefings', 'latest'] as const,
+
+  // Freshness
+  freshness: ['freshness'] as const,
 };
