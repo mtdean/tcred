@@ -5,6 +5,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { Send, Sparkles, RefreshCw } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {
   chatWithBriefing,
   generateBriefing,
@@ -213,14 +215,16 @@ function BriefingBody({ briefing }: { briefing: Briefing }) {
   return (
     <div>
       <div
+        className="md-body"
         style={{
-          whiteSpace: 'pre-wrap',
           fontSize: 13,
           lineHeight: 1.55,
           marginBottom: briefing.watch_items?.length ? 16 : 0,
         }}
       >
-        {briefing.briefing_md}
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+          {briefing.briefing_md}
+        </ReactMarkdown>
       </div>
 
       {briefing.watch_items && briefing.watch_items.length > 0 && (
@@ -346,22 +350,23 @@ function ChatPanel({ briefingId }: { briefingId: string }) {
         )}
 
         {history.map((m, i) => (
-          <div
-            key={i}
-            style={{
-              marginBottom: 12,
-              fontSize: 12,
-              lineHeight: 1.5,
-              whiteSpace: 'pre-wrap',
-            }}
-          >
+          <div key={i} style={{ marginBottom: 12, fontSize: 12, lineHeight: 1.5 }}>
             <div
               className="muted"
               style={{ fontSize: 10, letterSpacing: 1, marginBottom: 2 }}
             >
               {m.role === 'user' ? 'YOU' : 'ANALYST'}
             </div>
-            <div>{m.content}</div>
+            {m.role === 'user' ? (
+              // User input stays plain — show their literal text.
+              <div style={{ whiteSpace: 'pre-wrap' }}>{m.content}</div>
+            ) : (
+              <div className="md-body">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {m.content}
+                </ReactMarkdown>
+              </div>
+            )}
           </div>
         ))}
 
