@@ -10,7 +10,7 @@ Tables:
 
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Generator, Optional
 
@@ -256,6 +256,25 @@ CREATE TABLE IF NOT EXISTS kbra_presales (
 );
 CREATE INDEX IF NOT EXISTS idx_kbra_asset_class ON kbra_presales(asset_class);
 CREATE INDEX IF NOT EXISTS idx_kbra_parsed_at   ON kbra_presales(parsed_at DESC);
+
+-- ── Scheduler job observability ──────────────────────────────────────────────
+-- One row per scheduled-job invocation. Lets the dashboard answer "did the
+-- BDC pull actually run today, and did it succeed?" without tailing logs.
+CREATE TABLE IF NOT EXISTS job_runs (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id          TEXT NOT NULL,          -- 'feeds' | 'market' | 'fred' | 'edgar' | ...
+    started_at      TEXT NOT NULL,          -- ISO UTC
+    ended_at        TEXT,                   -- ISO UTC; null while running
+    status          TEXT NOT NULL,          -- 'running' | 'success' | 'error'
+    duration_ms     INTEGER,
+    rows_ingested   INTEGER,                -- whatever the job decides is "work done"
+    error           TEXT,                   -- truncated repr of the exception
+    triggered_by    TEXT NOT NULL DEFAULT 'scheduler'  -- 'scheduler' | 'manual'
+);
+CREATE INDEX IF NOT EXISTS idx_job_runs_job_started
+    ON job_runs(job_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_job_runs_started
+    ON job_runs(started_at DESC);
 """
 
 
@@ -497,6 +516,86 @@ def upsert_feed_health(row: dict) -> None:
             """,
             row,
         )
+
+
+# ── Scheduler job observability ──────────────────────────────────────────────
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def start_job_run(job_id: str, triggered_by: str = "scheduler") -> int:
+    """Record the start of a scheduled job. Returns the row id to pass to finish_job_run."""
+    started = _utcnow().isoformat() + "Z"
+    with get_conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO job_runs (job_id, started_at, status, triggered_by) "
+            "VALUES (?, ?, 'running', ?)",
+            (job_id, started, triggered_by),
+        )
+        return int(cur.lastrowid)
+
+
+def finish_job_run(
+    run_id: int,
+    status: str,
+    rows_ingested: Optional[int] = None,
+    error: Optional[str] = None,
+) -> None:
+    """Mark a job run finished. status: 'success' | 'error'."""
+    ended_dt = _utcnow()
+    ended = ended_dt.isoformat() + "Z"
+    with get_conn() as conn:
+        started_row = conn.execute(
+            "SELECT started_at FROM job_runs WHERE id = ?", (run_id,)
+        ).fetchone()
+        duration_ms = None
+        if started_row:
+            try:
+                started_dt = datetime.fromisoformat(
+                    started_row["started_at"].rstrip("Z")
+                )
+                duration_ms = int((ended_dt - started_dt).total_seconds() * 1000)
+            except ValueError:
+                pass
+        # Truncate gnarly tracebacks so the DB doesn't bloat with stack noise.
+        err = (error[:500] if error else None)
+        conn.execute(
+            "UPDATE job_runs SET ended_at = ?, status = ?, duration_ms = ?, "
+            "rows_ingested = ?, error = ? WHERE id = ?",
+            (ended, status, duration_ms, rows_ingested, err, run_id),
+        )
+
+
+def get_latest_job_runs() -> list[dict]:
+    """One row per job_id: the most recent invocation. Used for /api/jobs/status."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT j.* FROM job_runs j
+            JOIN (
+                SELECT job_id, MAX(started_at) AS mx
+                FROM job_runs
+                GROUP BY job_id
+            ) m ON j.job_id = m.job_id AND j.started_at = m.mx
+            ORDER BY j.job_id
+            """
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_job_run_history(job_id: Optional[str] = None, limit: int = 50) -> list[dict]:
+    """Recent invocations across (optionally filtered by) job_id."""
+    sql = "SELECT * FROM job_runs"
+    params: list = []
+    if job_id:
+        sql += " WHERE job_id = ?"
+        params.append(job_id)
+    sql += " ORDER BY started_at DESC LIMIT ?"
+    params.append(limit)
+    with get_conn() as conn:
+        rows = conn.execute(sql, params).fetchall()
+    return [dict(r) for r in rows]
 
 
 # Initialize on import

@@ -8,116 +8,161 @@ Job cadence (configurable in data_sources.yaml):
   - FRED data:      every 6 hours
   - EDGAR filings:  every 4 hours
   - Feed health:    once at startup, then every 12 hours
+
+Every job run is recorded in the `job_runs` table (start, end, status,
+duration, rows ingested, error) so the dashboard can report freshness and
+catch silent failures without tailing logs.
 """
 
 import asyncio
+import inspect
 import logging
+import traceback
+from functools import wraps
+from typing import Callable, Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
+from cache.db import finish_job_run, start_job_run
 from config import load_data_sources
 
 logger = logging.getLogger(__name__)
 _scheduler: AsyncIOScheduler | None = None
 
 
-async def _job_feeds():
+# ── Job-run recording wrapper ────────────────────────────────────────────────
+def _instrument(job_id: str, fn: Callable, triggered_by: str = "scheduler"):
+    """Wrap a job function so each invocation is captured in `job_runs`.
+
+    The wrapped fn may return an int (treated as rows ingested) or None.
+    Async fns are awaited; sync fns are called directly. Exceptions are caught,
+    logged, and recorded — the scheduler thread/loop must never die from a job.
+    """
+    is_async = inspect.iscoroutinefunction(fn)
+
+    @wraps(fn)
+    async def _async_wrapper():
+        run_id = start_job_run(job_id, triggered_by=triggered_by)
+        try:
+            result = await fn()
+            rows = result if isinstance(result, int) else None
+            finish_job_run(run_id, "success", rows_ingested=rows)
+            return result
+        except Exception as e:  # noqa: BLE001 — record-and-continue
+            finish_job_run(
+                run_id, "error",
+                error=f"{type(e).__name__}: {e}\n{traceback.format_exc(limit=2)}",
+            )
+            logger.error("Scheduler: %s job error: %s", job_id, e)
+            return None
+
+    @wraps(fn)
+    def _sync_wrapper():
+        run_id = start_job_run(job_id, triggered_by=triggered_by)
+        try:
+            result = fn()
+            rows = result if isinstance(result, int) else None
+            finish_job_run(run_id, "success", rows_ingested=rows)
+            return result
+        except Exception as e:  # noqa: BLE001
+            finish_job_run(
+                run_id, "error",
+                error=f"{type(e).__name__}: {e}\n{traceback.format_exc(limit=2)}",
+            )
+            logger.error("Scheduler: %s job error: %s", job_id, e)
+            return None
+
+    return _async_wrapper if is_async else _sync_wrapper
+
+
+# ── Inner job bodies (return the row count, no try/except) ───────────────────
+
+async def _feeds_inner() -> int:
     from data.feeds import fetch_all_feeds
     from data.classifier import classify_articles
-    try:
-        n = await fetch_all_feeds()
-        logger.info(f"Scheduler: feed fetch — {n} articles")
-        scored = await classify_articles(batch_size=50)
-        logger.info(f"Scheduler: classified {scored} articles")
-    except Exception as e:
-        logger.error(f"Scheduler: feed job error: {e}")
+    n = await fetch_all_feeds()
+    logger.info(f"Scheduler: feed fetch — {n} articles")
+    scored = await classify_articles(batch_size=50)
+    logger.info(f"Scheduler: classified {scored} articles")
+    return n
 
 
-def _job_market():
+def _market_inner() -> int:
     from data.market import fetch_market_data
-    try:
-        n = fetch_market_data()
-        logger.info(f"Scheduler: market data — {n} rows")
-    except Exception as e:
-        logger.error(f"Scheduler: market job error: {e}")
+    n = fetch_market_data()
+    logger.info(f"Scheduler: market data — {n} rows")
+    return n
 
 
-def _job_fred():
+def _fred_inner() -> int:
     from data.fred import fetch_fred_series
     from data.indicators import compute_all_indicators
-    try:
-        n = fetch_fred_series()
-        # Derived indicators run last: the recession probit reads T10Y3M out of
-        # the DB, so the raw FRED pull must land first.
-        m = compute_all_indicators()
-        logger.info(f"Scheduler: FRED — {n} rows, indicators — {m} rows")
-    except Exception as e:
-        logger.error(f"Scheduler: FRED job error: {e}")
+    n = fetch_fred_series()
+    # Derived indicators run last: the recession probit reads T10Y3M out of
+    # the DB, so the raw FRED pull must land first.
+    m = compute_all_indicators()
+    logger.info(f"Scheduler: FRED — {n} rows, indicators — {m} rows")
+    return n + m
 
 
-def _job_edgar():
+def _edgar_inner() -> int:
     from data.edgar import fetch_abs_filings
     from data.abs_pricing import fetch_abs_pricing
     from data.abs_parser import fetch_and_parse_abs_424b5
-    try:
-        n = fetch_abs_filings(days_back=2)
-        # New-issue spread tracker shares EDGAR's cadence (token-free, regex parse).
-        p = fetch_abs_pricing(days_back=10)
-        # Richer 424B5 parse (CUSIPs, ratings, derived treasury spread). Claude
-        # fallback fires only on low-confidence parses, so token spend is small.
-        n4 = fetch_and_parse_abs_424b5(days_back=2)
-        logger.info(
-            f"Scheduler: EDGAR — {n} filings, ABS pricing — {p} tranches, "
-            f"424B5 — {n4} tranches"
-        )
-    except Exception as e:
-        logger.error(f"Scheduler: EDGAR job error: {e}")
+    n = fetch_abs_filings(days_back=2)
+    p = fetch_abs_pricing(days_back=10)
+    n4 = fetch_and_parse_abs_424b5(days_back=2)
+    logger.info(
+        f"Scheduler: EDGAR — {n} filings, ABS pricing — {p} tranches, "
+        f"424B5 — {n4} tranches"
+    )
+    return n + p + n4
 
 
-def _job_hhdc():
+def _hhdc_inner() -> int:
     from data.hhdc import fetch_hhdc_transitions
     from data.indicators import compute_cfsi
-    try:
-        n = fetch_hhdc_transitions()
-        # CFSI consumes the transition flows, so refresh it once they land.
-        c = compute_cfsi()
-        logger.info(f"Scheduler: HHDC transition rates — {n} rows, CFSI — {c} rows")
-    except Exception as e:
-        logger.error(f"Scheduler: HHDC job error: {e}")
+    n = fetch_hhdc_transitions()
+    # CFSI consumes the transition flows, so refresh it once they land.
+    c = compute_cfsi()
+    logger.info(f"Scheduler: HHDC transition rates — {n} rows, CFSI — {c} rows")
+    return n + c
 
 
-async def _job_health():
+async def _health_inner() -> int:
     from data.feeds import run_health_checks
-    try:
-        summary = await run_health_checks()
-        logger.info(f"Scheduler: health check — {summary['live']} live feeds")
-    except Exception as e:
-        logger.error(f"Scheduler: health check error: {e}")
+    summary = await run_health_checks()
+    logger.info(f"Scheduler: health check — {summary['live']} live feeds")
+    return summary.get("total", 0)
 
 
-# ── Phase 7 jobs ──────────────────────────────────────────────────────
-# Token-free ingest only. Claude scoring (regulatory) and Claude extraction
-# (KBRA) are MANUAL endpoints — they never run on a timer.
-
-def _job_bdc():
+# Phase 7 — token-free ingest only.
+def _bdc_inner() -> int:
     """Monthly SEC BDC bulk-dataset pull (token-free)."""
     from data.bdc import fetch_bdc_data
-    try:
-        n = fetch_bdc_data()
-        logger.info(f"Scheduler: BDC — {n} holdings")
-    except Exception as e:
-        logger.error(f"Scheduler: BDC error: {e}")
+    n = fetch_bdc_data()
+    logger.info(f"Scheduler: BDC — {n} holdings")
+    return n
 
 
-def _job_regulatory():
+def _regulatory_inner() -> int:
     """Daily Federal Register + agency RSS pull (token-free; scoring is manual)."""
     from data.regulatory import fetch_regulatory_actions
-    try:
-        n = fetch_regulatory_actions(days_back=2)
-        logger.info(f"Scheduler: Regulatory — {n} actions")
-    except Exception as e:
-        logger.error(f"Scheduler: Regulatory error: {e}")
+    n = fetch_regulatory_actions(days_back=2)
+    logger.info(f"Scheduler: Regulatory — {n} actions")
+    return n
+
+
+# Instrumented entry points the scheduler / initial fetch invoke.
+_job_feeds = _instrument("feeds", _feeds_inner)
+_job_market = _instrument("market", _market_inner)
+_job_fred = _instrument("fred", _fred_inner)
+_job_edgar = _instrument("edgar", _edgar_inner)
+_job_hhdc = _instrument("hhdc", _hhdc_inner)
+_job_health = _instrument("health", _health_inner)
+_job_bdc = _instrument("bdc", _bdc_inner)
+_job_regulatory = _instrument("regulatory", _regulatory_inner)
 
 
 async def start_scheduler():

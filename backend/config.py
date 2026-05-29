@@ -65,7 +65,11 @@ class Settings:
     )
 
     CACHE_DIR: Path = Path(__file__).parent / "cache" / "store"
-    DB_PATH: Path = Path(__file__).parent / "cache" / "monitor.db"
+    # MONITOR_DB_PATH lets tests (and one-off scripts) redirect persistence to a
+    # throwaway file without monkey-patching the real cache.
+    DB_PATH: Path = Path(
+        os.getenv("MONITOR_DB_PATH") or (Path(__file__).parent / "cache" / "monitor.db")
+    )
 
     def __post_init__(self):
         self.CACHE_DIR.mkdir(parents=True, exist_ok=True)

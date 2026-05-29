@@ -685,8 +685,8 @@ def trigger_kbra_refresh():
 
 @router.get("/status")
 def get_status():
-    """System health: DB row counts, last fetch times."""
-    from cache.db import get_conn, get_meta
+    """System health: DB row counts, last fetch times, last job-run summary."""
+    from cache.db import get_conn, get_latest_job_runs, get_meta
 
     with get_conn() as conn:
         article_count = conn.execute("SELECT COUNT(*) FROM articles").fetchone()[0]
@@ -712,4 +712,22 @@ def get_status():
         "last_regulatory_refresh": get_meta("last_regulatory_refresh"),
         "last_regulatory_score": get_meta("last_regulatory_score"),
         "last_kbra_refresh": get_meta("last_kbra_refresh"),
+        "jobs": get_latest_job_runs(),
     }
+
+
+@router.get("/jobs/status")
+def jobs_status():
+    """Latest run per scheduled job: status, duration, rows ingested, last error."""
+    from cache.db import get_latest_job_runs
+    return {"jobs": get_latest_job_runs()}
+
+
+@router.get("/jobs/history")
+def jobs_history(
+    job_id: Optional[str] = None,
+    limit: int = Query(default=50, le=500),
+):
+    """Recent job-run history, optionally filtered to one job_id."""
+    from cache.db import get_job_run_history
+    return {"runs": get_job_run_history(job_id=job_id, limit=limit)}
