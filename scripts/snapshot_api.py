@@ -134,6 +134,8 @@ def run(base: str, out_dir: Path) -> int:
         s.snap("/edgar/filings", {"form_type": ft, "limit": 50})
     for ac in facets.get("asset_classes", []):
         s.snap("/edgar/filings", {"asset_class": ac, "limit": 50})
+    for it in ("debt", "equity"):
+        s.snap("/edgar/filings", {"issuance_type": it, "limit": 50})
 
     # ── ABS pricing (FWP feed) ─────────────────────────────
     for seg in ("", "subprime_auto", "prime_auto", "equipment", "credit_card"):

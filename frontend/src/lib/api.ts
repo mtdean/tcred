@@ -59,6 +59,28 @@ function snapshotKey(path: string, params: Record<string, unknown> = {}): string
   return cleanPath + suffix + '.json';
 }
 
+/** Build an ordered list of snapshot file names to try in static mode,
+ *  starting with the exact combination, then each single-axis fallback,
+ *  finally the no-filter snapshot. Stops the gh-pages build from silently
+ *  404ing whenever the user picks a 2-axis filter combo we didn't pre-bake. */
+function snapshotFallbackKeys(
+  path: string,
+  params: Record<string, unknown>,
+): string[] {
+  const filtered: [string, unknown][] = Object.entries(params)
+    .filter(([k, v]) =>
+      !KEY_IGNORED_PARAMS.has(k) && v !== undefined && v !== null && v !== '');
+  const keys = new Set<string>();
+  keys.add(snapshotKey(path, params));
+  // Each single-axis variant (one filter at a time).
+  for (const [k, v] of filtered) {
+    keys.add(snapshotKey(path, { [k]: v }));
+  }
+  // No-filter (size/window-only params).
+  keys.add(snapshotKey(path, {}));
+  return [...keys];
+}
+
 export const api = axios.create({ baseURL: BASE });
 
 if (STATIC_MODE) {
@@ -69,11 +91,26 @@ if (STATIC_MODE) {
     }
     const path = (config.url || '').replace(/^\/+/, '');
     const params = (config.params || {}) as Record<string, unknown>;
-    const file = snapshotKey(path, params);
-    // Rewrite to fetch the snapshot from the static asset folder. We also
-    // clear params so axios doesn't append a query string to the .json URL.
+    const candidates = snapshotFallbackKeys(path, params);
+
+    // HEAD-check each candidate in order; serve the first that exists.
+    // This lets multi-axis filter combos fall back to single-axis ones,
+    // then the no-filter snapshot — which matches the design comment in
+    // snapshot_api.py and stops gh-pages silently returning empty.
+    let chosen = candidates[candidates.length - 1];
+    for (const k of candidates) {
+      try {
+        const r = await fetch(`${SNAPSHOT_BASE}/${k}`, { method: 'HEAD' });
+        if (r.ok) {
+          chosen = k;
+          break;
+        }
+      } catch {
+        // network blip — try the next candidate
+      }
+    }
     config.baseURL = SNAPSHOT_BASE;
-    config.url = '/' + file;
+    config.url = '/' + chosen;
     config.params = undefined;
     return config;
   });
