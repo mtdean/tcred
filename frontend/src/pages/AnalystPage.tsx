@@ -1,7 +1,7 @@
 // Analyst page: monthly macro/credit briefing + chat-with-briefing interface.
 // Chat history is ephemeral (held in component state) — refresh = new session.
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { Send, Sparkles, RefreshCw } from 'lucide-react';
