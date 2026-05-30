@@ -177,6 +177,68 @@ export interface BriefingChatResponse {
   };
 }
 
+// ── Issuer / deal pivot ────────────────────────────────
+export interface IssuerListItem {
+  issuer_name: string;
+  deal_count: number;
+  latest_filing_date: string | null;
+}
+
+export interface IssuerDealTranche {
+  class_name: string | null;
+  principal_amount: number | null;
+  coupon_type: string | null;
+  coupon_rate: number | null;
+  floating_index: string | null;
+  floating_spread_bps: number | null;
+  wal_years: number | null;
+  spread_to_benchmark: number | null;
+  benchmark: string | null;
+  rating_sp: string | null;
+  rating_moodys: string | null;
+  rating_kbra: string | null;
+}
+
+export interface IssuerDeal {
+  accession_no: string;
+  issuer_name: string | null;
+  depositor: string | null;
+  filing_date: string | null;
+  closing_date: string | null;
+  asset_class: string | null;
+  total_deal_size: number | null;
+  edgar_url: string | null;
+  parse_confidence: string | null;
+  n_tranches: number;
+  senior_class_name: string | null;
+  senior_spread_bps: number | null;
+  senior_wal_years: number | null;
+  tranches: IssuerDealTranche[];
+}
+
+export interface IssuerSummary {
+  query: string;
+  as_of: string;
+  stats: {
+    n_deals: number;
+    total_volume: number;
+    earliest_filing: string | null;
+    latest_filing: string | null;
+    n_asset_classes: number;
+  };
+  deals: IssuerDeal[];
+  pricing: Record<string, unknown>[];
+  edgar_filings: EdgarFiling[];
+  kbra_presales: Record<string, unknown>[];
+  articles: Article[];
+}
+
+export const listIssuers = (limit = 100) =>
+  api.get<{ items: IssuerListItem[] }>('/issuers', { params: { limit } });
+
+export const getIssuerSummary = (q: string) =>
+  api.get<IssuerSummary>('/issuers/summary', { params: { q } });
+
 // ── Watchlists ─────────────────────────────────────────
 export interface Watchlist {
   id: string;

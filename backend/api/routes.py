@@ -816,6 +816,39 @@ def db_list_briefings(limit: int = 30) -> list[dict]:
     return _list(limit=limit)
 
 
+# ── ISSUER / DEAL PIVOT ──────────────────────────────────────
+
+@router.get("/issuers")
+def list_issuers_route(limit: int = Query(default=100, ge=1, le=500)):
+    """Distinct issuer_name values seen in abs_new_issues, ordered by recency."""
+    from data.issuers import list_issuers
+    return {"items": list_issuers(limit=limit)}
+
+
+@router.get("/issuers/summary")
+def get_issuer_summary_route(
+    q: str = Query(..., min_length=1, description="Issuer/deal substring query"),
+    deals_limit: int = Query(default=200, ge=1, le=1000),
+    edgar_limit: int = Query(default=100, ge=1, le=500),
+    article_limit: int = Query(default=50, ge=1, le=200),
+    article_min_score: int = Query(default=3, ge=1, le=5),
+    article_days_back: int = Query(default=180, ge=1, le=3650),
+):
+    """Cross-table substring search returning everything we know about the query."""
+    from data.issuers import get_issuer_summary
+    result = get_issuer_summary(
+        query=q,
+        deals_limit=deals_limit,
+        edgar_limit=edgar_limit,
+        article_limit=article_limit,
+        article_min_score=article_min_score,
+        article_days_back=article_days_back,
+    )
+    if result is None:
+        raise HTTPException(status_code=422, detail="query is required")
+    return result
+
+
 # ── WATCHLISTS ───────────────────────────────────────────────
 
 class WatchlistCreate(BaseModel):

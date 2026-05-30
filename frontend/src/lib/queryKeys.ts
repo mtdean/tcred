@@ -55,4 +55,8 @@ export const qk = {
   // Watchlists
   watchlists: ['watchlists'] as const,
   watchlistResults: (id: string) => ['watchlists', id, 'results'] as const,
+
+  // Issuer / deal pivot
+  issuers: ['issuers'] as const,
+  issuerSummary: (q: string) => ['issuers', 'summary', q] as const,
 };
