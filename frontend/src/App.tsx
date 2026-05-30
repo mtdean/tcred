@@ -10,6 +10,7 @@ import DealsPage from './pages/DealsPage';
 import PrivateCreditPage from './pages/PrivateCreditPage';
 import RegulatoryPage from './pages/RegulatoryPage';
 import AnalystPage from './pages/AnalystPage';
+import WatchlistsPage from './pages/WatchlistsPage';
 
 export default function App() {
   return (
@@ -26,6 +27,7 @@ export default function App() {
           <Route path="/abs" element={<ABSPage />} />
           <Route path="/deals" element={<DealsPage />} />
           <Route path="/analyst" element={<AnalystPage />} />
+          <Route path="/watchlists" element={<WatchlistsPage />} />
         </Routes>
       </main>
       <StatusBar />

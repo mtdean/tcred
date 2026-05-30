@@ -816,6 +816,96 @@ def db_list_briefings(limit: int = 30) -> list[dict]:
     return _list(limit=limit)
 
 
+# ── WATCHLISTS ───────────────────────────────────────────────
+
+class WatchlistCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    description: Optional[str] = None
+    keywords: list[str] = Field(min_length=1)
+    news_categories: Optional[list[str]] = None
+    edgar_asset_classes: Optional[list[str]] = None
+    edgar_form_types: Optional[list[str]] = None
+    regulatory_agencies: Optional[list[str]] = None
+    min_score: int = Field(default=3, ge=1, le=5)
+
+
+class WatchlistUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    description: Optional[str] = None
+    keywords: Optional[list[str]] = Field(default=None, min_length=1)
+    news_categories: Optional[list[str]] = None
+    edgar_asset_classes: Optional[list[str]] = None
+    edgar_form_types: Optional[list[str]] = None
+    regulatory_agencies: Optional[list[str]] = None
+    min_score: Optional[int] = Field(default=None, ge=1, le=5)
+
+
+@router.get("/watchlists")
+def list_watchlists_route():
+    from data.watchlists import list_watchlists
+    return {"items": list_watchlists()}
+
+
+@router.post("/watchlists")
+def create_watchlist_route(body: WatchlistCreate):
+    from data.watchlists import create_watchlist
+    try:
+        return create_watchlist(body.model_dump(exclude_unset=False))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@router.get("/watchlists/{watchlist_id}")
+def get_watchlist_route(watchlist_id: str):
+    from data.watchlists import get_watchlist
+    row = get_watchlist(watchlist_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="watchlist not found")
+    return row
+
+
+@router.patch("/watchlists/{watchlist_id}")
+def update_watchlist_route(watchlist_id: str, body: WatchlistUpdate):
+    from data.watchlists import update_watchlist
+    try:
+        row = update_watchlist(watchlist_id, body.model_dump(exclude_unset=True))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    if row is None:
+        raise HTTPException(status_code=404, detail="watchlist not found")
+    return row
+
+
+@router.delete("/watchlists/{watchlist_id}")
+def delete_watchlist_route(watchlist_id: str):
+    from data.watchlists import delete_watchlist
+    ok = delete_watchlist(watchlist_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="watchlist not found")
+    return {"deleted": watchlist_id}
+
+
+@router.get("/watchlists/{watchlist_id}/results")
+def get_watchlist_results(
+    watchlist_id: str,
+    per_source_limit: int = Query(default=100, ge=1, le=500),
+):
+    from data.watchlists import run_watchlist
+    result = run_watchlist(watchlist_id, per_source_limit=per_source_limit)
+    if result is None:
+        raise HTTPException(status_code=404, detail="watchlist not found")
+    return result
+
+
+@router.post("/watchlists/{watchlist_id}/viewed")
+def mark_watchlist_viewed(watchlist_id: str):
+    from data.watchlists import mark_viewed
+    row = mark_viewed(watchlist_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="watchlist not found")
+    return row
+
+
 # ── DB BACKUPS ───────────────────────────────────────────────
 
 @router.get("/backups")

@@ -51,4 +51,8 @@ export const qk = {
   // Percentile context
   percentilesBatch: (ids: string[], windowDays: number) =>
     ['percentiles', windowDays, [...ids].sort().join(',')] as const,
+
+  // Watchlists
+  watchlists: ['watchlists'] as const,
+  watchlistResults: (id: string) => ['watchlists', id, 'results'] as const,
 };

@@ -1,5 +1,6 @@
 import axios from 'axios';
 import type {
+  Article,
   ArticleListResponse,
   ArticleParams,
   DigestParams,
@@ -175,6 +176,62 @@ export interface BriefingChatResponse {
     cache_creation_input_tokens: number;
   };
 }
+
+// ── Watchlists ─────────────────────────────────────────
+export interface Watchlist {
+  id: string;
+  name: string;
+  description: string | null;
+  keywords: string[];
+  news_categories: string[] | null;
+  edgar_asset_classes: string[] | null;
+  edgar_form_types: string[] | null;
+  regulatory_agencies: string[] | null;
+  min_score: number;
+  created_at: string;
+  updated_at: string;
+  last_viewed_at: string | null;
+}
+
+export interface WatchlistResults {
+  watchlist: Watchlist;
+  as_of: string;
+  matches: {
+    articles: Article[];
+    edgar_filings: EdgarFiling[];
+    regulatory_actions: RegulatoryAction[];
+  };
+  counts: {
+    articles: number;
+    edgar_filings: number;
+    regulatory_actions: number;
+    total: number;
+  };
+}
+
+export interface WatchlistCreate {
+  name: string;
+  description?: string | null;
+  keywords: string[];
+  news_categories?: string[] | null;
+  edgar_asset_classes?: string[] | null;
+  edgar_form_types?: string[] | null;
+  regulatory_agencies?: string[] | null;
+  min_score?: number;
+}
+
+export const listWatchlists = () =>
+  api.get<{ items: Watchlist[] }>('/watchlists');
+export const createWatchlist = (body: WatchlistCreate) =>
+  api.post<Watchlist>('/watchlists', body);
+export const updateWatchlist = (id: string, patch: Partial<WatchlistCreate>) =>
+  api.patch<Watchlist>(`/watchlists/${id}`, patch);
+export const deleteWatchlist = (id: string) =>
+  api.delete<{ deleted: string }>(`/watchlists/${id}`);
+export const getWatchlistResults = (id: string) =>
+  api.get<WatchlistResults>(`/watchlists/${id}/results`);
+export const markWatchlistViewed = (id: string) =>
+  api.post<Watchlist>(`/watchlists/${id}/viewed`);
 
 // ── Freshness ──────────────────────────────────────────
 export type FreshnessStatus = 'fresh' | 'stale' | 'dead' | 'missing';

@@ -257,6 +257,26 @@ CREATE TABLE IF NOT EXISTS kbra_presales (
 CREATE INDEX IF NOT EXISTS idx_kbra_asset_class ON kbra_presales(asset_class);
 CREATE INDEX IF NOT EXISTS idx_kbra_parsed_at   ON kbra_presales(parsed_at DESC);
 
+-- ── Watchlists ───────────────────────────────────────────────────────────────
+-- Persisted saved searches across news + EDGAR + regulatory. Keyword match is
+-- case-insensitive substring (OR across the keyword array). Filters narrow the
+-- candidate set per source.
+CREATE TABLE IF NOT EXISTS watchlists (
+    id                  TEXT PRIMARY KEY,        -- 'wl_' + hex(8)
+    name                TEXT NOT NULL,
+    description         TEXT,
+    keywords            TEXT NOT NULL,           -- JSON array of strings
+    news_categories     TEXT,                    -- JSON array, optional
+    edgar_asset_classes TEXT,                    -- JSON array, optional
+    edgar_form_types    TEXT,                    -- JSON array, optional
+    regulatory_agencies TEXT,                    -- JSON array, optional
+    min_score           INTEGER DEFAULT 3,       -- news relevance threshold
+    created_at          TEXT NOT NULL,
+    updated_at          TEXT NOT NULL,
+    last_viewed_at      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_watchlists_updated ON watchlists(updated_at DESC);
+
 -- ── Analyst briefings ────────────────────────────────────────────────────────
 -- A briefing is a Claude-synthesized macro/credit narrative built from a
 -- structured snapshot of recent indicators + digests + ABS/BDC/regulatory state.

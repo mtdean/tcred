@@ -10,6 +10,7 @@ const TABS: { to: string; label: string }[] = [
   { to: '/abs', label: 'ABS/EDGAR' },
   { to: '/deals', label: 'Deals' },
   { to: '/analyst', label: 'Analyst' },
+  { to: '/watchlists', label: 'Watchlists' },
 ];
 
 export default function TabNav() {
