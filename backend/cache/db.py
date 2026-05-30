@@ -348,6 +348,13 @@ def _migrate(conn) -> None:
     _add_column_if_missing(conn, "bdc_summary", "filed", "TEXT")
     _add_column_if_missing(conn, "abs_new_issues", "spread_source", "TEXT")
     _add_column_if_missing(conn, "edgar_filings", "issuance_type", "TEXT")
+    # Article dedup (Phase 8): cluster_id groups versions of the same story
+    # across publishers; duplicate_of points secondary versions at the primary.
+    _add_column_if_missing(conn, "articles", "cluster_id", "TEXT")
+    _add_column_if_missing(conn, "articles", "duplicate_of", "TEXT")
+    _add_column_if_missing(conn, "articles", "deduped_at", "TEXT")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_articles_cluster ON articles(cluster_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_articles_dupof ON articles(duplicate_of)")
 
     # digests: migrate the original (date PRIMARY KEY, one/day) schema to the
     # (date, session) composite — two slots per day (AM/PM, US/Eastern).

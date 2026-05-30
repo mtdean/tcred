@@ -44,6 +44,24 @@ export default function ArticleCard({ article: a, onRead }: Props) {
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', minWidth: 0, flexWrap: 'wrap' }}>
           <SourceChip feedName={a.feed_name} sourceType={a.source_type} />
           <CategoryChip category={a.feed_category} />
+          {a.n_sources != null && a.n_sources > 1 && (
+            <span
+              className="cat-chip mono"
+              title={
+                a.other_sources && a.other_sources.length > 0
+                  ? `Also: ${a.other_sources.join(', ')}`
+                  : `Covered by ${a.n_sources} sources`
+              }
+              style={{
+                fontSize: 9,
+                color: 'var(--text-secondary)',
+                border: '1px solid var(--border-bright)',
+                padding: '0 5px',
+              }}
+            >
+              +{a.n_sources - 1} SOURCES
+            </span>
+          )}
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
           <ScoreDots score={a.relevance_score} />

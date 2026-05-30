@@ -13,6 +13,11 @@ export interface Article {
   relevance_tags: string | null;
   is_read: number;
   source_type: SourceType;
+  // Dedup metadata (populated when /api/articles excludes duplicates).
+  cluster_id?: string | null;
+  duplicate_of?: string | null;
+  n_sources?: number;
+  other_sources?: string[];
 }
 
 export type SourceType =

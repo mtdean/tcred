@@ -21,22 +21,32 @@ def get_articles(
     ),
     limit: int = Query(default=50, le=200),
     offset: int = Query(default=0),
+    include_duplicates: bool = Query(
+        default=False,
+        description="When false (default), exclude articles tagged as duplicates "
+                    "of another, and return n_sources / other_sources for the "
+                    "primary version.",
+    ),
 ):
     """
     Return scored articles filtered by relevance and optional category/source.
-    Default: score >= 4 (macro/credit/finance relevant).
+    Default: score >= 4 (macro/credit/finance relevant); duplicates hidden.
     """
     from cache.db import get_conn
+    from data.article_dedup import annotate_with_sources
 
     with get_conn() as conn:
         base = """
             SELECT id, feed_name, feed_category, title, snippet, url,
                    published_at, fetched_at, relevance_score, relevance_tags,
-                   is_read, source_type
+                   is_read, source_type, cluster_id, duplicate_of
             FROM articles
             WHERE relevance_score >= ?
         """
         params: list = [min_score]
+
+        if not include_duplicates:
+            base += " AND duplicate_of IS NULL"
 
         if category:
             cats = [c.strip() for c in category.split(",") if c.strip()]
@@ -55,9 +65,11 @@ def get_articles(
         base += " ORDER BY COALESCE(published_at, fetched_at) DESC LIMIT ? OFFSET ?"
         params += [limit, offset]
 
-        rows = conn.execute(base, params).fetchall()
+        rows = [dict(r) for r in conn.execute(base, params).fetchall()]
 
-    return {"items": [dict(r) for r in rows], "offset": offset, "limit": limit}
+    if not include_duplicates:
+        rows = annotate_with_sources(rows)
+    return {"items": rows, "offset": offset, "limit": limit}
 
 
 @router.post("/articles/{article_id}/read")
