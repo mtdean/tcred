@@ -47,4 +47,8 @@ export const qk = {
 
   // Freshness
   freshness: ['freshness'] as const,
+
+  // Percentile context
+  percentilesBatch: (ids: string[], windowDays: number) =>
+    ['percentiles', windowDays, [...ids].sort().join(',')] as const,
 };

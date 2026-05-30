@@ -31,6 +31,7 @@ import anthropic
 from cache import db
 from config import settings
 from data.analyst_tools import TOOL_DISPATCH, TOOL_SCHEMAS
+from data.percentiles import compute_percentile
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,7 @@ OUTPUT FORMAT (strict):
 Rules:
 - Be specific and quantitative. No hedging ("could potentially", "may possibly").
 - Do not invent facts not in the snapshot.
+- Whenever the snapshot provides a `percentile_5y` for an indicator, frame the level in those terms (e.g. "EBP at 0.45 — 78th percentile of the last 5y") rather than the bare number. That regime context is the point.
 - If a signal is mixed or unclear, say so directly and call it out as a watch item.
 - Reader knows the jargon. Don't define EBP, OAS, nonaccrual, etc."""
 
@@ -106,7 +108,12 @@ _SNAPSHOT_TICKERS = ["SPY", "QQQ", "IWM", "VIX", "HYG", "LQD", "IEF", "TLT", "JN
 
 
 def _latest_and_delta(series_id: str, days_lookback: int = 95) -> Optional[dict]:
-    """Latest value + change vs ~3 months ago for a metric series."""
+    """Latest value + change vs ~3 months ago + 5y percentile + 5y range.
+
+    Percentile lets the briefing say "EBP at the 78th percentile of the last 5y"
+    instead of just citing the level — that's the regime context the analyst
+    is supposed to bring.
+    """
     with db.get_conn() as conn:
         rows = conn.execute(
             "SELECT date, value FROM metrics WHERE series_id = ? AND value IS NOT NULL "
@@ -119,10 +126,24 @@ def _latest_and_delta(series_id: str, days_lookback: int = 95) -> Optional[dict]
     cutoff = (datetime.fromisoformat(latest_date) - timedelta(days=days_lookback)).date().isoformat()
     prior = next((r for r in rows if r["date"] <= cutoff), None)
     delta = round(latest_val - float(prior["value"]), 4) if prior else None
+
+    pct = compute_percentile(series_id, window_days=1825)
+    if pct is not None and pct.get("n_obs", 0) >= 8:
+        regime = {
+            "percentile_5y": pct["percentile"],
+            "min_5y": round(pct["min"], 4),
+            "max_5y": round(pct["max"], 4),
+            "median_5y": round(pct["median"], 4),
+            "n_obs_5y": pct["n_obs"],
+        }
+    else:
+        regime = {}
+
     return {
         "latest": round(latest_val, 4),
         "as_of": latest_date,
         "delta_3mo": delta,
+        **regime,
     }
 
 

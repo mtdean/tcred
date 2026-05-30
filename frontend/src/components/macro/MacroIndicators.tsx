@@ -1,13 +1,14 @@
 // Headline macro indicators: latest / prev / YoY change / updated.
 
 import { useQueries, useQuery } from '@tanstack/react-query';
-import { getFredHistory, getFreshness } from '../../lib/api';
+import { getFredHistory, getFreshness, getSeriesPercentiles } from '../../lib/api';
 import { qk } from '../../lib/queryKeys';
 import type { MetricPoint } from '../../lib/types';
 import { fmtMonth, signClass } from '../../lib/utils';
 import Panel from '../shared/Panel';
 import LoadingCursor from '../shared/LoadingCursor';
 import FreshnessChip from '../shared/FreshnessChip';
+import PercentileChip from '../shared/PercentileChip';
 
 type Mode = 'rate' | 'yoy' | 'index';
 
@@ -98,6 +99,13 @@ export default function MacroIndicators() {
     (freshness?.series ?? []).map((s) => [s.series_id, s]),
   );
 
+  const seriesIds = INDICATORS.map((d) => d.seriesId);
+  const { data: percentiles } = useQuery({
+    queryKey: qk.percentilesBatch(seriesIds, 1825),
+    queryFn: () => getSeriesPercentiles(seriesIds, 1825).then((r) => r.data),
+    staleTime: 30 * 60_000,
+  });
+
   return (
     <Panel title="Macro Indicators">
       {loading && rows.length === 0 ? (
@@ -110,12 +118,14 @@ export default function MacroIndicators() {
               <th style={{ textAlign: 'right' }}>Latest</th>
               <th style={{ textAlign: 'right' }}>Prev</th>
               <th style={{ textAlign: 'right' }}>Δ YoY</th>
+              <th style={{ textAlign: 'right' }}>5y Pct</th>
               <th style={{ textAlign: 'right' }}>Updated</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => {
               const f = freshBySeries.get(r.seriesId);
+              const p = percentiles?.series[r.seriesId];
               return (
                 <tr key={r.label}>
                   <td>{r.label}</td>
@@ -125,6 +135,17 @@ export default function MacroIndicators() {
                     <span className={signClass(r.yoy)}>
                       {r.yoy == null ? '—' : `${r.yoy > 0 ? '+' : ''}${r.yoy.toFixed(1)}${r.yoyUnit}`}
                     </span>
+                  </td>
+                  <td className="num" style={{ whiteSpace: 'nowrap' }}>
+                    {p ? (
+                      <PercentileChip
+                        percentile={p.percentile}
+                        nObs={p.n_obs}
+                        windowLabel="5y"
+                      />
+                    ) : (
+                      <span className="dim">—</span>
+                    )}
                   </td>
                   <td className="num dim" style={{ whiteSpace: 'nowrap' }}>
                     {r.updated}

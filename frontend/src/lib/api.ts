@@ -209,6 +209,29 @@ export interface FreshnessReport {
 
 export const getFreshness = () => api.get<FreshnessReport>('/freshness');
 
+// ── Percentile / regime context ───────────────────────
+export interface PercentilePoint {
+  series_id: string;
+  value: number;
+  as_of: string;
+  window_days: number;
+  n_obs: number;
+  percentile: number;
+  min: number;
+  max: number;
+  median: number;
+}
+
+export interface PercentilesResponse {
+  window_days: number;
+  series: Record<string, PercentilePoint>;
+}
+
+export const getSeriesPercentiles = (seriesIds: string[], windowDays = 1825) =>
+  api.get<PercentilesResponse>('/percentiles', {
+    params: { series_ids: seriesIds.join(','), window_days: windowDays },
+  });
+
 export const listBriefings = (limit = 30) =>
   api.get<{ items: BriefingListItem[] }>('/briefings', { params: { limit } });
 

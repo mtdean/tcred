@@ -832,6 +832,19 @@ def trigger_db_backup():
     return backup_database()
 
 
+# ── PERCENTILE / REGIME CONTEXT ──────────────────────────────
+
+@router.get("/percentiles")
+def get_percentiles(
+    series_ids: str = Query(..., description="Comma-separated series ids."),
+    window_days: int = Query(default=1825, ge=30, le=20000),
+):
+    """Trailing-window percentile + min/max/median for one or more series."""
+    from data.percentiles import compute_percentiles
+    ids = [s.strip() for s in series_ids.split(",") if s.strip()]
+    return {"window_days": window_days, "series": compute_percentiles(ids, window_days=window_days)}
+
+
 # ── DATA FRESHNESS ───────────────────────────────────────────
 
 @router.get("/freshness")
