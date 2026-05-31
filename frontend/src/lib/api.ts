@@ -177,6 +177,36 @@ export interface BriefingChatResponse {
   };
 }
 
+// ── ABS issuance (SIFMA) ───────────────────────────────
+export interface SifmaSeries {
+  label: string;
+  points: { date: string; value: number }[];
+}
+
+export interface AbsIssuanceResponse {
+  sifma: Record<string, SifmaSeries>;
+  fred_supplement: {
+    series_id: string;
+    label: string;
+    points: { date: string; value: number }[];
+  };
+  last_ingest: string | null;
+  drop_dir: string;
+}
+
+export interface SifmaRefreshResult {
+  files: number;
+  records: number;
+  rows_written: number;
+  fred_supplement_rows?: number;
+  drop_dir?: string;
+}
+
+export const getAbsIssuance = () =>
+  api.get<AbsIssuanceResponse>('/abs/issuance');
+export const triggerAbsIssuanceRefresh = () =>
+  api.post<SifmaRefreshResult>('/abs/issuance/refresh');
+
 // ── Issuer / deal pivot ────────────────────────────────
 export interface IssuerListItem {
   issuer_name: string;

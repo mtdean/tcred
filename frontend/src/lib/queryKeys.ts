@@ -59,4 +59,7 @@ export const qk = {
   // Issuer / deal pivot
   issuers: ['issuers'] as const,
   issuerSummary: (q: string) => ['issuers', 'summary', q] as const,
+
+  // ABS issuance (SIFMA)
+  absIssuance: ['abs', 'issuance'] as const,
 };

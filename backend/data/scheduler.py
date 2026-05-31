@@ -176,6 +176,18 @@ def _article_dedup_inner() -> int:
     return result["duplicates"]
 
 
+def _sifma_inner() -> int:
+    """SIFMA: ingest any newly-dropped xlsx files + refresh FRED supplement."""
+    from data.sifma import fetch_fred_abs_issuance, ingest_sifma_drops
+    result = ingest_sifma_drops()
+    fred_n = fetch_fred_abs_issuance()
+    logger.info(
+        "Scheduler: SIFMA — %d files (%d records), FRED supplement %d rows",
+        result["files"], result["records"], fred_n,
+    )
+    return result["records"] + fred_n
+
+
 # Instrumented entry points the scheduler / initial fetch invoke.
 _job_feeds = _instrument("feeds", _feeds_inner)
 _job_market = _instrument("market", _market_inner)
@@ -187,6 +199,7 @@ _job_bdc = _instrument("bdc", _bdc_inner)
 _job_regulatory = _instrument("regulatory", _regulatory_inner)
 _job_backup = _instrument("backup", _backup_inner)
 _job_article_dedup = _instrument("article_dedup", _article_dedup_inner)
+_job_sifma = _instrument("sifma", _sifma_inner)
 
 
 async def start_scheduler():
@@ -283,6 +296,16 @@ async def start_scheduler():
         _job_article_dedup,
         IntervalTrigger(minutes=30),
         id="article_dedup",
+        max_instances=1,
+        replace_existing=True,
+    )
+
+    # Scan the SIFMA drop folder every 6h for newly-deposited xlsx files;
+    # also refreshes the coarse FRED supplement series at the same cadence.
+    _scheduler.add_job(
+        _job_sifma,
+        IntervalTrigger(hours=6),
+        id="sifma",
         max_instances=1,
         replace_existing=True,
     )

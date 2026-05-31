@@ -828,6 +828,24 @@ def db_list_briefings(limit: int = 30) -> list[dict]:
     return _list(limit=limit)
 
 
+# ── ABS ISSUANCE (SIFMA) ─────────────────────────────────────
+
+@router.get("/abs/issuance")
+def get_abs_issuance():
+    """Monthly ABS issuance series by asset class (SIFMA) + FRED supplement."""
+    from data.sifma import get_issuance_series
+    return get_issuance_series()
+
+
+@router.post("/abs/issuance/refresh")
+def trigger_abs_issuance_refresh():
+    """Scan the SIFMA drop folder for new xlsx files; ingest + archive."""
+    from data.sifma import fetch_fred_abs_issuance, ingest_sifma_drops
+    result = ingest_sifma_drops()
+    result["fred_supplement_rows"] = fetch_fred_abs_issuance()
+    return result
+
+
 # ── ISSUER / DEAL PIVOT ──────────────────────────────────────
 
 @router.get("/issuers")
