@@ -352,14 +352,73 @@ a:hover { text-decoration: underline; }
 .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
 .stack  { display: flex; flex-direction: column; gap: 12px; }
 
+/* Responsive page layouts:
+   - .sidebar-grid: left rail (e.g. archive list) + main content. Collapses
+     to a single column on tablet+ where the rail would crowd the body.
+   - .stat-grid: row of equal-width stat tiles. Snaps to 2×2 on tablet.
+   Inline gridTemplateColumns inside React components doesn't respond to
+   media queries — so anywhere we want a responsive grid, route through
+   one of these classes. */
+.sidebar-grid {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 12px;
+  align-items: start;
+  min-height: 0;
+}
+.sidebar-grid--wide { grid-template-columns: 260px 1fr; }
+.sidebar-grid--narrow { grid-template-columns: 200px 1fr; }
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
 /* ── Responsive ────────────────────────────────────────────
-   Targeted mobile pass. Desktop (>768px) is unchanged.
-   - 768px: multi-col grids collapse to single column (iPad portrait + below)
-   - 480px: full mobile pass — compact TopBar, smaller paddings, tighter type
+   - 1024px: tablet pass (iPad portrait + landscape). Sidebars stack,
+     stat tiles snap to 2-col, buttons get touch-friendly padding, the
+     topbar gains the horizontal-swipe affordance.
+   - 768px: multi-col grids collapse to a single column.
+   - 480px: full mobile pass — compact TopBar, smaller paddings, tighter type.
 */
+@media (max-width: 1024px) {
+  /* Sidebar layouts stack so the main panel gets the full width. */
+  .sidebar-grid,
+  .sidebar-grid--wide,
+  .sidebar-grid--narrow { grid-template-columns: 1fr; }
+
+  /* 4-tile stat rows collapse to 2×2. */
+  .stat-grid { grid-template-columns: 1fr 1fr; }
+
+  /* iPad-style touch targets — Apple HIG suggests ≥44px. */
+  .btn { padding: 7px 12px; }
+
+  /* TopBar would crowd with 10 tabs; let it swipe horizontally. */
+  .topbar {
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .topbar::-webkit-scrollbar { display: none; }
+  .topbar-spacer { flex-shrink: 0; min-width: 8px; }
+  .tabnav { flex-shrink: 0; }
+
+  /* Panel header filters/actions can wrap on narrow viewports. */
+  .panel-header { flex-wrap: wrap; gap: 6px; }
+  .panel-actions { flex-wrap: wrap; }
+
+  /* Sub-tab strips behave like the mobile pass — horizontal-swipeable. */
+  .subtabs { overflow-x: auto; scrollbar-width: none; flex-wrap: nowrap; }
+  .subtabs::-webkit-scrollbar { display: none; }
+  .subtabs button { flex-shrink: 0; }
+}
+
 @media (max-width: 768px) {
   .grid-2,
   .grid-3 { grid-template-columns: 1fr; }
+  .stat-grid { grid-template-columns: 1fr 1fr; }
   .app-main { padding: 8px; }
 }
 

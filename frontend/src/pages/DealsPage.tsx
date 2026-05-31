@@ -184,14 +184,7 @@ function StatsPanel({
       : '—';
   return (
     <Panel title={query} subtitle="ABS NEW-ISSUE ACTIVITY">
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(4, 1fr)',
-          gap: 10,
-          fontSize: 12,
-        }}
-      >
+      <div className="stat-grid" style={{ fontSize: 12 }}>
         <StatTile label="Deals" value={stats.n_deals.toString()} />
         <StatTile label="Total volume" value={fmtMillions(stats.total_volume)} />
         <StatTile label="Asset classes" value={stats.n_asset_classes.toString()} />

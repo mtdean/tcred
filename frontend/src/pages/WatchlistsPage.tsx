@@ -54,10 +54,7 @@ export default function WatchlistsPage() {
   }, [selectedId]);
 
   return (
-    <div
-      className="stack"
-      style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 12 }}
-    >
+    <div className="sidebar-grid sidebar-grid--wide stack">
       <WatchlistSidebar
         lists={lists ?? []}
         selectedId={selectedId}

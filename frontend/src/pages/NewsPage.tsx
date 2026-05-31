@@ -33,7 +33,7 @@ export default function NewsPage() {
           .join(' · ');
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr', gap: 12, alignItems: 'start' }}>
+    <div className="sidebar-grid sidebar-grid--narrow">
       <Panel title="Filters">
         <FeedControls
           minScore={minScore}

@@ -72,14 +72,7 @@ export default function AnalystPage() {
 
   return (
     <div className="stack">
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '240px 1fr',
-          gap: 12,
-          minHeight: 0,
-        }}
-      >
+      <div className="sidebar-grid">
         <BriefingArchive
           list={list ?? []}
           selectedId={selectedId}
