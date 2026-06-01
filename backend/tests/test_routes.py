@@ -437,6 +437,27 @@ class TestRefreshRouteWiring:
         assert resp.status_code == 200
         assert resp.json() == {"inserted": 12}
 
+    def test_market_refresh_returns_row_count_and_sets_meta(
+        self, api_client, fresh_db, monkeypatch
+    ):
+        monkeypatch.setattr("data.market.fetch_market_data", lambda: 9000)
+        resp = api_client.post("/api/market/refresh")
+        assert resp.status_code == 200
+        assert resp.json() == {"rows": 9000}
+        assert db.get_meta("last_market_refresh") is not None
+
+    def test_fred_refresh_returns_both_counts_and_sets_meta(
+        self, api_client, fresh_db, monkeypatch
+    ):
+        monkeypatch.setattr("data.fred.fetch_fred_series", lambda: 1500)
+        monkeypatch.setattr(
+            "data.indicators.compute_all_indicators", lambda: 300
+        )
+        resp = api_client.post("/api/fred/refresh")
+        assert resp.status_code == 200
+        assert resp.json() == {"fred_rows": 1500, "indicator_rows": 300}
+        assert db.get_meta("last_fred_refresh") is not None
+
     def test_bdc_refresh_sets_meta_marker(
         self, api_client, fresh_db, monkeypatch
     ):

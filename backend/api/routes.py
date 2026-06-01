@@ -195,6 +195,17 @@ def get_market_snapshot():
     return get_market_snapshot()
 
 
+@router.post("/market/refresh")
+def trigger_market_refresh():
+    """Manually pull market data (token-free yfinance fetch)."""
+    from datetime import datetime, timezone
+    from cache.db import set_meta
+    from data.market import fetch_market_data
+    n = fetch_market_data()
+    set_meta("last_market_refresh", datetime.now(timezone.utc).isoformat())
+    return {"rows": n}
+
+
 @router.get("/market/history/{ticker}")
 def get_market_history(ticker: str, limit: int = Query(default=252)):
     """Price history for a single ticker."""
@@ -217,6 +228,19 @@ def get_fred_latest():
     """Most recent value for all FRED series."""
     from data.fred import get_latest_fred_values
     return get_latest_fred_values()
+
+
+@router.post("/fred/refresh")
+def trigger_fred_refresh():
+    """Manually pull FRED series + recompute derived indicators (probits, EBP, ...)."""
+    from datetime import datetime, timezone
+    from cache.db import set_meta
+    from data.fred import fetch_fred_series
+    from data.indicators import compute_all_indicators
+    n = fetch_fred_series()
+    m = compute_all_indicators()
+    set_meta("last_fred_refresh", datetime.now(timezone.utc).isoformat())
+    return {"fred_rows": n, "indicator_rows": m}
 
 
 @router.get("/fred/history/{series_id}")
@@ -718,6 +742,8 @@ def get_status():
         "edgar_filings": filing_count,
         "feeds": {"live": live_feeds, "total": total_feeds},
         "last_news_refresh": get_meta("last_news_refresh"),
+        "last_market_refresh": get_meta("last_market_refresh"),
+        "last_fred_refresh": get_meta("last_fred_refresh"),
         "last_abs_pricing_refresh": get_meta("last_abs_pricing_refresh"),
         "last_abs_424b5_refresh": get_meta("last_abs_424b5_refresh"),
         "last_bdc_refresh": get_meta("last_bdc_refresh"),

@@ -123,6 +123,11 @@ export const getArticles = (params: ArticleParams) =>
 export const getFeedHealth = () => api.get<FeedHealth[]>('/articles/feed-health');
 export const markRead = (id: string) => api.post(`/articles/${id}/read`);
 export const triggerRefresh = () => api.post('/articles/refresh');
+export const triggerMarketRefresh = () => api.post<{ rows: number }>('/market/refresh');
+export const triggerFredRefresh = () =>
+  api.post<{ fred_rows: number; indicator_rows: number }>('/fred/refresh');
+export const triggerEdgarRefresh = () =>
+  api.post<{ inserted: number }>('/edgar/refresh');
 export const generateDigest = (body: DigestParams) =>
   api.post<DigestResponse>('/digest', body);
 export const getDigests = (limit = 60) =>

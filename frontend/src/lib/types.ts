@@ -102,6 +102,8 @@ export interface StatusResponse {
   edgar_filings: number;
   feeds: { live: number; total: number };
   last_news_refresh: string | null;
+  last_market_refresh: string | null;
+  last_fred_refresh: string | null;
   last_abs_pricing_refresh: string | null;
   last_abs_424b5_refresh: string | null;
   last_bdc_refresh: string | null;
