@@ -526,12 +526,16 @@ def compute_cfsi() -> int:
     if pca_scores is not None:
         # Orient so higher = more stress: align the PC's sign with the consumer
         # DSR z-score (a monotone stress input). If the PC anti-correlates with
-        # DSR, flip it.
+        # DSR, flip it. A PC orthogonal to DSR (cov ~ 0) can't be oriented —
+        # its sign would be LAPACK-arbitrary — so treat that as degenerate too.
         dsr_idx = _CFSI_KEYS.index("dsr")
         dsr_z = [row[dsr_idx] for row in zmatrix]
         cov = sum(p * z for p, z in zip(pca_scores, dsr_z))
-        if cov < 0:
+        if abs(cov) < 1e-9:
+            pca_scores = None
+        elif cov < 0:
             pca_scores = [-p for p in pca_scores]
+    if pca_scores is not None:
         values = pca_scores
         method = "PCA"
     else:

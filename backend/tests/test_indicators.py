@@ -425,13 +425,13 @@ class TestRecessionEnsemble:
 # closed-form value locks that don't reimplement the production math.
 #
 # Intentionally NOT covered (noted, not fixed — source must stay untouched):
-#   • indicators.py:534 — the CFSI PCA sign-flip executes only when LAPACK
-#     returns a DSR-anti-aligned eigenvector (sign is arbitrary per platform).
-#     The orientation *invariant* is locked by
+#   • The CFSI PCA sign-flip executes only when LAPACK returns a
+#     DSR-anti-aligned eigenvector (sign is arbitrary per platform). The
+#     orientation *invariant* is locked by
 #     TestComputeCfsi.test_pca_is_oriented_to_the_dsr_input, which is
-#     deterministic regardless of which branch runs. Latent quirk: if PC1 is
-#     exactly orthogonal to the DSR z-score (cov == 0), orientation is
-#     undefined and follows LAPACK's arbitrary sign.
+#     deterministic regardless of which branch runs. A PC1 orthogonal to the
+#     DSR z-score (cov ~ 0) is treated as degenerate → equal-weight fallback
+#     (test_pc_orthogonal_to_dsr_falls_back_to_equal_weight).
 #   • indicators.py:789-790, 896 — defensive numerics guards
 #     (np.linalg.LinAlgError from solve; a None NTFS-probit fit) that ridge
 #     regularization makes practically unreachable.
@@ -868,6 +868,34 @@ class TestComputeCfsi:
             ).fetchall()
         for j, r in enumerate(rows):
             expected = -(self.V[j] - mu) / sd
+            assert r["value"] == pytest.approx(expected, abs=1e-3)
+
+    def test_pc_orthogonal_to_dsr_falls_back_to_equal_weight(
+        self, fresh_db, monkeypatch
+    ):
+        # If PC1 carries no DSR signal (cov == 0) its sign can't be oriented,
+        # so compute_cfsi must treat the PCA as degenerate and use the
+        # equal-weight path. Force the case by stubbing the PCA to return
+        # all-zero scores (trivially orthogonal to the DSR z-series); with all
+        # four inputs co-moving with V, equal weight = the z-score of V.
+        _install_fake_fredapi(monkeypatch, self._fred_stub_series())
+        monkeypatch.setattr(
+            ind, "_pca_first_component", lambda zmatrix: [0.0] * len(zmatrix)
+        )
+        for j in range(16):
+            _seed_metric("HHDC_FLOW30_ALL", self._qdate(j), self.V[j])
+
+        assert ind.compute_cfsi() == 16
+
+        mu = statistics.fmean(self.V)
+        sd = statistics.pstdev(self.V)
+        with db.get_conn() as conn:
+            rows = conn.execute(
+                "SELECT date, value FROM metrics "
+                "WHERE series_id='CFSI' ORDER BY date"
+            ).fetchall()
+        for j, r in enumerate(rows):
+            expected = (self.V[j] - mu) / sd
             assert r["value"] == pytest.approx(expected, abs=1e-3)
 
 
