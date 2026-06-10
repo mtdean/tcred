@@ -641,6 +641,58 @@ class TestAbsSpreadSeriesBelowIGBucket:
         assert data["series"] == []
 
 
+class TestAbsSpreadSeriesPercentile:
+    def _seed_weeks(self, spreads_by_week_ago: dict[int, float]):
+        for weeks_ago, spread in spreads_by_week_ago.items():
+            _seed_new_issue(
+                f"w{weeks_ago}", filing_date=_recent_date(days_ago=7 * weeks_ago + 3),
+                rating_sp="AAA", spread_to_benchmark=spread,
+            )
+
+    def test_percentile_ranks_latest_week_vs_trailing_context(
+        self, api_client, fresh_db
+    ):
+        # 10 weekly observations: older weeks at 10..90, latest at 85 — above
+        # 8 of them, below one -> 9 of 10 values at-or-below -> rank 90.
+        self._seed_weeks({0: 85.0, **{w: float(10 * w) for w in range(1, 10)}})
+        data = api_client.get(
+            "/api/abs/spread-series?asset_class=prime_auto_loan&rating_bucket=AAA"
+        ).json()
+        pct = data["percentile"]
+        assert pct is not None
+        assert pct["latest"] == 85.0
+        assert pct["rank"] == 90
+        assert pct["window_days"] == 730
+        assert pct["n_weeks"] == 10
+
+    def test_percentile_null_below_eight_weeks(self, api_client, fresh_db):
+        self._seed_weeks({w: 100.0 for w in range(7)})
+        data = api_client.get(
+            "/api/abs/spread-series?asset_class=prime_auto_loan&rating_bucket=AAA"
+        ).json()
+        assert len(data["series"]) == 7
+        assert data["percentile"] is None
+
+    def test_percentile_context_extends_past_requested_window(
+        self, api_client, fresh_db
+    ):
+        # 12 low-spread weeks ~1 year back + 8 recent higher weeks. With a 90d
+        # request window the latest week still ranks against the full 730d
+        # context, so the old low weeks pull its rank up.
+        self._seed_weeks({w: 50.0 for w in range(48, 60)})
+        self._seed_weeks({w: 200.0 - w for w in range(8)})  # latest = 200
+        data = api_client.get(
+            "/api/abs/spread-series"
+            "?asset_class=prime_auto_loan&rating_bucket=AAA&days_back=90"
+        ).json()
+        pct = data["percentile"]
+        assert pct is not None
+        assert pct["latest"] == 200.0
+        assert pct["n_weeks"] == 20
+        assert pct["rank"] == 100  # highest value in the 2y context
+        assert pct["window_days"] == 730
+
+
 # ─── More POST refresh wiring (424B5 / regulatory / KBRA) ────────────────────
 class TestMoreRefreshRouteWiring:
     def test_abs_new_issues_refresh_passes_days_back_and_sets_meta(

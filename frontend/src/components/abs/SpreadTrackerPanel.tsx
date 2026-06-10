@@ -34,7 +34,7 @@ import type {
 } from '../../lib/types';
 import { COLORS } from '../../lib/colors';
 import TooltipShell from '../charts/TooltipShell';
-import { currency, fmtDate, fmtRelative, num } from '../../lib/utils';
+import { currency, fmtDate, fmtRelative, num, ordinal } from '../../lib/utils';
 import Panel from '../shared/Panel';
 import RangeToggle from '../shared/RangeToggle';
 import LoadingCursor from '../shared/LoadingCursor';
@@ -327,10 +327,32 @@ export default function SpreadTrackerPanel() {
     </div>
   );
 
+  const pct = seriesQ.data?.percentile ?? null;
+  const subtitle = (
+    <span>
+      424B5 PARSED · WEEKLY MEDIAN bps OVER UST · CONF ≥ MEDIUM
+      {pct && (
+        <span
+          className="mono"
+          title={`Latest weekly avg (${pct.latest.toFixed(0)} bps) vs ${pct.n_weeks} weekly observations over the trailing ${Math.round(pct.window_days / 365)}y — share of weeks at or below`}
+          style={{
+            marginLeft: 6,
+            color:
+              pct.rank >= 80 ? 'var(--negative)'
+              : pct.rank >= 60 ? 'var(--warning)'
+              : 'var(--text-secondary)',
+          }}
+        >
+          · {ordinal(pct.rank)} PCTILE (2Y)
+        </span>
+      )}
+    </span>
+  );
+
   return (
     <Panel
       title="ABS New-Issue Spread Tracker"
-      subtitle="424B5 PARSED · WEEKLY MEDIAN bps OVER UST · CONF ≥ MEDIUM"
+      subtitle={subtitle}
       actions={actions}
     >
       {/* Chart */}

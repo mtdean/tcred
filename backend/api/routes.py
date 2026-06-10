@@ -380,14 +380,37 @@ def get_abs_spread_series(
     Bucket → agency-label mapping and the query live in
     cache.db.get_abs_spread_series (shared with the analyst spread tool);
     unknown buckets/metrics are rejected by the Query patterns above.
+
+    `percentile` ranks the latest weekly average against a trailing 2-year
+    context window (or the requested window if longer): rank = share of weeks
+    at or below the latest value. Null until 8 weekly observations exist.
     """
     from cache.db import get_abs_spread_series as _query
+
+    series = _query(asset_class, rating_bucket, metric, days_back)
+
+    context_days = max(days_back, 730)
+    context = (
+        series if context_days == days_back
+        else _query(asset_class, rating_bucket, metric, context_days)
+    )
+    percentile = None
+    if series and len(context) >= 8:
+        latest = series[-1]["avg_spread"]
+        values = [r["avg_spread"] for r in context]
+        percentile = {
+            "latest": latest,
+            "rank": round(100 * sum(1 for v in values if v <= latest) / len(values)),
+            "window_days": context_days,
+            "n_weeks": len(values),
+        }
 
     return {
         "asset_class": asset_class,
         "rating_bucket": rating_bucket,
         "metric": metric,
-        "series": _query(asset_class, rating_bucket, metric, days_back),
+        "series": series,
+        "percentile": percentile,
     }
 
 

@@ -236,11 +236,21 @@ export interface AbsSpreadSeriesPoint {
   n_tranches: number;
 }
 
+// Rank of the latest weekly average vs the trailing context window
+// (share of weeks at or below the latest value).
+export interface AbsSpreadPercentile {
+  latest: number;
+  rank: number;
+  window_days: number;
+  n_weeks: number;
+}
+
 export interface AbsSpreadSeriesResponse {
   asset_class: string;
   rating_bucket: AbsRatingBucket;
   metric: AbsSpreadMetric;
   series: AbsSpreadSeriesPoint[];
+  percentile: AbsSpreadPercentile | null;
 }
 
 export interface AbsDealSummaryRow {
