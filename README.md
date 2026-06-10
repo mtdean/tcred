@@ -237,14 +237,20 @@ sit vs. its 5-year distribution?); 21 consumer-credit equity proxies.
 ensemble** (blended yield-curve + EBP + near-term-forward-spread probits + meta-logit
 stacked gauge), a **Consumer Financial Stress Index**, OFR & BIS systemic-risk gauges,
 NY Fed delinquency-transition *flows*, credit impulse, plus the underlying activity /
-rates / conditions / inflation panels. Each series carries a **freshness chip**
-(fresh / stale / dead) so you know when a source has gone quiet. See
-[`docs/INDICATORS.md`](docs/INDICATORS.md) for the research, formulas, and sources.
+rates / conditions / inflation panels. High-frequency adds: **weekly jobless claims**,
+**Fed liquidity plumbing** (reserves / ON RRP / TGA), **Manheim used-vehicle values**
+(auto-ABS recovery driver), and **CFPB complaint volume by product** (consumer-stress
+lead). Each series carries a **freshness chip** (fresh / stale / dead) so you know when
+a source has gone quiet. See [`docs/INDICATORS.md`](docs/INDICATORS.md) for the
+research, formulas, and sources.
 - **ABS / EDGAR** — paginated, filterable SEC filings monitor; a **new-issue spread
 tracker** that parses ABS pricing term sheets (per-tranche spreads by prime / subprime /
 equipment segment) including 424B5 column-mapping + WAL extraction; spread-momentum
-deltas across deals; and a **stacked-area SIFMA issuance panel** driven by the drop
-folder (see [Usage › SIFMA drop folder](#sifma-drop-folder)).
+deltas across deals; a **Trusts sub-tab** with monthly card master-trust performance
+(delinquency / charge-off / payment rate) parsed from 10-D distribution reports —
+consumer credit ~2 quarters ahead of the quarterly FRED series; **TRACE secondary
+trading volume** (ABS / CLO / CMBS, daily); and a **stacked-area SIFMA issuance
+panel** driven by the drop folder (see [Usage › SIFMA drop folder](#sifma-drop-folder)).
 - **Deals** — issuer / deal pivot view. Pick a name and see every angle on it: ABS
 new-issues with tranche aggregates, pricing history, EDGAR filings, KBRA presales, and
 recent scored news — all in one place.
@@ -271,6 +277,7 @@ Browser (Mac / iPad) ──http://<lan-ip>:8000──▶ FastAPI (uvicorn)
                                                       ├── SQLite — articles · article_clusters
                                                       │           metrics · edgar_filings
                                                       │           abs_pricing · abs_new_issues
+                                                      │           trust_performance
                                                       │           bdc_* · clo_* · h8_metrics
                                                       │           kbra_presales
                                                       │           regulatory_actions
@@ -281,8 +288,12 @@ Browser (Mac / iPad) ──http://<lan-ip>:8000──▶ FastAPI (uvicorn)
                                                            ├── market         15m ┐
                                                            ├── FRED+indicators 6h │
                                                            ├── EDGAR+ABS      4h │
+                                                           ├── 10-D trusts   12h │
+                                                           ├── TRACE volume  12h │
                                                            ├── HHDC          24h │ token-free,
                                                            ├── BDC           24h │ automatic
+                                                           ├── Manheim       24h │
+                                                           ├── CFPB          24h │
                                                            ├── Regulatory     6h │
                                                            ├── SIFMA          6h │
                                                            ├── article-dedup 30m │
@@ -298,7 +309,7 @@ Browser (Mac / iPad) ──http://<lan-ip>:8000──▶ FastAPI (uvicorn)
 · `anthropic` · `pandas`/`numpy` · `openpyxl` (NY Fed + SIFMA workbooks) · `lxml` (ABS
 term-sheet tables) · `pypdf` (KBRA presales) (backend); React 19 + TypeScript + Vite ·
 React Query · React Router · Recharts · Radix UI · `react-markdown` (briefing + chat)
-(frontend). Dependencies are pinned to exact versions. The pytest suite covers ~495
+(frontend). Dependencies are pinned to exact versions. The pytest suite covers ~860
 tests; every scheduled job is wrapped in an `_instrument` helper that records start /
 end / status / duration / rows ingested into `job_runs`.
 
@@ -319,11 +330,13 @@ backend/
   data/               feeds · classifier · digest · fred · market · edgar · scheduler
                       indicators (computed series) · hhdc (NY Fed flows)
                       abs_pricing · abs_parser · abs_reparse (424B5 + FWP)
+                      trust_performance (10-D master-trust metrics)
+                      manheim (UVVI) · cfpb (complaints) · finra_trace (STAR volume)
                       bdc · clo · h8 · kbra · regulatory · sifma
                       analyst · analyst_tools (briefing + tool-use chat, Opus 4.7)
                       article_dedup (semantic clustering)
                       watchlists · issuers · percentiles · freshness · backups
-  tests/              pytest suite (~495 tests); see conftest.py for fixtures
+  tests/              pytest suite (~860 tests); see conftest.py for fixtures
 frontend/
   src/
     pages/            Home · News · Markets · Macro · ABS · Deals
@@ -390,6 +403,9 @@ GET  /api/abs/deal-summary            per-deal aggregated tranche stats
 POST /api/abs/new-issues/refresh      manual 424B5 / FWP parse run
 GET  /api/abs/issuance                SIFMA monthly issuance by asset class
 POST /api/abs/issuance/refresh        scan SIFMA drop folder, parse, archive
+GET  /api/trust-performance           monthly master-trust metrics from 10-Ds (time series)
+GET  /api/trust-performance/latest    latest period per trust, metrics pivoted
+POST /api/trust-performance/refresh   discover + parse recent 10-D distribution reports
 
 # Private Credit (BDC / CLO / H.8 / KBRA)
 GET  /api/bdc/watch-list              non-accrual watch list
@@ -465,7 +481,7 @@ sqlite3 backend/cache/monitor.db '.tables'
 # Run the test suite
 cd backend && source .venv/bin/activate
 pip install -r requirements-dev.txt    # first time only
-pytest -q                              # ~495 tests
+pytest -q                              # ~860 tests
 ```
 
 `tests/conftest.py` sets `MONITOR_DB_PATH` to a session temp file *before* backend
