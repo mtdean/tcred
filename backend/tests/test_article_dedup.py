@@ -11,7 +11,8 @@ from cache import db
 from data import article_dedup as dedup
 
 
-NOW = "2026-05-30T12:00:00+00:00"
+# Dynamic so seeded articles always fall inside dedup's 72-hour window.
+NOW = datetime.now(timezone.utc).isoformat()
 
 
 def _seed(id_, title, feed_name="Bloomberg", published_at=None,
