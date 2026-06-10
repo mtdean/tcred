@@ -41,37 +41,34 @@ def _instrument(job_id: str, fn: Callable, triggered_by: str = "scheduler"):
     """
     is_async = inspect.iscoroutinefunction(fn)
 
+    def _success(run_id: int, result):
+        rows = result if isinstance(result, int) else None
+        finish_job_run(run_id, "success", rows_ingested=rows)
+        return result
+
+    def _failure(run_id: int, e: Exception):  # record-and-continue
+        finish_job_run(
+            run_id, "error",
+            error=f"{type(e).__name__}: {e}\n{traceback.format_exc(limit=2)}",
+        )
+        logger.error("Scheduler: %s job error: %s", job_id, e)
+        return None
+
     @wraps(fn)
     async def _async_wrapper():
         run_id = start_job_run(job_id, triggered_by=triggered_by)
         try:
-            result = await fn()
-            rows = result if isinstance(result, int) else None
-            finish_job_run(run_id, "success", rows_ingested=rows)
-            return result
-        except Exception as e:  # noqa: BLE001 — record-and-continue
-            finish_job_run(
-                run_id, "error",
-                error=f"{type(e).__name__}: {e}\n{traceback.format_exc(limit=2)}",
-            )
-            logger.error("Scheduler: %s job error: %s", job_id, e)
-            return None
+            return _success(run_id, await fn())
+        except Exception as e:  # noqa: BLE001
+            return _failure(run_id, e)
 
     @wraps(fn)
     def _sync_wrapper():
         run_id = start_job_run(job_id, triggered_by=triggered_by)
         try:
-            result = fn()
-            rows = result if isinstance(result, int) else None
-            finish_job_run(run_id, "success", rows_ingested=rows)
-            return result
+            return _success(run_id, fn())
         except Exception as e:  # noqa: BLE001
-            finish_job_run(
-                run_id, "error",
-                error=f"{type(e).__name__}: {e}\n{traceback.format_exc(limit=2)}",
-            )
-            logger.error("Scheduler: %s job error: %s", job_id, e)
-            return None
+            return _failure(run_id, e)
 
     return _async_wrapper if is_async else _sync_wrapper
 
