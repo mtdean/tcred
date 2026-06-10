@@ -11,8 +11,8 @@ dispatcher and surfaced as `{"error": "..."}` to the model.
 
 from __future__ import annotations
 
-import json
 from datetime import datetime, timedelta, timezone
+from data.dates import utc_days_ago_str
 from typing import Optional
 
 from cache import db
@@ -62,7 +62,7 @@ def _tool_get_abs_spread_series(
         "A":   ["A+", "A", "A-", "A1", "A2", "A3"],
         "BBB": ["BBB+", "BBB", "BBB-", "Baa1", "Baa2", "Baa3"],
     }
-    since = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+    since = utc_days_ago_str(days_back)
 
     with db.get_conn() as conn:
         if rating_bucket == "all":

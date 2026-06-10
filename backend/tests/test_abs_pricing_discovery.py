@@ -17,7 +17,7 @@ Known quirks locked in (see notes inline):
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -65,9 +65,9 @@ class TestSearchFwp:
         # not datetime.now(timezone.utc) — refactor target. Computing the
         # expected strings before AND after the call tolerates a midnight
         # rollover during the test.
-        before = datetime.now()
+        before = datetime.now(timezone.utc)
         apr._search_fwp("floorplan", days_back=7)
-        after = datetime.now()
+        after = datetime.now(timezone.utc)
 
         q = parse_qs(urlparse(mocked_responses.calls[0].request.url).query)
         assert q["q"] == ['"floorplan"']      # keyword is quoted for FTS
@@ -244,7 +244,7 @@ class TestFetchAbsPricing:
 
     @pytest.fixture
     def recent_date(self):
-        return (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
+        return (datetime.now(timezone.utc) - timedelta(days=2)).strftime("%Y-%m-%d")
 
     def test_discovers_parses_and_stores_tranches(
         self, fresh_db, mocked_responses, monkeypatch, no_sleep, recent_date
@@ -322,7 +322,7 @@ class TestFetchAbsPricing:
     def test_filing_older_than_cutoff_is_not_fetched(
         self, fresh_db, mocked_responses, monkeypatch, no_sleep
     ):
-        old = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
+        old = (datetime.now(timezone.utc) - timedelta(days=90)).strftime("%Y-%m-%d")
         self._wire_discovery(mocked_responses, monkeypatch, old)
 
         n = apr.fetch_abs_pricing(days_back=30)

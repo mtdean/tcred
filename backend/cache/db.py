@@ -11,7 +11,7 @@ Tables:
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from pathlib import Path
+from data.dates import utc_days_ago_str
 from typing import Generator, Optional
 
 from config import settings
@@ -525,9 +525,7 @@ def get_abs_new_issues(
     limit: int = 500,
 ) -> list[dict]:
     """Return 424B5 tranche records filtered by asset class and confidence."""
-    from datetime import datetime, timedelta
-
-    since = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+    since = utc_days_ago_str(days_back)
     conf_order = {"low": 0, "medium": 1, "high": 2}
     min_conf_val = conf_order.get(min_confidence, 1)
 

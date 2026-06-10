@@ -10,7 +10,6 @@ Runs after each feed fetch cycle.
 import json
 import logging
 import os
-from typing import Optional
 
 import anthropic
 

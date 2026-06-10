@@ -27,7 +27,6 @@ from typing import Optional
 import requests
 from bs4 import BeautifulSoup
 
-import anthropic
 
 from cache.db import get_conn
 from config import settings

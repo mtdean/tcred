@@ -27,7 +27,7 @@ import re
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Optional
 
 from cache import db
 from config import settings

@@ -19,7 +19,7 @@ import inspect
 import logging
 import traceback
 from functools import wraps
-from typing import Callable, Optional
+from typing import Callable
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger

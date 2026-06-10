@@ -16,7 +16,7 @@ Known quirks locked in (see notes inline):
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -84,9 +84,9 @@ class TestDiscoverAbs424b5:
 
         # NOTE(bug): range built from naive datetime.now() (local time), not
         # UTC — abs_parser.py:163-164. Same pattern as abs_pricing._search_fwp.
-        before = datetime.now()
+        before = datetime.now(timezone.utc)
         ap._discover_abs_424b5(days_back=7)
-        after = datetime.now()
+        after = datetime.now(timezone.utc)
 
         q = parse_qs(urlparse(mocked_responses.calls[0].request.url).query)
         assert q["q"] == [f'"{ap._DISCOVERY_KEYWORDS[0]}"']  # quoted keyword
