@@ -3,24 +3,14 @@
 
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import axios from 'axios';
 import { Moon, Sparkles, Sun } from 'lucide-react';
 import { generateDigest, getDigests } from '../../lib/api';
 import { qk } from '../../lib/queryKeys';
 import { staticDisabledProps } from '../../lib/staticMode';
-import { fmtDate, fmtDateTime } from '../../lib/utils';
+import { apiErrorMessage, fmtDate, fmtDateTime } from '../../lib/utils';
 import type { DigestResponse } from '../../lib/types';
 import Panel from '../shared/Panel';
 import LoadingCursor from '../shared/LoadingCursor';
-
-function errMessage(err: unknown): string {
-  if (axios.isAxiosError(err)) {
-    const detail = err.response?.data?.detail;
-    if (typeof detail === 'string') return detail;
-    if (err.response?.status) return `Request failed (${err.response.status}).`;
-  }
-  return 'Failed to generate digest.';
-}
 
 const digestKey = (d: DigestResponse) => `${d.date}|${d.session ?? ''}`;
 
@@ -114,7 +104,7 @@ export default function DigestPanel() {
       {!generate.isPending && generate.isError && (
         <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
           <span style={{ color: 'var(--warning)' }}>⚠ </span>
-          {errMessage(generate.error)}
+          {apiErrorMessage(generate.error, 'Failed to generate digest.')}
         </div>
       )}
 

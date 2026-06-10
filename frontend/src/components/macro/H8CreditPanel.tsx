@@ -178,9 +178,9 @@ export default function H8CreditPanel() {
               <Tooltip content={<ImpulseTooltip />} cursor={{ fill: COLORS.borderBright, fillOpacity: 0.2 }} />
               <ReferenceLine y={0} stroke={COLORS.axis} strokeOpacity={0.5} />
               <Bar dataKey="credit_impulse" isAnimationActive={false}>
-                {impulse.map((p, i) => (
+                {impulse.map((p) => (
                   <Cell
-                    key={i}
+                    key={p.date}
                     fill={
                       (p.credit_impulse ?? 0) >= 0 ? COLORS.positive : COLORS.negative
                     }
