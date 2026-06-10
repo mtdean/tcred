@@ -78,6 +78,18 @@ news_feeds:
     category: structured_finance
     health_check: true
 
+  # ABS trade press. Direct RSS is paywalled/blocked, so both go through
+  # Google News site queries (same pattern as the WSJ feeds above).
+  - name: "Asset Securitization Report"
+    url: "https://news.google.com/rss/search?q=when:7d+site:asreport.americanbanker.com&hl=en-US&gl=US&ceid=US:en"
+    category: structured_finance
+    health_check: true
+
+  - name: "Auto Finance News"
+    url: "https://news.google.com/rss/search?q=when:7d+site:autofinancenews.net&hl=en-US&gl=US&ceid=US:en"
+    category: structured_finance
+    health_check: true
+
 newsletter_feeds:
 
   # ── SUBSTACK (predictable pattern) ──────────────────────
@@ -169,6 +181,67 @@ newsletter_feeds:
     url: "https://rss.beehiiv.com/feeds/saecfgjnF5.xml"
     category: macro
     platform: beehiiv
+    health_check: true
+
+  # ── RESEARCH BLOGS / ANALYST NEWSLETTERS (verified 2026-06) ──────
+  - name: "Liberty Street Economics (NY Fed)"
+    url: "https://libertystreeteconomics.newyorkfed.org/feed/"
+    category: macro
+    platform: custom
+    health_check: true
+
+  - name: "Calculated Risk"
+    url: "https://feeds2.feedburner.com/CalculatedRisk"
+    category: macro
+    platform: custom
+    health_check: true
+
+  - name: "Net Interest (Marc Rubinstein)"
+    url: "https://www.netinterest.co/feed"
+    category: credit
+    platform: substack
+    health_check: true
+
+  - name: "Fed Guy (Joseph Wang)"
+    url: "https://fedguy.com/feed/"
+    category: macro
+    platform: custom
+    health_check: true
+
+  - name: "Apricitas Economics (Joey Politano)"
+    url: "https://www.apricitas.io/feed"
+    category: macro
+    platform: substack
+    health_check: true
+
+  - name: "Wolf Street"
+    url: "https://wolfstreet.com/feed/"
+    category: credit
+    platform: custom
+    health_check: true
+
+  - name: "Apollo Academy (Torsten Slok)"
+    url: "https://www.apolloacademy.com/feed/"
+    category: macro
+    platform: custom
+    health_check: true
+
+  - name: "Petition (Restructuring)"
+    url: "https://petition.substack.com/feed"
+    category: credit
+    platform: substack
+    health_check: true
+
+  - name: "Concoda"
+    url: "https://concoda.substack.com/feed"
+    category: macro
+    platform: substack
+    health_check: true
+
+  - name: "Econbrowser (Hamilton & Chinn)"
+    url: "https://econbrowser.com/feed"
+    category: macro
+    platform: custom
     health_check: true
 
   # ── BEEHIIV / CUSTOM — URL NEEDS MANUAL LOOKUP ──────────

@@ -117,6 +117,34 @@ def _edgar_inner() -> int:
     return n + p + n4
 
 
+def _trust_perf_inner() -> int:
+    from data.trust_performance import fetch_trust_performance
+    n = fetch_trust_performance(days_back=35)
+    logger.info(f"Scheduler: trust performance — {n} rows")
+    return n
+
+
+def _manheim_inner() -> int:
+    from data.manheim import fetch_manheim_index
+    n = fetch_manheim_index()
+    logger.info(f"Scheduler: Manheim UVVI — {n} rows")
+    return n
+
+
+def _cfpb_inner() -> int:
+    from data.cfpb import fetch_cfpb_complaints
+    n = fetch_cfpb_complaints()
+    logger.info(f"Scheduler: CFPB complaints — {n} rows")
+    return n
+
+
+def _trace_inner() -> int:
+    from data.finra_trace import fetch_trace_volumes
+    n = fetch_trace_volumes()
+    logger.info(f"Scheduler: TRACE volumes — {n} rows")
+    return n
+
+
 def _hhdc_inner() -> int:
     from data.hhdc import fetch_hhdc_transitions
     from data.indicators import compute_cfsi
@@ -197,6 +225,10 @@ _job_regulatory = _instrument("regulatory", _regulatory_inner)
 _job_backup = _instrument("backup", _backup_inner)
 _job_article_dedup = _instrument("article_dedup", _article_dedup_inner)
 _job_sifma = _instrument("sifma", _sifma_inner)
+_job_trust_perf = _instrument("trust_perf", _trust_perf_inner)
+_job_manheim = _instrument("manheim", _manheim_inner)
+_job_cfpb = _instrument("cfpb", _cfpb_inner)
+_job_trace = _instrument("trace", _trace_inner)
 
 
 async def start_scheduler():
@@ -249,6 +281,47 @@ async def start_scheduler():
         max_instances=1,
         replace_existing=True,
     )
+    # 10-Ds are monthly filings clustered around the 15th; a 12h check picks
+    # them up the day they land without hammering EDGAR.
+    _scheduler.add_job(
+        _job_trust_perf,
+        IntervalTrigger(hours=12),
+        id="trust_perf",
+        max_instances=1,
+        replace_existing=True,
+    )
+
+    # Manheim index is monthly; a daily check picks up the re-dated XLSX link
+    # within a day of Cox posting it.
+    _scheduler.add_job(
+        _job_manheim,
+        IntervalTrigger(hours=24),
+        id="manheim",
+        max_instances=1,
+        replace_existing=True,
+    )
+
+    # CFPB complaint counts settle with a lag; a daily pull keeps the trailing
+    # months fresh as late-arriving complaints post.
+    _scheduler.add_job(
+        _job_cfpb,
+        IntervalTrigger(hours=24),
+        id="cfpb",
+        max_instances=1,
+        replace_existing=True,
+    )
+
+    # STAR file is re-uploaded daily ~8PM ET with that day's trading; a 12h
+    # cadence catches each new day without re-storing duplicates (same date
+    # upserts in place).
+    _scheduler.add_job(
+        _job_trace,
+        IntervalTrigger(hours=12),
+        id="trace",
+        max_instances=1,
+        replace_existing=True,
+    )
+
     # NY Fed HHDC is quarterly data; a daily check is ample to catch new releases.
     _scheduler.add_job(
         _job_hhdc,
@@ -334,6 +407,10 @@ async def _initial_fetch(auto_news: bool) -> None:
         asyncio.to_thread(_job_hhdc),         # blocking → thread
         asyncio.to_thread(_job_regulatory),   # blocking → thread (Phase 7)
         asyncio.to_thread(_job_bdc),          # blocking → thread (Phase 7, ~50MB ZIP)
+        asyncio.to_thread(_job_trust_perf),   # blocking → thread
+        asyncio.to_thread(_job_manheim),      # blocking → thread
+        asyncio.to_thread(_job_cfpb),         # blocking → thread
+        asyncio.to_thread(_job_trace),        # blocking → thread
     ]
     if auto_news:
         tasks.append(_job_feeds())       # async

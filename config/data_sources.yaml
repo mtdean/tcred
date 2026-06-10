@@ -245,6 +245,10 @@ fred_series:
     label: "Business Loan Delinquency Rate"
     category: consumer_credit
     frequency: quarterly
+  - id: "DRCRELEXFACBS"
+    label: "CRE Loan Delinquency Rate (ex-Farmland)"
+    category: consumer_credit
+    frequency: quarterly
 
   # Household Debt Service Ratios (% of disposable income). Methodology break in
   # 2024-Q2: the Board switched to a credit-bureau-based measure — treat pre/post
@@ -297,10 +301,23 @@ fred_series:
     label: "JOLTS Quits Rate"
     category: labor
     frequency: monthly
+  # Weekly jobless claims — the highest-frequency labor lead available.
+  - id: "ICSA"
+    label: "Initial Jobless Claims (Weekly)"
+    category: labor
+    frequency: weekly
+  - id: "CCSA"
+    label: "Continuing Jobless Claims (Weekly)"
+    category: labor
+    frequency: weekly
   - id: "PERMIT"
     label: "Building Permits (SAAR)"
     category: housing
     frequency: monthly
+  - id: "MORTGAGE30US"
+    label: "30-Year Fixed Mortgage Rate (Freddie Mac)"
+    category: housing
+    frequency: weekly
 
   # Credit Impulse inputs: total nonfinancial debt (Z.1) over nominal GDP.
   # TCMDO is the economy-wide credit stock (TOTALSL is consumer-only).
@@ -326,6 +343,26 @@ fred_series:
     label: "Nonfarm Payrolls"
     category: growth
     frequency: monthly
+
+  # ── Liquidity plumbing ────────────────────────────────────────────
+  # Funding-stress context for spread moves: ON RRP drain, reserve scarcity,
+  # TGA rebuilds, and where SOFR sits vs the IORB floor.
+  - id: "RRPONTSYD"
+    label: "ON RRP Usage (Overnight Reverse Repo)"
+    category: liquidity
+    frequency: daily
+  - id: "WRESBAL"
+    label: "Bank Reserve Balances at Fed"
+    category: liquidity
+    frequency: weekly
+  - id: "WTREGEN"
+    label: "Treasury General Account Balance"
+    category: liquidity
+    frequency: weekly
+  - id: "IORB"
+    label: "Interest on Reserve Balances"
+    category: liquidity
+    frequency: daily
 
   # Markets / FX
   - id: "SP500"
@@ -403,6 +440,11 @@ market_tickers:
   # Macro
   - ticker: "^VIX"
     label: "VIX (Volatility Index)"
+    category: macro
+
+  # Rates vol — drives MBS/ABS spread behavior; complements equity vol (VIX).
+  - ticker: "^MOVE"
+    label: "MOVE (Rates Volatility Index)"
     category: macro
 
   - ticker: "^TNX"
@@ -582,6 +624,16 @@ abs_pricing:
     - "card funding"
     - "master trust"
     - "student loan"
+
+# ── MASTER-TRUST MONTHLY PERFORMANCE (10-D) ──────────────────
+# Credit-card master trusts file 10-Ds monthly (~15th) whose EX-99 distribution
+# report carries portfolio delinquency / charge-off / payment-rate figures —
+# consumer-credit performance ~2 quarters ahead of the quarterly FRED series.
+# Token-free regex parse (data/trust_performance.py).
+trust_performance:
+  discovery_queries:
+    - "credit card"
+    - "card issuance"
 
 # ── Phase 7 — BDC Portfolio Monitor ──────────────────────────
 # SEC publishes a free monthly bulk dataset of BDC XBRL Schedule of Investments

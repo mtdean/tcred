@@ -9,6 +9,10 @@ import {
   RecessionEnsemblePanel,
   SahmRulePanel,
   NearTermForwardSpreadPanel,
+  JoblessClaimsPanel,
+  LiquidityPanel,
+  UsedVehicleValuesPanel,
+  ConsumerComplaintsPanel,
   CreditImpulsePanel,
   ConsumerStressPanel,
   DelinquencyFlowPanel,
@@ -52,6 +56,7 @@ export default function MacroPage() {
         <ConsumerStressPanel />
         <SahmRulePanel />
         <NationalActivityPanel />
+        <JoblessClaimsPanel />
       </div>
 
       <SectionLabel>Rates, Curve & Financial Conditions</SectionLabel>
@@ -60,6 +65,7 @@ export default function MacroPage() {
         <NearTermForwardSpreadPanel />
         <FinancialStressPanel />
         <OfrStressPanel />
+        <LiquidityPanel />
       </div>
 
       <SectionLabel>Credit & Delinquency</SectionLabel>
@@ -69,6 +75,8 @@ export default function MacroPage() {
         <DelinquencyFlowPanel />
         <CreditImpulsePanel />
         <CreditGapPanel />
+        <UsedVehicleValuesPanel />
+        <ConsumerComplaintsPanel />
       </div>
 
       <SectionLabel>Bank Credit Supply (Fed H.8)</SectionLabel>

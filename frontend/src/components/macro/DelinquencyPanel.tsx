@@ -9,6 +9,7 @@ const SERIES: FredSeriesDef[] = [
   { seriesId: 'DRSFRMACBS', key: 'mortgage', name: 'MORTGAGE', color: COLORS.chartSecondary },
   { seriesId: 'DRCLACBS', key: 'consumer', name: 'CONSUMER', color: COLORS.chartTertiary },
   { seriesId: 'DRBLACBS', key: 'business', name: 'BUSINESS', color: COLORS.chart6mo },
+  { seriesId: 'DRCRELEXFACBS', key: 'cre', name: 'CRE', color: COLORS.negative },
 ];
 
 const RANGES = [

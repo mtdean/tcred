@@ -31,6 +31,8 @@ import type {
   RegulatoryAction,
   SofrPoint,
   StatusResponse,
+  TrustPerformanceLatest,
+  TrustPerformanceRow,
 } from './types';
 
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
@@ -454,6 +456,20 @@ export const triggerAbsNewIssuesRefresh = (days_back = 14) =>
 
 export const triggerAbsPricingRefresh = (days_back = 30) =>
   api.post<{ tranches: number }>('/abs/pricing/refresh', null, {
+    params: { days_back },
+  });
+
+// ── Master-trust monthly performance (10-D) ────────────────
+export const getTrustPerformance = (metric?: string) =>
+  api.get<TrustPerformanceRow[]>('/trust-performance', {
+    params: { metric: metric || undefined },
+  });
+
+export const getTrustPerformanceLatest = () =>
+  api.get<TrustPerformanceLatest[]>('/trust-performance/latest');
+
+export const triggerTrustPerformanceRefresh = (days_back = 35) =>
+  api.post<{ rows: number }>('/trust-performance/refresh', null, {
     params: { days_back },
   });
 

@@ -65,6 +65,26 @@ export interface AbsMomentumDelta {
   zscore: number | null;
 }
 
+// One (trust, period, metric) observation from a 10-D distribution report.
+export interface TrustPerformanceRow {
+  cik: number;
+  trust_name: string;
+  segment: string;
+  period_end: string;
+  filed_at: string;
+  metric: string;
+  value: number;
+  url: string;
+}
+
+export interface TrustPerformanceLatest {
+  trust_name: string;
+  cik: number;
+  period_end: string;
+  url: string;
+  metrics: Record<string, number>;
+}
+
 export interface ArticleListResponse {
   items: Article[];
   offset: number;

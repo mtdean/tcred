@@ -13,6 +13,9 @@ export interface FredSeriesDef {
   // number of observations that make up one year (monthly=12, quarterly=4,
   // daily≈252, weekly=52).
   yoyPeriods?: number;
+  // Multiply raw values by this factor (e.g. 0.001 to plot persons as
+  // thousands). Applied after the YoY transform, which is scale-invariant.
+  scale?: number;
 }
 
 // One chart row: a date plus one numeric value per series dataKey.
@@ -53,9 +56,10 @@ export function useFredSeries(series: FredSeriesDef[], limit = 240): Result {
         }
       }
     } else {
+      const k = def.scale ?? 1;
       for (const pt of pts) {
         const row = byDate.get(pt.date) ?? { date: pt.date };
-        row[def.key] = pt.value;
+        row[def.key] = pt.value == null ? pt.value : pt.value * k;
         byDate.set(pt.date, row);
       }
     }

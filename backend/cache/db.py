@@ -143,6 +143,24 @@ CREATE INDEX IF NOT EXISTS idx_abs_ni_filing_date ON abs_new_issues(filing_date 
 CREATE INDEX IF NOT EXISTS idx_abs_ni_asset_class ON abs_new_issues(asset_class);
 CREATE INDEX IF NOT EXISTS idx_abs_ni_class_name  ON abs_new_issues(class_name);
 
+-- Monthly master-trust performance parsed from 10-D distribution reports.
+-- One row per (filing, metric); all values are percentages.
+CREATE TABLE IF NOT EXISTS trust_performance (
+    accession_no  TEXT NOT NULL,
+    cik           INTEGER,
+    trust_name    TEXT,
+    segment       TEXT,           -- credit_card | ...
+    period_end    TEXT,           -- monthly collection period end (YYYY-MM-DD)
+    filed_at      TEXT,
+    metric        TEXT NOT NULL,  -- e.g. net_charge_off_rate, delinq_30plus_rate
+    value         REAL,           -- percent
+    url           TEXT,
+    fetched_at    TEXT NOT NULL,
+    PRIMARY KEY (accession_no, metric)
+);
+CREATE INDEX IF NOT EXISTS idx_trust_perf_period ON trust_performance(period_end DESC);
+CREATE INDEX IF NOT EXISTS idx_trust_perf_trust  ON trust_performance(trust_name);
+
 CREATE TABLE IF NOT EXISTS digests (
     date          TEXT NOT NULL,      -- YYYY-MM-DD in US/Eastern
     session       TEXT NOT NULL,      -- 'AM' (before noon ET) or 'PM' (noon+)
@@ -502,6 +520,21 @@ def upsert_abs_pricing_tranche(row: dict) -> None:
             VALUES
               (:accession_no, :deal_name, :issuer, :segment, :pricing_date, :class_name,
                :rating, :wal, :benchmark, :spread_bps, :coupon, :url, :fetched_at)
+            """,
+            row,
+        )
+
+
+def upsert_trust_performance(row: dict) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO trust_performance
+              (accession_no, cik, trust_name, segment, period_end,
+               filed_at, metric, value, url, fetched_at)
+            VALUES
+              (:accession_no, :cik, :trust_name, :segment, :period_end,
+               :filed_at, :metric, :value, :url, :fetched_at)
             """,
             row,
         )

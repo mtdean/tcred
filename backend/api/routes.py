@@ -338,6 +338,39 @@ def trigger_abs_pricing_refresh(days_back: int = Query(default=30, le=180)):
     return {"tranches": n}
 
 
+# ── MASTER-TRUST MONTHLY PERFORMANCE (10-D) ──────────────────────────────────
+
+@router.get("/trust-performance")
+def get_trust_performance_endpoint(
+    metric: Optional[str] = None,
+    trust: Optional[str] = None,
+    limit: int = Query(default=500, le=5000),
+):
+    """Monthly master-trust metrics (delinquency / charge-off / payment rate),
+    oldest first — one row per (trust, period, metric)."""
+    from data.trust_performance import get_trust_performance
+    return get_trust_performance(metric=metric, trust=trust, limit=limit)
+
+
+@router.get("/trust-performance/latest")
+def get_trust_performance_latest_endpoint():
+    """Latest reported period per trust, metrics pivoted into one row."""
+    from data.trust_performance import get_trust_performance_latest
+    return get_trust_performance_latest()
+
+
+@router.post("/trust-performance/refresh")
+def trigger_trust_performance_refresh(days_back: int = Query(default=35, le=365)):
+    """Discover and parse recent 10-D distribution reports."""
+    from datetime import datetime, timezone
+    from data.trust_performance import fetch_trust_performance
+    from cache.db import set_meta
+
+    n = fetch_trust_performance(days_back=days_back)
+    set_meta("last_trust_performance_refresh", datetime.now(timezone.utc).isoformat())
+    return {"rows": n}
+
+
 # ── 424B5 NEW-ISSUE PARSER (richer schema than FWP path) ─────────────────────
 
 @router.get("/abs/new-issues")

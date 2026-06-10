@@ -112,6 +112,116 @@ export function SahmRulePanel() {
   );
 }
 
+export function JoblessClaimsPanel() {
+  // Continuing claims run ~10x initial claims, so they're plotted ÷10 to share
+  // the axis — read the CONTINUING line's level off the legend label, not raw.
+  const series: FredSeriesDef[] = [
+    { seriesId: 'ICSA', key: 'initial', name: 'INITIAL', color: COLORS.chartPrimary, scale: 0.001 },
+    { seriesId: 'CCSA', key: 'continuing', name: 'CONTINUING (÷10)', color: COLORS.chartSecondary, scale: 0.0001 },
+  ];
+  return (
+    <FredSeriesPanel
+      title="Weekly Jobless Claims"
+      subtitle="THOUSANDS, SA — HIGHEST-FREQUENCY LABOR LEAD"
+      series={series}
+      ranges={RANGES_DAILY}
+      defaultRange="3Y"
+      unit="plain"
+      decimals={0}
+      limit={1100}
+    />
+  );
+}
+
+export function LiquidityPanel() {
+  // Fed balance-sheet plumbing: reserve scarcity, ON RRP drain, TGA rebuilds.
+  // FRED units differ: RRPONTSYD is already $bn; WRESBAL/WTREGEN are $mm.
+  const series: FredSeriesDef[] = [
+    { seriesId: 'WRESBAL', key: 'reserves', name: 'BANK RESERVES', color: COLORS.chartPrimary, scale: 0.001 },
+    { seriesId: 'RRPONTSYD', key: 'rrp', name: 'ON RRP', color: COLORS.chartSecondary },
+    { seriesId: 'WTREGEN', key: 'tga', name: 'TGA', color: COLORS.chartTertiary, scale: 0.001 },
+  ];
+  return (
+    <FredSeriesPanel
+      title="Liquidity Plumbing"
+      subtitle="$BN — RESERVES / ON RRP / TREASURY GENERAL ACCT"
+      series={series}
+      ranges={RANGES_DAILY}
+      defaultRange="3Y"
+      unit="plain"
+      decimals={0}
+      limit={2700}
+    />
+  );
+}
+
+export function UsedVehicleValuesPanel() {
+  // Manheim UVVI YoY — wholesale used-car values, the auto-ABS recovery /
+  // loss-severity driver. Public XLSX lags the press release by a few weeks.
+  const series: FredSeriesDef[] = [
+    { seriesId: 'MANHEIM_UVVI_YOY', key: 'yoy', name: 'UVVI YoY', color: COLORS.chartPrimary },
+  ];
+  return (
+    <FredSeriesPanel
+      title="Used Vehicle Values (Manheim)"
+      subtitle="SA INDEX YoY % — AUTO-ABS RECOVERY DRIVER"
+      series={series}
+      ranges={RANGES_MONTHLY}
+      defaultRange="10Y"
+      unit="pct"
+      decimals={1}
+      limit={400}
+    />
+  );
+}
+
+export function ConsumerComplaintsPanel() {
+  // CFPB complaint volume by product — a real-time consumer-stress read.
+  // Debt-collection volume (~25k/mo) would flatten these axes; it's available
+  // as CFPB_COMPLAINTS_DEBT via the API.
+  const series: FredSeriesDef[] = [
+    { seriesId: 'CFPB_COMPLAINTS_CARD', key: 'card', name: 'CREDIT CARD', color: COLORS.chartPrimary },
+    { seriesId: 'CFPB_COMPLAINTS_AUTO', key: 'auto', name: 'AUTO', color: COLORS.chartSecondary },
+    { seriesId: 'CFPB_COMPLAINTS_PERSONAL', key: 'personal', name: 'PERSONAL/PAYDAY', color: COLORS.chartTertiary },
+    { seriesId: 'CFPB_COMPLAINTS_MORTGAGE', key: 'mortgage', name: 'MORTGAGE', color: COLORS.chart6mo },
+  ];
+  return (
+    <FredSeriesPanel
+      title="CFPB Consumer Complaints"
+      subtitle="COMPLAINTS / MONTH BY PRODUCT — CONSUMER STRESS LEAD"
+      series={series}
+      ranges={RANGES_MONTHLY}
+      defaultRange="5Y"
+      unit="plain"
+      decimals={0}
+      limit={400}
+    />
+  );
+}
+
+export function TraceVolumePanel() {
+  // TRACE securitized-product secondary volume (daily, $mm). History accrues
+  // from first ingest — the STAR file holds one day per download.
+  const series: FredSeriesDef[] = [
+    { seriesId: 'TRACE_ABS_VOLUME', key: 'abs', name: 'ABS', color: COLORS.chartPrimary },
+    { seriesId: 'TRACE_CLO_VOLUME', key: 'clo', name: 'CLO/CDO', color: COLORS.chartSecondary },
+    { seriesId: 'TRACE_CMBS_VOLUME', key: 'cmbs', name: 'CMBS (NON-AGY)', color: COLORS.chartTertiary },
+    { seriesId: 'TRACE_NA_CMO_VOLUME', key: 'cmo', name: 'CMO (NON-AGY)', color: COLORS.chart6mo },
+  ];
+  return (
+    <FredSeriesPanel
+      title="Secondary Trading Volume (TRACE)"
+      subtitle="$MM / DAY — LIQUIDITY DRIES UP BEFORE PRIMARY SHUTS"
+      series={series}
+      ranges={RANGES_DAILY}
+      defaultRange="1Y"
+      unit="plain"
+      decimals={0}
+      limit={800}
+    />
+  );
+}
+
 export function NearTermForwardSpreadPanel() {
   // Engstrom-Sharpe: implied 3-mo yield 18 months out minus current 3-mo.
   const series: FredSeriesDef[] = [
