@@ -602,39 +602,34 @@ class TestAbsSpreadSeriesBelowIGBucket:
         assert wk["max_spread"] == 300.0
         assert wk["week_start"] == d
 
-    def test_fitch_only_ig_rating_still_lands_in_bb_and_below(
+    def test_fitch_only_ig_rating_counts_in_its_ig_bucket(
         self, api_client, fresh_db
     ):
-        # CURRENT BEHAVIOR (possible bug, routes.py:481-483): the below-IG
-        # exclusion only checks rating_sp / rating_moodys / rating_kbra, so a
-        # tranche rated AAA *only by Fitch* is bucketed as BB_and_below.
+        # A tranche rated AAA only by Fitch belongs in the AAA bucket and must
+        # NOT fall through to BB_and_below.
         _seed_new_issue("t1", filing_date=_recent_date(),
                         rating_fitch="AAA", spread_to_benchmark=60.0)
-        data = api_client.get(
+        below = api_client.get(
             "/api/abs/spread-series"
             "?asset_class=prime_auto_loan&rating_bucket=BB_and_below"
         ).json()
-        assert len(data["series"]) == 1
-        assert data["series"][0]["n_tranches"] == 1
+        assert below["series"] == []
+        aaa = api_client.get(
+            "/api/abs/spread-series"
+            "?asset_class=prime_auto_loan&rating_bucket=AAA"
+        ).json()
+        assert len(aaa["series"]) == 1
+        assert aaa["series"][0]["n_tranches"] == 1
+        assert aaa["series"][0]["avg_spread"] == 60.0
 
-    def test_unknown_bucket_falls_through_to_below_ig_branch(
-        self, api_client, fresh_db
-    ):
-        # CURRENT BEHAVIOR (quirk, routes.py:438+461): an unrecognized
-        # rating_bucket isn't rejected — _RATING_BUCKET_MAP.get(..., []) returns
-        # [] and the request silently behaves exactly like BB_and_below.
+    def test_unknown_bucket_rejected_with_422(self, api_client, fresh_db):
         _seed_new_issue("t1", filing_date=_recent_date(),
                         spread_to_benchmark=120.0)  # unrated
-        _seed_new_issue("t2", filing_date=_recent_date(), rating_sp="AAA",
-                        spread_to_benchmark=40.0)
-        data = api_client.get(
+        resp = api_client.get(
             "/api/abs/spread-series"
             "?asset_class=prime_auto_loan&rating_bucket=NOT_A_BUCKET"
-        ).json()
-        assert data["rating_bucket"] == "NOT_A_BUCKET"
-        assert len(data["series"]) == 1
-        assert data["series"][0]["n_tranches"] == 1
-        assert data["series"][0]["avg_spread"] == 120.0
+        )
+        assert resp.status_code == 422
 
     def test_low_confidence_rows_excluded(self, api_client, fresh_db):
         _seed_new_issue("t1", filing_date=_recent_date(), confidence="low",

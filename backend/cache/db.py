@@ -550,6 +550,88 @@ def get_abs_new_issues(
     return [dict(r) for r in rows]
 
 
+# Agency rating labels per bucket. S&P, KBRA and Fitch share the AAA/AA+/…
+# scale; Moody's variants are listed alongside. A tranche matches a bucket if
+# ANY agency's rating lands in the set (most senior observation wins, e.g. a
+# split-rated AA+/Aa1 tranche shows up in the AA bucket).
+#
+# "BB_and_below" is everything that doesn't land in an IG bucket at any
+# agency — including fully unrated tranches. "all" bypasses the filter.
+RATING_BUCKET_MAP: dict[str, list[str]] = {
+    "AAA": ["AAA", "Aaa"],
+    "AA":  ["AA+", "AA", "AA-", "Aa1", "Aa2", "Aa3"],
+    "A":   ["A+", "A", "A-", "A1", "A2", "A3"],
+    "BBB": ["BBB+", "BBB", "BBB-", "Baa1", "Baa2", "Baa3"],
+    "BB_and_below": [],  # everything that doesn't match the buckets above
+}
+
+_SPREAD_METRICS = (
+    "spread_to_benchmark", "implied_yield", "floating_spread_bps", "coupon_rate",
+)
+_RATING_COLS = ("rating_sp", "rating_moodys", "rating_kbra", "rating_fitch")
+
+
+def get_abs_spread_series(
+    asset_class: str,
+    rating_bucket: str = "AAA",
+    metric: str = "spread_to_benchmark",
+    days_back: int = 365,
+) -> list[dict]:
+    """Weekly-binned avg/min/max of `metric` for one asset class + rating bucket.
+
+    Raises ValueError on unknown metric or rating_bucket — callers at the API
+    boundary translate that to a 422 / error payload.
+    """
+    if metric not in _SPREAD_METRICS:
+        raise ValueError(f"metric must be one of {'/'.join(_SPREAD_METRICS)}; got {metric!r}")
+    if rating_bucket != "all" and rating_bucket not in RATING_BUCKET_MAP:
+        raise ValueError(
+            f"rating_bucket must be one of all/{'/'.join(RATING_BUCKET_MAP)}; got {rating_bucket!r}"
+        )
+
+    since = utc_days_ago_str(days_back)
+
+    if rating_bucket == "all":
+        rating_clause = ""
+        rating_params: list[str] = []
+    elif ratings := RATING_BUCKET_MAP[rating_bucket]:
+        ph = ",".join("?" * len(ratings))
+        ors = " OR ".join(f"{col} IN ({ph})" for col in _RATING_COLS)
+        rating_clause = f" AND ({ors})"
+        rating_params = ratings * len(_RATING_COLS)
+    else:
+        # BB_and_below: rows whose ratings don't land in any IG bucket at any
+        # agency (null = unrated, also captured here).
+        ig_flat = [r for b in ("AAA", "AA", "A", "BBB") for r in RATING_BUCKET_MAP[b]]
+        ph = ",".join("?" * len(ig_flat))
+        ands = " AND ".join(
+            f"({col} NOT IN ({ph}) OR {col} IS NULL)" for col in _RATING_COLS
+        )
+        rating_clause = f" AND {ands}"
+        rating_params = ig_flat * len(_RATING_COLS)
+
+    # `metric` is validated against _SPREAD_METRICS above, so interpolation is safe.
+    sql = f"""
+        SELECT
+            strftime('%Y-W%W', filing_date) AS week,
+            MIN(filing_date)                AS week_start,
+            AVG({metric})                   AS avg_spread,
+            MIN({metric})                   AS min_spread,
+            MAX({metric})                   AS max_spread,
+            COUNT(*)                        AS n_tranches
+        FROM abs_new_issues
+        WHERE filing_date >= ?
+          AND asset_class = ?
+          AND {metric} IS NOT NULL
+          AND parse_confidence IN ('high','medium'){rating_clause}
+        GROUP BY week
+        ORDER BY week ASC
+    """
+    with get_conn() as conn:
+        rows = conn.execute(sql, [since, asset_class, *rating_params]).fetchall()
+    return [dict(r) for r in rows]
+
+
 def upsert_feed_health(row: dict) -> None:
     row = {"platform": None, **row}  # default if caller omits it
     with get_conn() as conn:

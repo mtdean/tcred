@@ -109,11 +109,11 @@ class TestGetAbsSpreadSeries:
         }
 
     def test_invalid_rating_bucket_returns_error_dict(self, fresh_db):
-        # Unlike GET /api/abs/spread-series (which silently treats unknown
-        # buckets as below-IG), the chat tool rejects them — and has no
-        # BB_and_below bucket at all.
         out = at._tool_get_abs_spread_series("prime_auto_loan", rating_bucket="junk")
-        assert out == {"error": "rating_bucket must be all/AAA/AA/A/BBB; got 'junk'"}
+        assert out == {
+            "error": "rating_bucket must be one of all/AAA/AA/A/BBB/BB_and_below; "
+                     "got 'junk'"
+        }
 
     def test_rating_bucket_matches_any_agency_label(self, fresh_db):
         d = _days_ago_date(10)

@@ -359,28 +359,16 @@ def get_abs_new_issues_endpoint(
     return {"items": rows, "count": len(rows)}
 
 
-# Rating bucket → list of agency-specific labels that belong in it. The
-# spread-series endpoint matches a tranche to a bucket if ANY of its agencies
-# falls in the bucket's labels (so a deal rated AAA/Aaa by S&P/Moody's is one
-# observation in the AAA bucket).
-#
 # The "all" pseudo-bucket bypasses the rating filter entirely. Useful because
 # 424B5 prospectuses rarely disclose ratings inline — final ratings typically
 # land in the FWP or rating-agency reports — so requiring AAA matching often
 # yields zero observations even when we have tranche data.
-_RATING_BUCKET_MAP: dict[str, list[str]] = {
-    "AAA": ["AAA", "Aaa"],
-    "AA":  ["AA+", "AA", "AA-", "Aa1", "Aa2", "Aa3"],
-    "A":   ["A+", "A", "A-", "A1", "A2", "A3"],
-    "BBB": ["BBB+", "BBB", "BBB-", "Baa1", "Baa2", "Baa3"],
-    "BB_and_below": [],  # everything that doesn't match the buckets above
-}
-
-
 @router.get("/abs/spread-series")
 def get_abs_spread_series(
     asset_class: str = Query(...),
-    rating_bucket: str = Query(default="AAA"),
+    rating_bucket: str = Query(
+        default="AAA", pattern="^(all|AAA|AA|A|BBB|BB_and_below)$",
+    ),
     metric: str = Query(
         default="spread_to_benchmark",
         pattern="^(spread_to_benchmark|implied_yield|floating_spread_bps|coupon_rate)$",
@@ -389,63 +377,17 @@ def get_abs_spread_series(
 ):
     """Weekly-binned avg/min/max of `metric` for one asset class + rating bucket.
 
-    Used by the new-issue spread tracker chart. The bucket maps to a fixed set
-    of agency labels; we match tranches where any of (rating_sp, rating_moodys,
-    rating_kbra) lands in that set.
+    Bucket → agency-label mapping and the query live in
+    cache.db.get_abs_spread_series (shared with the analyst spread tool);
+    unknown buckets/metrics are rejected by the Query patterns above.
     """
-    from cache.db import get_conn
-
-    since = utc_days_ago_str(days_back)
-
-    if rating_bucket == "all":
-        # Skip the rating filter entirely — useful when ratings aren't
-        # disclosed in the parsed prospectus and you just want the full
-        # weekly spread distribution for the asset class.
-        rating_clause = ""
-        rating_params: list[str] = []
-    elif ratings := _RATING_BUCKET_MAP.get(rating_bucket, []):
-        ph = ",".join("?" * len(ratings))
-        rating_clause = f"""
-                  AND (rating_sp     IN ({ph})
-                    OR rating_moodys IN ({ph})
-                    OR rating_kbra   IN ({ph}))"""
-        rating_params = ratings * 3
-    else:
-        # BB_and_below: rows whose ratings don't land in any IG bucket
-        # (treated as null = unrated, also captured here).
-        ig_flat = [r for b in ("AAA", "AA", "A", "BBB") for r in _RATING_BUCKET_MAP[b]]
-        ph = ",".join("?" * len(ig_flat))
-        rating_clause = f"""
-                  AND (rating_sp NOT IN ({ph}) OR rating_sp IS NULL)
-                  AND (rating_moodys NOT IN ({ph}) OR rating_moodys IS NULL)
-                  AND (rating_kbra NOT IN ({ph}) OR rating_kbra IS NULL)"""
-        rating_params = ig_flat * 3
-
-    # `metric` is constrained by the Query pattern above, so interpolation is safe.
-    sql = f"""
-        SELECT
-            strftime('%Y-W%W', filing_date) AS week,
-            MIN(filing_date)                AS week_start,
-            AVG({metric})                   AS avg_spread,
-            MIN({metric})                   AS min_spread,
-            MAX({metric})                   AS max_spread,
-            COUNT(*)                        AS n_tranches
-        FROM abs_new_issues
-        WHERE filing_date >= ?
-          AND asset_class = ?
-          AND {metric} IS NOT NULL
-          AND parse_confidence IN ('high','medium'){rating_clause}
-        GROUP BY week
-        ORDER BY week ASC
-    """
-    with get_conn() as conn:
-        rows = conn.execute(sql, [since, asset_class, *rating_params]).fetchall()
+    from cache.db import get_abs_spread_series as _query
 
     return {
         "asset_class": asset_class,
         "rating_bucket": rating_bucket,
         "metric": metric,
-        "series": [dict(r) for r in rows],
+        "series": _query(asset_class, rating_bucket, metric, days_back),
     }
 
 
