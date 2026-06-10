@@ -1,6 +1,19 @@
 // Formatting helpers — Bloomberg conventions: tabular figures, signed deltas.
 
+import axios from 'axios';
 import { format, formatDistanceToNowStrict, parseISO } from 'date-fns';
+
+/** Human-readable message from an API error: FastAPI `detail`, then HTTP
+ *  status, then Error.message, then the supplied fallback. */
+export function apiErrorMessage(err: unknown, fallback: string): string {
+  if (axios.isAxiosError(err)) {
+    const detail = err.response?.data?.detail;
+    if (typeof detail === 'string') return detail;
+    if (err.response?.status) return `Request failed (${err.response.status}).`;
+  }
+  if (err instanceof Error && err.message) return err.message;
+  return fallback;
+}
 
 /** Signed percentage, e.g. +1.23% / -0.45%. Returns '—' for null. */
 export function pct(value: number | null | undefined, digits = 2): string {

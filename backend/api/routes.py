@@ -6,6 +6,8 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 from typing import Optional
 
+from data.dates import utc_days_ago_str
+
 router = APIRouter()
 
 
@@ -357,142 +359,58 @@ def get_abs_new_issues_endpoint(
     return {"items": rows, "count": len(rows)}
 
 
-# Rating bucket → list of agency-specific labels that belong in it. The
-# spread-series endpoint matches a tranche to a bucket if ANY of its agencies
-# falls in the bucket's labels (so a deal rated AAA/Aaa by S&P/Moody's is one
-# observation in the AAA bucket).
-#
 # The "all" pseudo-bucket bypasses the rating filter entirely. Useful because
 # 424B5 prospectuses rarely disclose ratings inline — final ratings typically
 # land in the FWP or rating-agency reports — so requiring AAA matching often
 # yields zero observations even when we have tranche data.
-_RATING_BUCKET_MAP: dict[str, list[str]] = {
-    "AAA": ["AAA", "Aaa"],
-    "AA":  ["AA+", "AA", "AA-", "Aa1", "Aa2", "Aa3"],
-    "A":   ["A+", "A", "A-", "A1", "A2", "A3"],
-    "BBB": ["BBB+", "BBB", "BBB-", "Baa1", "Baa2", "Baa3"],
-    "BB_and_below": [],  # everything that doesn't match the buckets above
-}
-
-
 @router.get("/abs/spread-series")
 def get_abs_spread_series(
     asset_class: str = Query(...),
-    rating_bucket: str = Query(default="AAA"),
+    rating_bucket: str = Query(
+        default="AAA", pattern="^(all|AAA|AA|A|BBB|BB_and_below)$",
+    ),
     metric: str = Query(
         default="spread_to_benchmark",
         pattern="^(spread_to_benchmark|implied_yield|floating_spread_bps|coupon_rate)$",
     ),
     days_back: int = Query(default=365, le=3650),
 ):
-    """Weekly-binned median/min/max of `metric` for one asset class + rating bucket.
+    """Weekly-binned avg/min/max of `metric` for one asset class + rating bucket.
 
-    Used by the new-issue spread tracker chart. The bucket maps to a fixed set
-    of agency labels; we match tranches where any of (rating_sp, rating_moodys,
-    rating_kbra) lands in that set.
+    Bucket → agency-label mapping and the query live in
+    cache.db.get_abs_spread_series (shared with the analyst spread tool);
+    unknown buckets/metrics are rejected by the Query patterns above.
+
+    `percentile` ranks the latest weekly average against a trailing 2-year
+    context window (or the requested window if longer): rank = share of weeks
+    at or below the latest value. Null until 8 weekly observations exist.
     """
-    from cache.db import get_conn
+    from cache.db import get_abs_spread_series as _query
 
-    since = datetime_now_iso_days_ago(days_back)
+    series = _query(asset_class, rating_bucket, metric, days_back)
 
-    with get_conn() as conn:
-        if rating_bucket == "all":
-            # Skip the rating filter entirely — useful when ratings aren't
-            # disclosed in the parsed prospectus and you just want the full
-            # weekly spread distribution for the asset class.
-            sql = f"""
-                SELECT
-                    strftime('%Y-W%W', filing_date) AS week,
-                    MIN(filing_date)                AS week_start,
-                    AVG({metric})                   AS avg_spread,
-                    MIN({metric})                   AS min_spread,
-                    MAX({metric})                   AS max_spread,
-                    COUNT(*)                        AS n_tranches
-                FROM abs_new_issues
-                WHERE filing_date >= ?
-                  AND asset_class = ?
-                  AND {metric} IS NOT NULL
-                  AND parse_confidence IN ('high','medium')
-                GROUP BY week
-                ORDER BY week ASC
-            """
-            params: list = [since, asset_class]
-            rows = conn.execute(sql, params).fetchall()
-            series = [
-                {
-                    "week": r["week"],
-                    "week_start": r["week_start"],
-                    "avg_spread": r["avg_spread"],
-                    "min_spread": r["min_spread"],
-                    "max_spread": r["max_spread"],
-                    "n_tranches": r["n_tranches"],
-                }
-                for r in rows
-            ]
-            return {
-                "asset_class": asset_class,
-                "rating_bucket": rating_bucket,
-                "metric": metric,
-                "series": series,
-            }
-        ratings = _RATING_BUCKET_MAP.get(rating_bucket, [])
-        if ratings:
-            placeholders = ",".join("?" * len(ratings))
-            sql = f"""
-                SELECT
-                    strftime('%Y-W%W', filing_date) AS week,
-                    MIN(filing_date)                AS week_start,
-                    AVG({metric})                   AS avg_spread,
-                    MIN({metric})                   AS min_spread,
-                    MAX({metric})                   AS max_spread,
-                    COUNT(*)                        AS n_tranches
-                FROM abs_new_issues
-                WHERE filing_date >= ?
-                  AND asset_class = ?
-                  AND {metric} IS NOT NULL
-                  AND parse_confidence IN ('high','medium')
-                  AND (rating_sp     IN ({placeholders})
-                    OR rating_moodys IN ({placeholders})
-                    OR rating_kbra   IN ({placeholders}))
-                GROUP BY week
-                ORDER BY week ASC
-            """
-            params = [since, asset_class] + ratings * 3
-        else:
-            # BB_and_below: rows whose ratings don't land in any IG bucket
-            # (treated as null = unrated, also captured here).
-            ig_flat: list[str] = []
-            for b in ("AAA", "AA", "A", "BBB"):
-                ig_flat.extend(_RATING_BUCKET_MAP[b])
-            placeholders = ",".join("?" * len(ig_flat))
-            sql = f"""
-                SELECT
-                    strftime('%Y-W%W', filing_date) AS week,
-                    MIN(filing_date)                AS week_start,
-                    AVG({metric})                   AS avg_spread,
-                    MIN({metric})                   AS min_spread,
-                    MAX({metric})                   AS max_spread,
-                    COUNT(*)                        AS n_tranches
-                FROM abs_new_issues
-                WHERE filing_date >= ?
-                  AND asset_class = ?
-                  AND {metric} IS NOT NULL
-                  AND parse_confidence IN ('high','medium')
-                  AND (rating_sp NOT IN ({placeholders}) OR rating_sp IS NULL)
-                  AND (rating_moodys NOT IN ({placeholders}) OR rating_moodys IS NULL)
-                  AND (rating_kbra NOT IN ({placeholders}) OR rating_kbra IS NULL)
-                GROUP BY week
-                ORDER BY week ASC
-            """
-            params = [since, asset_class] + ig_flat * 3
-
-        rows = conn.execute(sql, params).fetchall()
+    context_days = max(days_back, 730)
+    context = (
+        series if context_days == days_back
+        else _query(asset_class, rating_bucket, metric, context_days)
+    )
+    percentile = None
+    if series and len(context) >= 8:
+        latest = series[-1]["avg_spread"]
+        values = [r["avg_spread"] for r in context]
+        percentile = {
+            "latest": latest,
+            "rank": round(100 * sum(1 for v in values if v <= latest) / len(values)),
+            "window_days": context_days,
+            "n_weeks": len(values),
+        }
 
     return {
         "asset_class": asset_class,
         "rating_bucket": rating_bucket,
         "metric": metric,
-        "series": [dict(r) for r in rows],
+        "series": series,
+        "percentile": percentile,
     }
 
 
@@ -501,7 +419,7 @@ def get_abs_deal_summary(days_back: int = Query(default=90, le=3650)):
     """Per asset class: deal count, total volume, avg spread. Trailing window."""
     from cache.db import get_conn
 
-    since = datetime_now_iso_days_ago(days_back)
+    since = utc_days_ago_str(days_back)
     with get_conn() as conn:
         rows = conn.execute(
             """
@@ -540,12 +458,6 @@ def trigger_abs_new_issues_refresh(days_back: int = Query(default=14, le=120)):
     n = fetch_and_parse_abs_424b5(days_back=days_back)
     set_meta("last_abs_424b5_refresh", datetime.now(timezone.utc).isoformat())
     return {"tranches_stored": n}
-
-
-def datetime_now_iso_days_ago(days: int) -> str:
-    """Helper: ISO date `days` ago. Kept here so the 424B5 endpoints stay self-contained."""
-    from datetime import datetime, timedelta
-    return (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
 
 
 @router.get("/edgar/facets")

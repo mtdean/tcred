@@ -7,7 +7,6 @@ export const qk = {
   articles: (params: Record<string, unknown>) => ['articles', params] as const,
   marketSnapshot: ['market', 'snapshot'] as const,
   marketHistory: (ticker: string) => ['market', 'history', ticker] as const,
-  percentiles: ['market', 'percentiles'] as const,
   fredLatest: ['fred', 'latest'] as const,
   fredHistory: (seriesId: string) => ['fred', 'history', seriesId] as const,
   forwardCurve: ['fred', 'forward-curve'] as const,
@@ -22,13 +21,11 @@ export const qk = {
     ['abs', 'spread-series', params] as const,
   absDealSummary: (daysBack: number) => ['abs', 'deal-summary', daysBack] as const,
   deals: ['deals'] as const,
-  deal: (id: string, view: string) => ['deals', id, view] as const,
 
   // Phase 7
   bdcWatchList: ['bdc', 'watch-list'] as const,
   bdcNonaccrualTrend: ['bdc', 'nonaccrual-trend'] as const,
   bdcAggregateTrend: ['bdc', 'aggregate-trend'] as const,
-  bdcSummary: (period: string | undefined) => ['bdc', 'summary', period ?? 'latest'] as const,
   bdcLatestPerBdc: ['bdc', 'latest-per-bdc'] as const,
   bdcNonaccruals: (limit: number) => ['bdc', 'nonaccruals', limit] as const,
   regulatoryActions: (params: Record<string, unknown>) =>

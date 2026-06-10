@@ -27,7 +27,8 @@ import json
 import logging
 import re
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
+from data.dates import utc_days_ago_str, utc_today_str
 from typing import Optional
 
 import anthropic
@@ -160,8 +161,8 @@ def _discover_abs_424b5(days_back: int = 7) -> list[dict]:
     Returns one dict per unique filing: {accession_no, company_name,
     filed_at, filing_url}.
     """
-    since = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
-    end = datetime.now().strftime("%Y-%m-%d")
+    since = utc_days_ago_str(days_back)
+    end = utc_today_str()
 
     results: list[dict] = []
     seen: set[str] = set()

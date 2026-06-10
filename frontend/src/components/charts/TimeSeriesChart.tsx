@@ -13,6 +13,7 @@ import {
 import type { MetricPoint } from '../../lib/types';
 import { COLORS } from '../../lib/colors';
 import { fmtDate } from '../../lib/utils';
+import TooltipShell from './TooltipShell';
 
 interface Props {
   data: MetricPoint[];
@@ -34,18 +35,9 @@ function TooltipBox({
 }) {
   if (!active || !payload?.length || payload[0].value == null) return null;
   return (
-    <div
-      style={{
-        background: COLORS.bgPanel,
-        border: `1px solid ${COLORS.borderBright}`,
-        padding: '4px 8px',
-        fontSize: 11,
-        fontVariantNumeric: 'tabular-nums',
-      }}
-    >
-      <div style={{ color: COLORS.textSecondary }}>{fmtDate(label)}</div>
+    <TooltipShell title={fmtDate(label)}>
       <div style={{ color: COLORS.textPrimary }}>{fmt(payload[0].value)}</div>
-    </div>
+    </TooltipShell>
   );
 }
 

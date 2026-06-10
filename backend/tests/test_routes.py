@@ -466,3 +466,282 @@ class TestRefreshRouteWiring:
         assert resp.status_code == 200
         assert resp.json() == {"holdings_stored": 5}
         assert db.get_meta("last_bdc_refresh") is not None
+
+
+# ─── POST /api/digest — success + bucketing + error paths ────────────────────
+def _fake_digest_result(generated_at: str) -> dict:
+    """What data.digest.generate_digest returns on success."""
+    return {
+        "summary": "Markets were calm.",
+        "article_count": 7,
+        "hours_back": 24,
+        "min_score": 4,
+        "date_range": {"from": "2026-06-09T08:00:00+00:00",
+                       "to": "2026-06-10T08:00:00+00:00"},
+        "model": "claude-sonnet-4-6",
+        "generated_at": generated_at,
+    }
+
+
+class TestPostDigestRoute:
+    def test_success_buckets_morning_utc_as_am_eastern_and_persists(
+        self, api_client, fresh_db, monkeypatch
+    ):
+        # 08:30 UTC == 04:30 America/New_York → session AM, ET date 2026-06-10.
+        monkeypatch.setattr(
+            "data.digest.generate_digest",
+            lambda hours_back, min_score: _fake_digest_result(
+                "2026-06-10T08:30:00+00:00"
+            ),
+        )
+        resp = api_client.post("/api/digest", json={"hours_back": 24, "min_score": 4})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["date"] == "2026-06-10"
+        assert body["session"] == "AM"
+        assert body["summary"] == "Markets were calm."
+        # The response keeps the generator's nested date_range shape.
+        assert body["date_range"] == {"from": "2026-06-09T08:00:00+00:00",
+                                      "to": "2026-06-10T08:00:00+00:00"}
+
+        # Persisted: GET /api/digests reshapes the flat DB row back to nested.
+        saved = api_client.get("/api/digests").json()
+        assert len(saved) == 1
+        assert saved[0]["date"] == "2026-06-10"
+        assert saved[0]["session"] == "AM"
+        assert saved[0]["article_count"] == 7
+        assert saved[0]["hours_back"] == 24
+        assert saved[0]["min_score"] == 4
+        assert saved[0]["model"] == "claude-sonnet-4-6"
+        assert saved[0]["generated_at"] == "2026-06-10T08:30:00+00:00"
+        assert saved[0]["date_range"] == {"from": "2026-06-09T08:00:00+00:00",
+                                          "to": "2026-06-10T08:00:00+00:00"}
+
+    def test_noon_eastern_exactly_buckets_as_pm(
+        self, api_client, fresh_db, monkeypatch
+    ):
+        # 16:00 UTC == 12:00 ET (EDT) → hour == 12 → PM (AM is strictly < 12).
+        monkeypatch.setattr(
+            "data.digest.generate_digest",
+            lambda hours_back, min_score: _fake_digest_result(
+                "2026-06-10T16:00:00+00:00"
+            ),
+        )
+        resp = api_client.post("/api/digest", json={})
+        assert resp.status_code == 200
+        assert resp.json()["session"] == "PM"
+
+    def test_generic_exception_maps_to_502(
+        self, api_client, fresh_db, monkeypatch
+    ):
+        def _boom(hours_back, min_score):
+            raise RuntimeError("anthropic exploded")
+
+        monkeypatch.setattr("data.digest.generate_digest", _boom)
+        resp = api_client.post("/api/digest", json={})
+        assert resp.status_code == 502
+        assert "Digest generation failed" in resp.json()["detail"]
+        assert "anthropic exploded" in resp.json()["detail"]
+
+
+# ─── POST /api/articles/refresh — fetch + classify loop wiring ───────────────
+class TestArticlesRefreshRoute:
+    def test_classify_loop_accumulates_until_zero_and_sets_meta(
+        self, api_client, fresh_db, monkeypatch
+    ):
+        async def fake_fetch():
+            return 17
+
+        batches = iter([5, 3, 0])
+
+        async def fake_classify(batch_size=50):
+            return next(batches)
+
+        monkeypatch.setattr("data.feeds.fetch_all_feeds", fake_fetch)
+        monkeypatch.setattr("data.classifier.classify_articles", fake_classify)
+
+        resp = api_client.post("/api/articles/refresh")
+        assert resp.status_code == 200
+        assert resp.json() == {"fetched": 17, "classified": 8}
+        assert db.get_meta("last_news_refresh") is not None
+
+
+# ─── /api/abs/spread-series — BB_and_below / unknown-bucket branch ───────────
+def _recent_date(days_ago: int = 10) -> str:
+    from datetime import datetime, timedelta
+    return (datetime.now() - timedelta(days=days_ago)).strftime("%Y-%m-%d")
+
+
+class TestAbsSpreadSeriesBelowIGBucket:
+    def test_bb_and_below_includes_junk_and_unrated_excludes_any_ig(
+        self, api_client, fresh_db
+    ):
+        d = _recent_date()
+        # Included: explicitly below-IG rated.
+        _seed_new_issue("t1", filing_date=d, rating_sp="BB",
+                        spread_to_benchmark=300.0)
+        # Included: fully unrated (NULL ratings count as below-IG by design).
+        _seed_new_issue("t2", filing_date=d, spread_to_benchmark=250.0)
+        # Excluded: S&P AAA is in an IG bucket.
+        _seed_new_issue("t3", filing_date=d, rating_sp="AAA",
+                        spread_to_benchmark=50.0)
+        # Excluded: Moody's Baa2 is in the BBB bucket (any-agency exclusion).
+        _seed_new_issue("t4", filing_date=d, rating_moodys="Baa2",
+                        spread_to_benchmark=180.0)
+
+        data = api_client.get(
+            "/api/abs/spread-series"
+            "?asset_class=prime_auto_loan&rating_bucket=BB_and_below"
+        ).json()
+        assert data["rating_bucket"] == "BB_and_below"
+        assert len(data["series"]) == 1
+        wk = data["series"][0]
+        assert wk["n_tranches"] == 2
+        assert wk["avg_spread"] == 275.0  # mean of 300 and 250
+        assert wk["min_spread"] == 250.0
+        assert wk["max_spread"] == 300.0
+        assert wk["week_start"] == d
+
+    def test_fitch_only_ig_rating_counts_in_its_ig_bucket(
+        self, api_client, fresh_db
+    ):
+        # A tranche rated AAA only by Fitch belongs in the AAA bucket and must
+        # NOT fall through to BB_and_below.
+        _seed_new_issue("t1", filing_date=_recent_date(),
+                        rating_fitch="AAA", spread_to_benchmark=60.0)
+        below = api_client.get(
+            "/api/abs/spread-series"
+            "?asset_class=prime_auto_loan&rating_bucket=BB_and_below"
+        ).json()
+        assert below["series"] == []
+        aaa = api_client.get(
+            "/api/abs/spread-series"
+            "?asset_class=prime_auto_loan&rating_bucket=AAA"
+        ).json()
+        assert len(aaa["series"]) == 1
+        assert aaa["series"][0]["n_tranches"] == 1
+        assert aaa["series"][0]["avg_spread"] == 60.0
+
+    def test_unknown_bucket_rejected_with_422(self, api_client, fresh_db):
+        _seed_new_issue("t1", filing_date=_recent_date(),
+                        spread_to_benchmark=120.0)  # unrated
+        resp = api_client.get(
+            "/api/abs/spread-series"
+            "?asset_class=prime_auto_loan&rating_bucket=NOT_A_BUCKET"
+        )
+        assert resp.status_code == 422
+
+    def test_low_confidence_rows_excluded(self, api_client, fresh_db):
+        _seed_new_issue("t1", filing_date=_recent_date(), confidence="low",
+                        spread_to_benchmark=99.0)
+        data = api_client.get(
+            "/api/abs/spread-series"
+            "?asset_class=prime_auto_loan&rating_bucket=BB_and_below"
+        ).json()
+        assert data["series"] == []
+
+
+class TestAbsSpreadSeriesPercentile:
+    def _seed_weeks(self, spreads_by_week_ago: dict[int, float]):
+        for weeks_ago, spread in spreads_by_week_ago.items():
+            _seed_new_issue(
+                f"w{weeks_ago}", filing_date=_recent_date(days_ago=7 * weeks_ago + 3),
+                rating_sp="AAA", spread_to_benchmark=spread,
+            )
+
+    def test_percentile_ranks_latest_week_vs_trailing_context(
+        self, api_client, fresh_db
+    ):
+        # 10 weekly observations: older weeks at 10..90, latest at 85 — above
+        # 8 of them, below one -> 9 of 10 values at-or-below -> rank 90.
+        self._seed_weeks({0: 85.0, **{w: float(10 * w) for w in range(1, 10)}})
+        data = api_client.get(
+            "/api/abs/spread-series?asset_class=prime_auto_loan&rating_bucket=AAA"
+        ).json()
+        pct = data["percentile"]
+        assert pct is not None
+        assert pct["latest"] == 85.0
+        assert pct["rank"] == 90
+        assert pct["window_days"] == 730
+        assert pct["n_weeks"] == 10
+
+    def test_percentile_null_below_eight_weeks(self, api_client, fresh_db):
+        self._seed_weeks({w: 100.0 for w in range(7)})
+        data = api_client.get(
+            "/api/abs/spread-series?asset_class=prime_auto_loan&rating_bucket=AAA"
+        ).json()
+        assert len(data["series"]) == 7
+        assert data["percentile"] is None
+
+    def test_percentile_context_extends_past_requested_window(
+        self, api_client, fresh_db
+    ):
+        # 12 low-spread weeks ~1 year back + 8 recent higher weeks. With a 90d
+        # request window the latest week still ranks against the full 730d
+        # context, so the old low weeks pull its rank up.
+        self._seed_weeks({w: 50.0 for w in range(48, 60)})
+        self._seed_weeks({w: 200.0 - w for w in range(8)})  # latest = 200
+        data = api_client.get(
+            "/api/abs/spread-series"
+            "?asset_class=prime_auto_loan&rating_bucket=AAA&days_back=90"
+        ).json()
+        pct = data["percentile"]
+        assert pct is not None
+        assert pct["latest"] == 200.0
+        assert pct["n_weeks"] == 20
+        assert pct["rank"] == 100  # highest value in the 2y context
+        assert pct["window_days"] == 730
+
+
+# ─── More POST refresh wiring (424B5 / regulatory / KBRA) ────────────────────
+class TestMoreRefreshRouteWiring:
+    def test_abs_new_issues_refresh_passes_days_back_and_sets_meta(
+        self, api_client, fresh_db, monkeypatch
+    ):
+        seen = {}
+
+        def fake_fetch(days_back=14):
+            seen["days_back"] = days_back
+            return 11
+
+        monkeypatch.setattr(
+            "data.abs_parser.fetch_and_parse_abs_424b5", fake_fetch
+        )
+        resp = api_client.post("/api/abs/new-issues/refresh?days_back=30")
+        assert resp.status_code == 200
+        assert resp.json() == {"tranches_stored": 11}
+        assert seen["days_back"] == 30
+        assert db.get_meta("last_abs_424b5_refresh") is not None
+
+    def test_regulatory_refresh_returns_count_and_sets_meta(
+        self, api_client, fresh_db, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "data.regulatory.fetch_regulatory_actions",
+            lambda days_back=7: 4,
+        )
+        resp = api_client.post("/api/regulatory/refresh")
+        assert resp.status_code == 200
+        assert resp.json() == {"actions_stored": 4}
+        assert db.get_meta("last_regulatory_refresh") is not None
+
+    def test_regulatory_score_returns_count_and_sets_meta(
+        self, api_client, fresh_db, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "data.regulatory.score_regulatory_actions",
+            lambda limit=100: 6,
+        )
+        resp = api_client.post("/api/regulatory/score")
+        assert resp.status_code == 200
+        assert resp.json() == {"actions_scored": 6}
+        assert db.get_meta("last_regulatory_score") is not None
+
+    def test_kbra_refresh_returns_count_and_sets_meta(
+        self, api_client, fresh_db, monkeypatch
+    ):
+        monkeypatch.setattr("data.kbra.process_kbra_presales", lambda: 2)
+        resp = api_client.post("/api/kbra/refresh")
+        assert resp.status_code == 200
+        assert resp.json() == {"presales_processed": 2}
+        assert db.get_meta("last_kbra_refresh") is not None

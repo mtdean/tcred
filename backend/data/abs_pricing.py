@@ -25,6 +25,7 @@ import logging
 import re
 import time
 from datetime import datetime, timezone
+from data.dates import utc_days_ago_str, utc_today_str
 
 import pandas as pd
 import requests
@@ -217,10 +218,9 @@ def _parse_pricing_tranches(html: str) -> list[dict]:
 
 def _search_fwp(keyword: str, days_back: int) -> list[dict]:
     """EDGAR full-text search for recent FWP filings matching `keyword`."""
-    from datetime import timedelta
 
-    start = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
-    end = datetime.now().strftime("%Y-%m-%d")
+    start = utc_days_ago_str(days_back)
+    end = utc_today_str()
     params = {
         "q": f'"{keyword}"',
         "forms": "FWP",
@@ -289,11 +289,10 @@ def _list_trust_fwps(cik: int, cutoff: str) -> list[tuple[str, str, str]]:
 
 def fetch_abs_pricing(days_back: int = 30) -> int:
     """Discover ABS pricing FWPs, parse spreads, store tranches. Returns rows written."""
-    from datetime import timedelta
 
     cfg = load_data_sources().get("abs_pricing", {})
     keywords = cfg.get("discovery_keywords", _DEFAULT_KEYWORDS)
-    cutoff = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+    cutoff = utc_days_ago_str(days_back)
 
     trust_ciks = _discover_trust_ciks(keywords, days_back)
     now = _now()

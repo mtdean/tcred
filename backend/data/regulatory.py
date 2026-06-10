@@ -17,7 +17,8 @@ import hashlib
 import json
 import logging
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
+from data.dates import utc_days_ago_str
 from typing import Optional
 
 import anthropic
@@ -58,7 +59,7 @@ Return ONLY a JSON array, no preamble:
 
 def _fetch_federal_register(agencies: list[dict], days_back: int) -> list[dict]:
     """Pull recent RULE / PROPOSED_RULE / NOTICE documents per agency."""
-    since = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+    since = utc_days_ago_str(days_back)
     cfg = load_data_sources()
     fr_url = cfg["regulatory"]["federal_register_api"]
     results: list[dict] = []
@@ -347,7 +348,7 @@ def get_regulatory_actions(
     Unscored rows (relevance_score IS NULL) are always returned so the user
     sees them before pressing SCORE; once scored they're filtered by min_score.
     """
-    since = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+    since = utc_days_ago_str(days_back)
 
     sql = """
         SELECT *

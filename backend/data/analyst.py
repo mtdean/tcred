@@ -24,6 +24,7 @@ import json
 import logging
 import secrets
 from datetime import datetime, timedelta, timezone
+from data.dates import utc_days_ago_str
 from typing import Any, Optional
 
 import anthropic
@@ -178,7 +179,7 @@ def _abs_spread_changes(window_days: int = 90) -> list[dict]:
         logger.warning("ABS spread momentum unavailable: %s", e)
         return []
 
-    cutoff = (datetime.now() - timedelta(days=window_days)).date().isoformat()
+    cutoff = utc_days_ago_str(window_days)
     recent = [r for r in rows if r.get("pricing_date") and r["pricing_date"] >= cutoff]
     # Last observation per (segment, seniority).
     by_key: dict[tuple[str, str], dict] = {}

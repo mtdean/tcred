@@ -411,7 +411,6 @@ export const chatWithBriefing = (
 export const getMarketSnapshot = () => api.get<MarketRow[]>('/market/snapshot');
 export const getMarketHistory = (ticker: string, limit = 252) =>
   api.get<MetricPoint[]>(`/market/history/${ticker}`, { params: { limit } });
-export const getPercentiles = () => api.get('/market/percentiles');
 
 // ── FRED ───────────────────────────────────────────────
 export const getFredLatest = () => api.get('/fred/latest');

@@ -86,8 +86,8 @@ def _parse_date(entry) -> Optional[str]:
         if val:
             try:
                 return datetime(*val[:6], tzinfo=timezone.utc).isoformat()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Unparseable %s on entry: %s", attr, e)
     return None
 
 

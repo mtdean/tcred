@@ -96,11 +96,25 @@ export interface FeedHealth {
   platform: string | null;
 }
 
+// Latest run per scheduled job (job_runs table via /api/status `jobs`).
+export interface JobRun {
+  id: number;
+  job_id: string;
+  started_at: string;
+  ended_at: string | null;
+  status: 'running' | 'success' | 'error';
+  duration_ms: number | null;
+  rows_ingested: number | null;
+  error: string | null;
+  triggered_by: string;
+}
+
 export interface StatusResponse {
   articles: { total: number; scored: number };
   metrics: number;
   edgar_filings: number;
   feeds: { live: number; total: number };
+  jobs: JobRun[];
   last_news_refresh: string | null;
   last_market_refresh: string | null;
   last_fred_refresh: string | null;
@@ -222,11 +236,21 @@ export interface AbsSpreadSeriesPoint {
   n_tranches: number;
 }
 
+// Rank of the latest weekly average vs the trailing context window
+// (share of weeks at or below the latest value).
+export interface AbsSpreadPercentile {
+  latest: number;
+  rank: number;
+  window_days: number;
+  n_weeks: number;
+}
+
 export interface AbsSpreadSeriesResponse {
   asset_class: string;
   rating_bucket: AbsRatingBucket;
   metric: AbsSpreadMetric;
   series: AbsSpreadSeriesPoint[];
+  percentile: AbsSpreadPercentile | null;
 }
 
 export interface AbsDealSummaryRow {

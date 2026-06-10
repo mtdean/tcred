@@ -15,7 +15,8 @@ Rate limit: 10 req/sec sustained; we stay well under with sleep().
 import logging
 import re
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
+from data.dates import utc_days_ago_str, utc_today_str
 from typing import Optional
 
 import requests
@@ -149,7 +150,7 @@ def _search_filings(
     Search EDGAR full-text search for recent filings matching form_type
     and any of the provided keywords.
     """
-    since = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+    since = utc_days_ago_str(days_back)
     results = []
 
     for keyword in keywords:
@@ -158,7 +159,7 @@ def _search_filings(
         params = {
             "q": f'"{keyword}"',
             "startdt": since,
-            "enddt": datetime.now().strftime("%Y-%m-%d"),
+            "enddt": utc_today_str(),
             "forms": form_type,
         }
         try:

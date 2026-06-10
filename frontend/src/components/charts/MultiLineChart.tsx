@@ -14,6 +14,7 @@ import {
 } from 'recharts';
 import { COLORS } from '../../lib/colors';
 import { fmtDate, seriesReference } from '../../lib/utils';
+import TooltipShell from './TooltipShell';
 
 export interface SeriesDef {
   key: string;
@@ -32,8 +33,8 @@ export interface ShadedInterval {
   end: string;
 }
 
-interface Props {
-  data: Record<string, unknown>[];
+interface Props<Row extends object> {
+  data: Row[];
   series: SeriesDef[];
   xKey?: string;
   height?: number;
@@ -59,26 +60,17 @@ function TooltipBox({
 }) {
   if (!active || !payload?.length) return null;
   return (
-    <div
-      style={{
-        background: COLORS.bgPanel,
-        border: `1px solid ${COLORS.borderBright}`,
-        padding: '4px 8px',
-        fontSize: 11,
-        fontVariantNumeric: 'tabular-nums',
-      }}
-    >
-      <div style={{ color: COLORS.textSecondary }}>{xFmt(label ?? '')}</div>
+    <TooltipShell title={xFmt(label ?? '')}>
       {payload.map((p) => (
         <div key={p.name} style={{ color: p.color }}>
           {p.name}: {p.value != null ? fmt(p.value) : '—'}
         </div>
       ))}
-    </div>
+    </TooltipShell>
   );
 }
 
-export default function MultiLineChart({
+export default function MultiLineChart<Row extends object>({
   data,
   series,
   xKey = 'date',
@@ -86,7 +78,7 @@ export default function MultiLineChart({
   valueFormatter = (v) => v.toFixed(2),
   xFormatter = (v) => fmtDate(v),
   shadedIntervals,
-}: Props) {
+}: Props<Row>) {
   // Legend label → FRED page for raw series, methodology doc for computed ones.
   // Inherits the legend's color/weight so the appearance is unchanged.
   const refByKey = new Map(series.map((s) => [s.key, seriesReference(s.seriesId)]));

@@ -15,8 +15,11 @@ export interface FredSeriesDef {
   yoyPeriods?: number;
 }
 
+// One chart row: a date plus one numeric value per series dataKey.
+export type FredChartRow = { date: string } & Record<string, unknown>;
+
 interface Result {
-  rows: Record<string, unknown>[];
+  rows: FredChartRow[];
   isLoading: boolean;
   isError: boolean;
 }
@@ -34,7 +37,7 @@ export function useFredSeries(series: FredSeriesDef[], limit = 240): Result {
   const isError = results.some((r) => r.isError);
 
   // Merge by date: { date, [key]: value, ... }. Optionally transform to YoY %.
-  const byDate = new Map<string, Record<string, unknown>>();
+  const byDate = new Map<string, FredChartRow>();
   results.forEach((res, i) => {
     const def = series[i];
     const pts = res.data ?? []; // ascending by date

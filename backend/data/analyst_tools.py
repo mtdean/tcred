@@ -11,7 +11,6 @@ dispatcher and surfaced as `{"error": "..."}` to the model.
 
 from __future__ import annotations
 
-import json
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -53,63 +52,17 @@ def _tool_get_abs_spread_series(
     days_back: int = 365,
 ) -> dict:
     """Weekly-binned spread series for one ABS asset class + rating bucket."""
-    if metric not in ("spread_to_benchmark", "implied_yield",
-                      "floating_spread_bps", "coupon_rate"):
-        return {"error": f"metric must be one of spread_to_benchmark/implied_yield/floating_spread_bps/coupon_rate; got {metric!r}"}
-    rating_map = {
-        "AAA": ["AAA", "Aaa"],
-        "AA":  ["AA+", "AA", "AA-", "Aa1", "Aa2", "Aa3"],
-        "A":   ["A+", "A", "A-", "A1", "A2", "A3"],
-        "BBB": ["BBB+", "BBB", "BBB-", "Baa1", "Baa2", "Baa3"],
-    }
-    since = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
-
-    with db.get_conn() as conn:
-        if rating_bucket == "all":
-            sql = f"""
-                SELECT strftime('%Y-W%W', filing_date) AS week,
-                       MIN(filing_date) AS week_start,
-                       AVG({metric}) AS avg_spread,
-                       MIN({metric}) AS min_spread,
-                       MAX({metric}) AS max_spread,
-                       COUNT(*) AS n_tranches
-                FROM abs_new_issues
-                WHERE filing_date >= ? AND asset_class = ?
-                  AND {metric} IS NOT NULL
-                  AND parse_confidence IN ('high','medium')
-                GROUP BY week ORDER BY week ASC
-            """
-            params = [since, asset_class]
-        else:
-            ratings = rating_map.get(rating_bucket)
-            if not ratings:
-                return {"error": f"rating_bucket must be all/AAA/AA/A/BBB; got {rating_bucket!r}"}
-            placeholders = ",".join("?" * len(ratings))
-            sql = f"""
-                SELECT strftime('%Y-W%W', filing_date) AS week,
-                       MIN(filing_date) AS week_start,
-                       AVG({metric}) AS avg_spread,
-                       MIN({metric}) AS min_spread,
-                       MAX({metric}) AS max_spread,
-                       COUNT(*) AS n_tranches
-                FROM abs_new_issues
-                WHERE filing_date >= ? AND asset_class = ?
-                  AND {metric} IS NOT NULL
-                  AND parse_confidence IN ('high','medium')
-                  AND (rating_sp IN ({placeholders})
-                    OR rating_moodys IN ({placeholders})
-                    OR rating_kbra IN ({placeholders}))
-                GROUP BY week ORDER BY week ASC
-            """
-            params = [since, asset_class] + ratings * 3
-        rows = conn.execute(sql, params).fetchall()
+    try:
+        series = db.get_abs_spread_series(asset_class, rating_bucket, metric, days_back)
+    except ValueError as e:
+        return {"error": str(e)}
 
     return {
         "asset_class": asset_class,
         "rating_bucket": rating_bucket,
         "metric": metric,
-        "n_weeks": len(rows),
-        "series": [dict(r) for r in rows],
+        "n_weeks": len(series),
+        "series": series,
     }
 
 
@@ -232,13 +185,14 @@ TOOL_SCHEMAS: list[dict] = [
             "bucket. asset_class examples: prime_auto_loan, subprime_auto_loan, "
             "credit_card, equipment, consumer_loan, student_loan, solar, "
             "esoteric_wireless, rmbs_non_agency, cmbs, clo. rating_bucket: "
-            "all/AAA/AA/A/BBB. Use when the user asks about ABS spread trends."
+            "all/AAA/AA/A/BBB/BB_and_below. Use when the user asks about ABS "
+            "spread trends."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "asset_class": {"type": "string"},
-                "rating_bucket": {"type": "string", "enum": ["all", "AAA", "AA", "A", "BBB"], "default": "AAA"},
+                "rating_bucket": {"type": "string", "enum": ["all", "AAA", "AA", "A", "BBB", "BB_and_below"], "default": "AAA"},
                 "metric": {"type": "string", "enum": ["spread_to_benchmark", "implied_yield", "floating_spread_bps", "coupon_rate"], "default": "spread_to_benchmark"},
                 "days_back": {"type": "integer", "default": 365},
             },

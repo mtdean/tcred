@@ -9,7 +9,6 @@
 
 import { useLocation } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import axios from 'axios';
 import {
   triggerAbsNewIssuesRefresh,
   triggerAbsPricingRefresh,
@@ -20,6 +19,8 @@ import {
   triggerRefresh as triggerNewsRefresh,
   triggerRegulatoryRefresh,
 } from './api';
+import { qk } from './queryKeys';
+import { apiErrorMessage } from './utils';
 import type { StatusResponse } from './types';
 
 export type LastRefreshKey = keyof Pick<
@@ -53,12 +54,9 @@ function specFor(pathname: string): TabRefreshSpec | null {
       shortLabel: 'NEWS',
       metaKey: 'last_news_refresh',
       run: () => Promise.all([triggerNewsRefresh()]),
-      invalidateKeys: [
-        ['articles'],
-        ['articles-feed'],
-        ['status'],
-        ['feed-health'],
-      ],
+      // ['articles'] / ['articles-feed'] are prefixes covering every
+      // parameterized query in those families.
+      invalidateKeys: [['articles'], ['articles-feed'], qk.status, qk.feedHealth],
     };
   }
 
@@ -68,11 +66,8 @@ function specFor(pathname: string): TabRefreshSpec | null {
       shortLabel: 'MARKETS',
       metaKey: 'last_market_refresh',
       run: () => Promise.all([triggerMarketRefresh()]),
-      invalidateKeys: [
-        ['market', 'snapshot'],
-        ['market', 'percentiles'],
-        ['status'],
-      ],
+      // ['percentiles'] prefix covers qk.percentilesBatch(ids, window).
+      invalidateKeys: [['market'], ['percentiles'], qk.status],
     };
   }
 
@@ -82,13 +77,8 @@ function specFor(pathname: string): TabRefreshSpec | null {
       shortLabel: 'MACRO',
       metaKey: 'last_fred_refresh',
       run: () => Promise.all([triggerFredRefresh()]),
-      invalidateKeys: [
-        ['fred', 'latest'],
-        ['fred', 'forward-curve'],
-        ['fred', 'sofr'],
-        ['freshness'],
-        ['status'],
-      ],
+      // ['fred'] prefix covers latest, history, forward-curve and sofr.
+      invalidateKeys: [['fred'], ['percentiles'], qk.freshness, qk.status],
     };
   }
 
@@ -98,13 +88,7 @@ function specFor(pathname: string): TabRefreshSpec | null {
       shortLabel: 'BDC',
       metaKey: 'last_bdc_refresh',
       run: () => Promise.all([triggerBdcRefresh()]),
-      invalidateKeys: [
-        ['bdc', 'watch-list'],
-        ['bdc', 'nonaccrual-trend'],
-        ['bdc', 'aggregate-trend'],
-        ['bdc', 'latest-per-bdc'],
-        ['status'],
-      ],
+      invalidateKeys: [['bdc'], qk.status],
     };
   }
 
@@ -114,7 +98,7 @@ function specFor(pathname: string): TabRefreshSpec | null {
       shortLabel: 'REG',
       metaKey: 'last_regulatory_refresh',
       run: () => Promise.all([triggerRegulatoryRefresh()]),
-      invalidateKeys: [['regulatory', 'actions'], ['status']],
+      invalidateKeys: [['regulatory'], qk.status],
     };
   }
 
@@ -130,17 +114,7 @@ function specFor(pathname: string): TabRefreshSpec | null {
         triggerAbsPricingRefresh(),
         triggerAbsNewIssuesRefresh(),
       ]),
-      invalidateKeys: [
-        ['edgar', 'filings'],
-        ['edgar', 'facets'],
-        ['edgar-feed'],
-        ['abs', 'pricing'],
-        ['abs', 'momentum-deltas'],
-        ['abs', 'new-issues'],
-        ['abs', 'spread-series'],
-        ['abs', 'deal-summary'],
-        ['status'],
-      ],
+      invalidateKeys: [['edgar'], ['edgar-feed'], ['abs'], qk.status],
     };
   }
 
@@ -150,11 +124,7 @@ function specFor(pathname: string): TabRefreshSpec | null {
       shortLabel: 'FILINGS',
       metaKey: 'last_abs_424b5_refresh',
       run: () => Promise.all([triggerEdgarRefresh()]),
-      invalidateKeys: [
-        ['issuers'],
-        ['edgar', 'filings'],
-        ['status'],
-      ],
+      invalidateKeys: [qk.issuers, ['edgar'], qk.status],
     };
   }
 
@@ -188,17 +158,8 @@ export function useTabRefresh() {
     isError: mutation.isError,
     error: mutation.error,
     refresh: () => mutation.mutate(),
-    errorMessage: errorMessage(mutation.error),
+    errorMessage: mutation.error
+      ? apiErrorMessage(mutation.error, 'Refresh failed.')
+      : null,
   };
-}
-
-function errorMessage(err: unknown): string | null {
-  if (!err) return null;
-  if (axios.isAxiosError(err)) {
-    const detail = err.response?.data?.detail;
-    if (typeof detail === 'string') return detail;
-    if (err.response?.status) return `Request failed (${err.response.status}).`;
-  }
-  if (err instanceof Error) return err.message;
-  return 'Refresh failed.';
 }
