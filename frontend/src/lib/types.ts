@@ -96,11 +96,25 @@ export interface FeedHealth {
   platform: string | null;
 }
 
+// Latest run per scheduled job (job_runs table via /api/status `jobs`).
+export interface JobRun {
+  id: number;
+  job_id: string;
+  started_at: string;
+  ended_at: string | null;
+  status: 'running' | 'success' | 'error';
+  duration_ms: number | null;
+  rows_ingested: number | null;
+  error: string | null;
+  triggered_by: string;
+}
+
 export interface StatusResponse {
   articles: { total: number; scored: number };
   metrics: number;
   edgar_filings: number;
   feeds: { live: number; total: number };
+  jobs: JobRun[];
   last_news_refresh: string | null;
   last_market_refresh: string | null;
   last_fred_refresh: string | null;
