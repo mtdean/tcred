@@ -46,11 +46,10 @@ export default function FredSeriesPanel({
   const [range, setRange] = useState(defaultRange);
   const { rows, isLoading, isError } = useFredSeries(series, limit);
 
-  const yearsFor = (label: string) => ranges.find((r) => r.label === label)?.years ?? null;
-  const sliced = useMemo(
-    () => sliceByYears(rows as { date: string }[], yearsFor(range)) as Record<string, unknown>[],
-    [rows, range],
-  );
+  const sliced = useMemo(() => {
+    const years = ranges.find((r) => r.label === range)?.years ?? null;
+    return sliceByYears(rows, years);
+  }, [rows, range, ranges]);
 
   // Clip shaded bands to the visible window so ReferenceArea endpoints land on
   // the rendered x-domain (recharts won't draw a band that starts off-axis).

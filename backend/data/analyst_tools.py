@@ -12,7 +12,6 @@ dispatcher and surfaced as `{"error": "..."}` to the model.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from data.dates import utc_days_ago_str
 from typing import Optional
 
 from cache import db
@@ -186,13 +185,14 @@ TOOL_SCHEMAS: list[dict] = [
             "bucket. asset_class examples: prime_auto_loan, subprime_auto_loan, "
             "credit_card, equipment, consumer_loan, student_loan, solar, "
             "esoteric_wireless, rmbs_non_agency, cmbs, clo. rating_bucket: "
-            "all/AAA/AA/A/BBB. Use when the user asks about ABS spread trends."
+            "all/AAA/AA/A/BBB/BB_and_below. Use when the user asks about ABS "
+            "spread trends."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "asset_class": {"type": "string"},
-                "rating_bucket": {"type": "string", "enum": ["all", "AAA", "AA", "A", "BBB"], "default": "AAA"},
+                "rating_bucket": {"type": "string", "enum": ["all", "AAA", "AA", "A", "BBB", "BB_and_below"], "default": "AAA"},
                 "metric": {"type": "string", "enum": ["spread_to_benchmark", "implied_yield", "floating_spread_bps", "coupon_rate"], "default": "spread_to_benchmark"},
                 "days_back": {"type": "integer", "default": 365},
             },

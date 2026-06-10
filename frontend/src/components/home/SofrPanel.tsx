@@ -30,10 +30,10 @@ export default function SofrPanel() {
     queryFn: () => getSofrRates(300).then((r) => r.data),
   });
 
-  const sliced = useMemo(() => {
-    if (!data) return [];
-    return data.slice(-TRADING_DAYS[range]) as unknown as Record<string, unknown>[];
-  }, [data, range]);
+  const sliced = useMemo(
+    () => data?.slice(-TRADING_DAYS[range]) ?? [],
+    [data, range],
+  );
 
   const last = data?.length ? data[data.length - 1] : null;
   const fmt = (v: number | null | undefined) => (v == null ? '—' : `${v.toFixed(2)}%`);

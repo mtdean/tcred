@@ -33,8 +33,8 @@ export interface ShadedInterval {
   end: string;
 }
 
-interface Props {
-  data: Record<string, unknown>[];
+interface Props<Row extends object> {
+  data: Row[];
   series: SeriesDef[];
   xKey?: string;
   height?: number;
@@ -70,7 +70,7 @@ function TooltipBox({
   );
 }
 
-export default function MultiLineChart({
+export default function MultiLineChart<Row extends object>({
   data,
   series,
   xKey = 'date',
@@ -78,7 +78,7 @@ export default function MultiLineChart({
   valueFormatter = (v) => v.toFixed(2),
   xFormatter = (v) => fmtDate(v),
   shadedIntervals,
-}: Props) {
+}: Props<Row>) {
   // Legend label → FRED page for raw series, methodology doc for computed ones.
   // Inherits the legend's color/weight so the appearance is unchanged.
   const refByKey = new Map(series.map((s) => [s.key, seriesReference(s.seriesId)]));
