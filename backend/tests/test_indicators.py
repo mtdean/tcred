@@ -14,11 +14,16 @@ from __future__ import annotations
 
 import io
 import math
+import statistics
+import sys
+import types
 import zipfile
 
+import pandas as pd
 import pytest
 
 from cache import db
+from config import settings
 from data import indicators as ind
 
 
@@ -410,3 +415,642 @@ class TestRecessionEnsemble:
         # Equal-weight of 30 and 50 is 40.
         for r in rows:
             assert r["value"] == pytest.approx(40.0)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Characterization tests appended to lock in CURRENT numeric behavior of the
+# previously uncovered paths (CFSI, NTFS probit fit, ensemble stack, ingest
+# edge cases). Synthetic inputs are designed so fitted logits are *saturated*
+# (two-valued features), making the fitted probabilities exact group means —
+# closed-form value locks that don't reimplement the production math.
+#
+# Intentionally NOT covered (noted, not fixed — source must stay untouched):
+#   • indicators.py:534 — the CFSI PCA sign-flip executes only when LAPACK
+#     returns a DSR-anti-aligned eigenvector (sign is arbitrary per platform).
+#     The orientation *invariant* is locked by
+#     TestComputeCfsi.test_pca_is_oriented_to_the_dsr_input, which is
+#     deterministic regardless of which branch runs. Latent quirk: if PC1 is
+#     exactly orthogonal to the DSR z-score (cov == 0), orientation is
+#     undefined and follows LAPACK's arbitrary sign.
+#   • indicators.py:789-790, 896 — defensive numerics guards
+#     (np.linalg.LinAlgError from solve; a None NTFS-probit fit) that ridge
+#     regularization makes practically unreachable.
+#   • indicators.py:1003-1004 — dead code: `months` is the union of the
+#     component dicts' keys, so _equal_weight() can never return None there.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def _seed_metric(series_id: str, date: str, value: float) -> None:
+    db.upsert_metric({
+        "series_id": series_id, "label": "x", "category": "test",
+        "date": date, "value": value, "fetched_at": NOW,
+    })
+
+
+def _ym(i: int, start_year: int = 2000) -> str:
+    """Month index i (0 = Jan of start_year) -> 'YYYY-MM'."""
+    return f"{start_year + i // 12:04d}-{i % 12 + 1:02d}"
+
+
+def _install_fake_fredapi(monkeypatch, series_by_id: dict) -> None:
+    """Inject a fake `fredapi` module (same convention as test_fred.py).
+
+    `series_by_id` maps series_id -> pandas Series, or -> an Exception
+    instance to be raised by get_series.
+    """
+    class StubFred:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def get_series(self, series_id, observation_start=None):
+            out = series_by_id[series_id]
+            if isinstance(out, Exception):
+                raise out
+            return out
+
+    fake_mod = types.ModuleType("fredapi")
+    fake_mod.Fred = StubFred
+    monkeypatch.setitem(sys.modules, "fredapi", fake_mod)
+
+
+# ─── Shared synthetic recession geometry ─────────────────────────────────────
+#
+# 132 monthly USREC observations 2000-01..2010-12 (indices 0..131) with two
+# recessions: 2003-01..2003-12 (36..47) and 2008-01..2008-12 (96..107).
+# "Recession within the next 12 months" is then true exactly for indices
+# 24..46 and 84..106 (46 positive months out of the 120 scored 2000-01..2009-12).
+_REC_MONTHS = set(range(36, 48)) | set(range(96, 108))
+_POS_MONTHS = set(range(24, 47)) | set(range(84, 107))
+# The binary "stress signal": positives minus 4 misses, plus 6 false alarms.
+# Signal group: 48 months, 42 positive  → saturated P = 42/48 = 87.5%.
+# Calm group:   72 months,  4 positive  → saturated P = 4/72 ≈ 5.5556%.
+_SIGNAL_MONTHS = (_POS_MONTHS - {24, 25, 26, 27}) | set(range(0, 6))
+_P_SIGNAL = 100.0 * 42 / 48   # 87.5
+_P_CALM = 100.0 * 4 / 72      # 5.5555…
+
+
+def _seed_usrec(months: int = 132, all_zero: bool = False) -> None:
+    for i in range(months):
+        flag = 0.0 if all_zero else (1.0 if i in _REC_MONTHS else 0.0)
+        _seed_metric("USREC", f"{_ym(i)}-01", flag)
+
+
+# ─── fetch_excess_bond_premium: parser edge cases ────────────────────────────
+class TestExcessBondPremiumEdgeCases:
+    def test_empty_body_returns_zero(self, fresh_db, mocked_responses):
+        mocked_responses.get(ind._EBP_CSV_URL, body="", status=200)
+        assert ind.fetch_excess_bond_premium() == 0
+
+    def test_missing_date_column_returns_zero(self, fresh_db, mocked_responses):
+        mocked_responses.get(
+            ind._EBP_CSV_URL, body="foo,bar\n1,2\n", status=200,
+        )
+        assert ind.fetch_excess_bond_premium() == 0
+
+    def test_blank_bad_dates_and_unparsable_floats_are_skipped(
+        self, fresh_db, mocked_responses
+    ):
+        csv_body = (
+            "date,gz_spread,ebp,est_prob\n"
+            ",1,1,1\n"                      # blank date → skipped
+            "not-a-date,1,1,1\n"            # unparseable date → skipped
+            "2026-01-01,abc,0.5,xx\n"       # only ebp parses
+        )
+        mocked_responses.get(ind._EBP_CSV_URL, body=csv_body, status=200)
+        assert ind.fetch_excess_bond_premium() == 1
+        with db.get_conn() as conn:
+            rows = conn.execute(
+                "SELECT series_id, value FROM metrics"
+            ).fetchall()
+        assert [(r["series_id"], r["value"]) for r in rows] == [("EBP", 0.5)]
+
+    def test_columns_absent_from_header_are_ignored(
+        self, fresh_db, mocked_responses
+    ):
+        # est_prob column missing entirely → only 2 of 3 series written.
+        csv_body = "date,gz_spread,ebp\n2026-01-01,1.0,0.5\n"
+        mocked_responses.get(ind._EBP_CSV_URL, body=csv_body, status=200)
+        assert ind.fetch_excess_bond_premium() == 2
+
+
+# ─── compute_near_term_forward_spread: edge cases ────────────────────────────
+class TestNearTermForwardSpreadEdgeCases:
+    def test_network_error_returns_zero(self, fresh_db, mocked_responses):
+        mocked_responses.get(ind._GSW_URL, status=500)
+        assert ind.compute_near_term_forward_spread() == 0
+
+    def test_missing_header_row_returns_zero(self, fresh_db, mocked_responses):
+        mocked_responses.get(
+            ind._GSW_URL, body="junk line\nanother junk line\n", status=200,
+        )
+        assert ind.compute_near_term_forward_spread() == 0
+
+    def test_na_parameter_rows_are_skipped(self, fresh_db, mocked_responses):
+        body = (
+            "Date,BETA0,BETA1,BETA2,BETA3,TAU1,TAU2\n"
+            "2024-05-01,NA,NA,NA,NA,NA,NA\n"
+        )
+        mocked_responses.get(ind._GSW_URL, body=body, status=200)
+        assert ind.compute_near_term_forward_spread() == 0
+
+
+# ─── compute_credit_impulse: GDP gaps + exact value lock ─────────────────────
+class TestCreditImpulseValues:
+    @staticmethod
+    def _q(i: int) -> str:
+        return f"{2024 + i // 4:04d}-{(i % 4) * 3 + 1:02d}-01"
+
+    def test_quarter_missing_gdp_is_skipped(self, fresh_db):
+        # 9 quarters of TCMDO but no GDP at the only emittable quarter (i=8).
+        for i in range(9):
+            _seed_metric("TCMDO", self._q(i), 1_000_000 + i * 10_000)
+            if i != 8:
+                _seed_metric("GDP", self._q(i), 20_000.0)
+        assert ind.compute_credit_impulse() == 0
+
+    def test_exact_impulse_for_accelerating_credit(self, fresh_db):
+        # flow_now = (C8-C4)/1000 = 300; flow_prior = (C4-C0)/1000 = 200;
+        # impulse = (300-200)/20000*100 = 0.5 exactly.
+        tcmdo = [
+            1_000_000, 1_050_000, 1_100_000, 1_150_000,
+            1_200_000, 1_275_000, 1_350_000, 1_425_000,
+            1_500_000,
+        ]
+        for i, c in enumerate(tcmdo):
+            _seed_metric("TCMDO", self._q(i), c)
+            _seed_metric("GDP", self._q(i), 20_000.0)
+        assert ind.compute_credit_impulse() == 1
+        with db.get_conn() as conn:
+            row = conn.execute(
+                "SELECT date, value FROM metrics WHERE series_id='CREDIT_IMPULSE'"
+            ).fetchone()
+        assert row["date"] == self._q(8)
+        assert row["value"] == pytest.approx(0.5, abs=1e-9)
+
+
+# ─── fetch_ofr_fsi: edge cases ───────────────────────────────────────────────
+class TestOfrFsiEdgeCases:
+    def test_network_error_returns_zero(self, fresh_db, mocked_responses):
+        mocked_responses.get(ind._OFR_FSI_URL, status=500)
+        assert ind.fetch_ofr_fsi() == 0
+
+    def test_header_without_date_returns_zero(self, fresh_db, mocked_responses):
+        mocked_responses.get(
+            ind._OFR_FSI_URL, body="NotDate,OFR FSI\nx,1\n", status=200,
+        )
+        assert ind.fetch_ofr_fsi() == 0
+
+    def test_blank_dates_and_bad_floats_are_skipped(
+        self, fresh_db, mocked_responses
+    ):
+        body = (
+            "Date,OFR FSI,Credit,Equity valuation,Safe assets,Funding,Volatility\n"
+            ",1,1,1,1,1,1\n"               # blank date → whole row skipped
+            "2026-01-02,abc,,,,,\n"        # bad float + empty cells → no writes
+        )
+        mocked_responses.get(ind._OFR_FSI_URL, body=body, status=200)
+        assert ind.fetch_ofr_fsi() == 0
+
+
+# ─── fetch_bis_credit_gap: edge cases ────────────────────────────────────────
+class TestBisCreditGapEdgeCases:
+    @staticmethod
+    def _zip_of(csv_text: str) -> bytes:
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("WS_CREDIT_GAP.csv", csv_text)
+        return buf.getvalue()
+
+    def test_network_error_returns_zero(self, fresh_db, mocked_responses):
+        mocked_responses.get(ind._BIS_CGAP_URL, status=500)
+        assert ind.fetch_bis_credit_gap() == 0
+
+    def test_non_zip_body_returns_zero(self, fresh_db, mocked_responses):
+        mocked_responses.get(ind._BIS_CGAP_URL, body=b"not a zip", status=200)
+        assert ind.fetch_bis_credit_gap() == 0
+
+    def test_empty_csv_returns_zero(self, fresh_db, mocked_responses):
+        mocked_responses.get(
+            ind._BIS_CGAP_URL, body=self._zip_of(""), status=200,
+        )
+        assert ind.fetch_bis_credit_gap() == 0
+
+    def test_missing_dimension_columns_returns_zero(
+        self, fresh_db, mocked_responses
+    ):
+        csv_text = "BORROWERS_CTY,TC_BORROWERS,CG_DTYPE,1990-Q1\nUS,P,C,5.0\n"
+        mocked_responses.get(
+            ind._BIS_CGAP_URL, body=self._zip_of(csv_text), status=200,
+        )
+        assert ind.fetch_bis_credit_gap() == 0
+
+    def test_short_empty_and_invalid_value_cells_are_skipped(
+        self, fresh_db, mocked_responses
+    ):
+        # q1 unparsable, q2 empty, q3 beyond the row's length → 0 rows stored.
+        csv_text = (
+            "BORROWERS_CTY,TC_BORROWERS,TC_LENDERS,CG_DTYPE,1990-Q1,1990-Q2,1990-Q3\n"
+            "US,P,A,C,abc,\n"
+        )
+        mocked_responses.get(
+            ind._BIS_CGAP_URL, body=self._zip_of(csv_text), status=200,
+        )
+        assert ind.fetch_bis_credit_gap() == 0
+
+    def test_non_matching_rows_before_the_us_series_are_skipped(
+        self, fresh_db, mocked_responses
+    ):
+        # The wrong-country row precedes the match (the loop breaks after the
+        # first match, so only a *preceding* row exercises the dimension filter).
+        csv_text = (
+            "BORROWERS_CTY,TC_BORROWERS,TC_LENDERS,CG_DTYPE,1990-Q1\n"
+            "DE,P,A,C,2.0\n"
+            "US,P,A,C,5.0\n"
+        )
+        mocked_responses.get(
+            ind._BIS_CGAP_URL, body=self._zip_of(csv_text), status=200,
+        )
+        assert ind.fetch_bis_credit_gap() == 1
+        with db.get_conn() as conn:
+            row = conn.execute(
+                "SELECT date, value FROM metrics WHERE series_id='BIS_CREDIT_GAP_US'"
+            ).fetchone()
+        assert (row["date"], row["value"]) == ("1990-01-01", 5.0)
+
+
+# ─── _pca_first_component: degenerate inputs ─────────────────────────────────
+class TestPcaDegenerateInputs:
+    def test_nan_input_returns_none(self):
+        rows = [[float("nan"), 1.0]] + [[float(i), float(i)] for i in range(6)]
+        assert ind._pca_first_component(rows) is None
+
+    def test_ragged_input_hits_exception_path(self):
+        # np.asarray on a ragged list raises → caught → None.
+        rows = [[1.0, 2.0], [1.0], [3.0, 4.0], [5.0, 6.0]]
+        assert ind._pca_first_component(rows) is None
+
+
+# ─── _fit_logit: exact saturated-fit value lock ──────────────────────────────
+class TestFitLogitSaturatedValues:
+    def test_two_group_design_recovers_group_log_odds_exactly(self):
+        # x ∈ {-1, +1}; mean(y | x=-1) = 0.75, mean(y | x=+1) = 0.25.
+        # The saturated logit MLE satisfies p̂(x) = group mean, so
+        # b0 = 0 and b1 = -ln(3) in closed form. Also exercises the
+        # Newton convergence break (step < 1e-9).
+        x = [-1.0] * 4 + [1.0] * 4
+        y = [1, 1, 1, 0] + [1, 0, 0, 0]
+        coefs = ind._fit_logit(x, y)
+        assert coefs is not None
+        b0, b1 = coefs
+        assert b0 == pytest.approx(0.0, abs=1e-3)
+        assert b1 == pytest.approx(-math.log(3.0), abs=1e-3)
+
+
+# ─── _cfsi_fred_components ───────────────────────────────────────────────────
+class TestCfsiFredComponents:
+    def test_returns_none_without_fred_key(self, monkeypatch):
+        monkeypatch.setattr(settings, "FRED_API_KEY", "")
+        assert ind._cfsi_fred_components() is None
+
+    def test_normalizes_to_quarter_start_and_latest_obs_wins(self, monkeypatch):
+        # Monthly obs within 2020Q1 collapse to '2020-01-01' (Mar wins);
+        # the lone 2020Q2 obs maps to '2020-04-01'.
+        s = pd.Series(
+            [10.0, 11.0, 12.0, 20.0],
+            index=pd.to_datetime(
+                ["2020-01-15", "2020-02-15", "2020-03-15", "2020-05-01"]
+            ),
+        )
+        _install_fake_fredapi(
+            monkeypatch, {sid: s for sid in ind._CFSI_FRED_SERIES}
+        )
+        out = ind._cfsi_fred_components()
+        assert out is not None
+        assert set(out) == set(ind._CFSI_FRED_SERIES)
+        assert out["CDSP"] == {"2020-01-01": 12.0, "2020-04-01": 20.0}
+
+    def test_fred_exception_returns_none(self, monkeypatch):
+        _install_fake_fredapi(
+            monkeypatch,
+            {sid: RuntimeError("boom") for sid in ind._CFSI_FRED_SERIES},
+        )
+        assert ind._cfsi_fred_components() is None
+
+
+# ─── compute_cfsi ────────────────────────────────────────────────────────────
+class TestComputeCfsi:
+    # Underlying synthetic "stress" series, one value per quarter 2020Q1..2023Q4.
+    V = [1.0, 3.0, 2.0, 5.0, 4.0, 7.0, 6.0, 9.0, 8.0,
+         11.0, 10.0, 13.0, 12.0, 15.0, 14.0, 16.0]
+
+    @staticmethod
+    def _qdate(j: int, base_year: int = 2020) -> str:
+        """Quarter index j (0 = base_year Q1, may be negative) -> 'YYYY-MM-01'."""
+        total = base_year * 4 + j
+        y, q = divmod(total, 4)
+        return f"{y:04d}-{q * 3 + 1:02d}-01"
+
+    def _fred_stub_series(self) -> dict:
+        """Build the four FRED components so every CFSI input equals V.
+
+        - CDSP[q_j] = V[j]
+        - DRTSCLCC[q_{j-4}] = V[j]  (compute_cfsi reads SLOOS lagged 4Q)
+        - CPIAUCSL = 100 flat → real revolving credit = REVOLSL / 100
+        - REVOLSL grows so YoY real growth at q_j is exactly V[j] percent.
+        """
+        qd = self._qdate
+        cdsp = pd.Series(
+            self.V, index=pd.to_datetime([qd(j) for j in range(16)])
+        )
+        sloos = pd.Series(
+            self.V, index=pd.to_datetime([qd(j - 4) for j in range(16)])
+        )
+        all_dates = pd.to_datetime([qd(j) for j in range(-4, 16)])
+        cpi = pd.Series([100.0] * 20, index=all_dates)
+        revol_vals: dict[int, float] = {j: 100.0 for j in range(-4, 0)}
+        for j in range(16):
+            revol_vals[j] = revol_vals[j - 4] * (1.0 + self.V[j] / 100.0)
+        revol = pd.Series(
+            [revol_vals[j] for j in range(-4, 16)], index=all_dates
+        )
+        return {
+            "CDSP": cdsp, "DRTSCLCC": sloos,
+            "REVOLSL": revol, "CPIAUCSL": cpi,
+        }
+
+    def test_missing_component_returns_zero(self, fresh_db, monkeypatch):
+        monkeypatch.setattr(settings, "FRED_API_KEY", "")
+        for j in range(16):
+            _seed_metric("CDSP", self._qdate(j), 5.0)
+        assert ind.compute_cfsi() == 0
+
+    def test_fewer_than_eight_aligned_quarters_returns_zero(
+        self, fresh_db, monkeypatch
+    ):
+        monkeypatch.setattr(settings, "FRED_API_KEY", "")
+        qd = self._qdate
+        for j in range(-4, 5):
+            _seed_metric("REVOLSL", qd(j), 100.0)
+            _seed_metric("CPIAUCSL", qd(j), 100.0)
+            _seed_metric("DRTSCLCC", qd(j), 10.0)
+        for j in range(5):  # only 5 aligned quarters < 8
+            _seed_metric("CDSP", qd(j), 5.0)
+            _seed_metric("HHDC_FLOW30_ALL", qd(j), 2.0)
+        assert ind.compute_cfsi() == 0
+
+    def test_constant_inputs_use_equal_weight_and_store_zeros(
+        self, fresh_db, monkeypatch
+    ):
+        # Metrics-table fallback (no FRED key). All inputs constant → every
+        # z-score is 0 (pstdev guard substitutes sd=1), PCA is degenerate →
+        # equal-weight path → CFSI is exactly 0.0 for all 16 quarters.
+        monkeypatch.setattr(settings, "FRED_API_KEY", "")
+        qd = self._qdate
+        for j in range(-4, 16):
+            _seed_metric("REVOLSL", qd(j), 100.0)
+            _seed_metric("CPIAUCSL", qd(j), 100.0)
+            _seed_metric("DRTSCLCC", qd(j), 10.0)
+        for j in range(16):
+            _seed_metric("CDSP", qd(j), 5.0)
+            _seed_metric("HHDC_FLOW30_ALL", qd(j), 2.0)
+        assert ind.compute_cfsi() == 16
+        with db.get_conn() as conn:
+            rows = conn.execute(
+                "SELECT value FROM metrics WHERE series_id='CFSI'"
+            ).fetchall()
+        assert len(rows) == 16
+        for r in rows:
+            assert r["value"] == pytest.approx(0.0, abs=1e-9)
+
+    def test_pca_path_equals_zscore_when_all_components_co_move(
+        self, fresh_db, monkeypatch
+    ):
+        # FRED-direct path (key present from conftest). All four standardized
+        # inputs are identical, so PC1 loads them equally and the unit-σ,
+        # stress-oriented CFSI must equal the population z-score of V exactly.
+        _install_fake_fredapi(monkeypatch, self._fred_stub_series())
+        for j in range(16):
+            _seed_metric("HHDC_FLOW30_ALL", self._qdate(j), self.V[j])
+
+        assert ind.compute_cfsi() == 16
+
+        mu = statistics.fmean(self.V)
+        sd = statistics.pstdev(self.V)
+        with db.get_conn() as conn:
+            rows = conn.execute(
+                "SELECT date, value FROM metrics "
+                "WHERE series_id='CFSI' ORDER BY date"
+            ).fetchall()
+        assert [r["date"] for r in rows] == [self._qdate(j) for j in range(16)]
+        for j, r in enumerate(rows):
+            expected = (self.V[j] - mu) / sd
+            assert r["value"] == pytest.approx(expected, abs=1e-3)
+
+    def test_pca_is_oriented_to_the_dsr_input(self, fresh_db, monkeypatch):
+        # Negate the DSR component only: the other three still co-move with V,
+        # but the orientation rule aligns the PC with the *DSR* z-score, so the
+        # stored CFSI must equal MINUS the z-score of V — deterministic
+        # regardless of LAPACK's arbitrary eigenvector sign.
+        stubs = self._fred_stub_series()
+        stubs["CDSP"] = -stubs["CDSP"]
+        _install_fake_fredapi(monkeypatch, stubs)
+        for j in range(16):
+            _seed_metric("HHDC_FLOW30_ALL", self._qdate(j), self.V[j])
+
+        assert ind.compute_cfsi() == 16
+
+        mu = statistics.fmean(self.V)
+        sd = statistics.pstdev(self.V)
+        with db.get_conn() as conn:
+            rows = conn.execute(
+                "SELECT date, value FROM metrics "
+                "WHERE series_id='CFSI' ORDER BY date"
+            ).fetchall()
+        for j, r in enumerate(rows):
+            expected = -(self.V[j] - mu) / sd
+            assert r["value"] == pytest.approx(expected, abs=1e-3)
+
+
+# ─── _fit_ntfs_recession_prob ────────────────────────────────────────────────
+class TestFitNtfsRecessionProb:
+    # 121 NTFS months: the last one (2010-01) has no fully observed forward
+    # window (USREC ends 2010-12), so it is excluded from the fit but still
+    # receives a fitted probability.
+    def _seed_ntfs(self, spread_for=lambda i: -1.0 if i in _SIGNAL_MONTHS else 1.0):
+        for i in range(121):
+            _seed_metric(ind._NTFS_ID, f"{_ym(i)}-01", spread_for(i))
+
+    def _usrec_series(self, all_zero: bool = False) -> pd.Series:
+        idx = pd.to_datetime([f"{_ym(i)}-01" for i in range(132)])
+        vals = [
+            0.0 if all_zero else (1.0 if i in _REC_MONTHS else 0.0)
+            for i in range(132)
+        ]
+        return pd.Series(vals, index=idx)
+
+    def test_returns_empty_without_fred_key(self, fresh_db, monkeypatch):
+        self._seed_ntfs()
+        monkeypatch.setattr(settings, "FRED_API_KEY", "")
+        assert ind._fit_ntfs_recession_prob() == {}
+
+    def test_returns_empty_when_usrec_fetch_fails(self, fresh_db, monkeypatch):
+        self._seed_ntfs()
+        _install_fake_fredapi(monkeypatch, {"USREC": RuntimeError("boom")})
+        assert ind._fit_ntfs_recession_prob() == {}
+
+    def test_returns_empty_when_one_target_class(self, fresh_db, monkeypatch):
+        # USREC all zeros → no positive targets → probit not fit.
+        self._seed_ntfs()
+        _install_fake_fredapi(monkeypatch, {"USREC": self._usrec_series(all_zero=True)})
+        assert ind._fit_ntfs_recession_prob() == {}
+
+    def test_saturated_two_value_spread_yields_exact_group_probabilities(
+        self, fresh_db, monkeypatch
+    ):
+        # spread = -1 for the 48 "signal" months (42 of which precede a
+        # recession), +1 for the 72 calm months (4 of which do). A logit on a
+        # two-valued feature is saturated: fitted P must equal the group means
+        # 87.5% and 4/72 ≈ 5.5556% exactly (up to the 1e-6 ridge).
+        self._seed_ntfs()
+        _install_fake_fredapi(monkeypatch, {"USREC": self._usrec_series()})
+
+        probs = ind._fit_ntfs_recession_prob()
+        assert set(probs) == {_ym(i) for i in range(121)}
+
+        assert probs["2000-01"] == pytest.approx(_P_SIGNAL, abs=0.05)  # signal (false alarm)
+        assert probs["2002-05"] == pytest.approx(_P_SIGNAL, abs=0.05)  # signal (true)
+        assert probs["2002-01"] == pytest.approx(_P_CALM, abs=0.05)    # miss → calm group
+        assert probs["2004-04"] == pytest.approx(_P_CALM, abs=0.05)    # genuinely calm
+        # The out-of-fit-window month is still scored from its spread (+1).
+        assert probs["2010-01"] == pytest.approx(_P_CALM, abs=0.05)
+
+        # USREC is cached back into metrics for the ensemble stack.
+        with db.get_conn() as conn:
+            n_usrec = conn.execute(
+                "SELECT COUNT(*) AS n FROM metrics WHERE series_id='USREC'"
+            ).fetchone()["n"]
+        assert n_usrec == 132
+
+
+# ─── _fit_ensemble_stack ─────────────────────────────────────────────────────
+class TestFitEnsembleStack:
+    @staticmethod
+    def _component(hot_months=_SIGNAL_MONTHS, hi=80.0, lo=20.0) -> dict[str, float]:
+        return {_ym(i): (hi if i in hot_months else lo) for i in range(120)}
+
+    def test_insufficient_aligned_months_returns_none(self, fresh_db):
+        _seed_usrec(36, all_zero=True)
+        comp = {_ym(i): 50.0 for i in range(12)}  # 12 aligned months < 60
+        assert ind._fit_ensemble_stack(comp, dict(comp), dict(comp)) is None
+
+    def test_single_target_class_returns_none(self, fresh_db):
+        _seed_usrec(all_zero=True)  # 132 months, never a recession
+        comp = self._component()
+        assert ind._fit_ensemble_stack(comp, dict(comp), dict(comp)) is None
+
+    def test_anti_correlated_components_clamp_to_zero_and_fall_back(
+        self, fresh_db
+    ):
+        # Components are HIGH exactly when no recession follows: unconstrained
+        # slopes would be negative, the non-negativity projection clamps them
+        # to 0, and the all-slopes-~0 guard rejects the stack (returns None).
+        _seed_usrec()
+        anti = self._component(hot_months=set(range(120)) - _POS_MONTHS)
+        assert ind._fit_ensemble_stack(anti, dict(anti), dict(anti)) is None
+
+    def test_non_finite_component_value_falls_back_to_none(self, fresh_db):
+        # A NaN sneaking into a component probability poisons the Newton
+        # iterations; _fit_logit reports a failed fit and the stack must
+        # return None (→ equal-weight fallback) rather than NaN coefficients.
+        _seed_usrec()
+        comp = self._component()
+        bad = dict(comp)
+        bad["2000-01"] = float("nan")
+        assert ind._fit_ensemble_stack(bad, dict(comp), dict(comp)) is None
+
+    def test_saturated_fit_recovers_closed_form_coefficients(self, fresh_db):
+        # All three features identical and two-valued (0.8 / 0.2 as fractions):
+        # the stack is saturated, so on the logit scale
+        #   z_signal = ln(42/6) = ln 7,  z_calm = ln(4/68)
+        # total slope = (z_signal - z_calm) / 0.6 ≈ 7.9652, split equally by
+        # symmetry → each ≈ 2.6551; b0 = z_calm - 0.2 · total ≈ -4.4263.
+        _seed_usrec()
+        comp = self._component()
+        coefs = ind._fit_ensemble_stack(comp, dict(comp), dict(comp))
+        assert coefs is not None
+        b0, bN, bE, bT = coefs
+        z_signal = math.log(42 / 6)
+        z_calm = math.log(4 / 68)
+        slope_total = (z_signal - z_calm) / 0.6
+        for b in (bN, bE, bT):
+            assert b == pytest.approx(slope_total / 3.0, abs=0.05)
+        assert b0 == pytest.approx(z_calm - 0.2 * slope_total, abs=0.05)
+
+
+# ─── compute_recession_ensemble: stacked path ────────────────────────────────
+class TestRecessionEnsembleStacked:
+    def test_stacked_headline_equals_saturated_group_means(
+        self, fresh_db, monkeypatch
+    ):
+        # Seed USREC + NYFED + EBP probabilities into metrics and inject the
+        # NTFS probability dict directly (bypasses the fredapi-backed fit).
+        # All three components share the 80/20 signal pattern, so:
+        #   • RECESSION_RISK_ENSEMBLE_EW is exactly 80.0 / 20.0, and
+        #   • the stacked headline is the saturated 87.5% / 5.5556%.
+        _seed_usrec()
+        for i in range(120):
+            hot = i in _SIGNAL_MONTHS
+            _seed_metric(ind._RECESSION_PROBIT_ID, f"{_ym(i)}-15",
+                         80.0 if hot else 20.0)
+            _seed_metric("EBP_REC_PROB", f"{_ym(i)}-15", 80.0 if hot else 20.0)
+        ntfs_prob = {
+            _ym(i): (80.0 if i in _SIGNAL_MONTHS else 20.0) for i in range(120)
+        }
+        monkeypatch.setattr(ind, "_fit_ntfs_recession_prob", lambda: ntfs_prob)
+
+        assert ind.compute_recession_ensemble() == 120
+
+        def _series(sid: str) -> dict[str, float]:
+            with db.get_conn() as conn:
+                return {
+                    r["date"]: r["value"]
+                    for r in conn.execute(
+                        "SELECT date, value FROM metrics WHERE series_id=?",
+                        (sid,),
+                    )
+                }
+
+        headline = _series(ind._ENSEMBLE_ID)
+        ew = _series(ind._ENSEMBLE_EW_ID)
+        ntfs_stored = _series(ind._NTFS_PROB_ID)
+        assert len(headline) == len(ew) == len(ntfs_stored) == 120
+
+        # The injected NTFS probabilities are persisted verbatim.
+        assert ntfs_stored["2000-01-01"] == pytest.approx(80.0)
+        assert ntfs_stored["2004-04-01"] == pytest.approx(20.0)
+
+        # Equal-weight mean of three identical components is the component.
+        assert ew["2000-01-01"] == pytest.approx(80.0)
+        assert ew["2004-04-01"] == pytest.approx(20.0)
+
+        # Stacked headline: saturated group probabilities.
+        assert headline["2000-01-01"] == pytest.approx(_P_SIGNAL, abs=0.05)
+        assert headline["2002-05-01"] == pytest.approx(_P_SIGNAL, abs=0.05)
+        assert headline["2002-01-01"] == pytest.approx(_P_CALM, abs=0.05)
+        assert headline["2004-04-01"] == pytest.approx(_P_CALM, abs=0.05)
+
+
+# ─── compute_all_indicators ──────────────────────────────────────────────────
+class TestComputeAllIndicators:
+    def test_runs_every_stage_and_sums_to_zero_when_sources_unavailable(
+        self, fresh_db, mocked_responses, monkeypatch
+    ):
+        # Every network source 500s and the DB is empty, so each stage returns
+        # 0 — the orchestrator must still call all eight and sum to 0.
+        # (FRED key blanked so CFSI/NTFS-probit never import fredapi.)
+        monkeypatch.setattr(settings, "FRED_API_KEY", "")
+        for url in (
+            ind._EBP_CSV_URL, ind._GSW_URL, ind._OFR_FSI_URL, ind._BIS_CGAP_URL,
+        ):
+            mocked_responses.get(url, status=500)
+        assert ind.compute_all_indicators() == 0
