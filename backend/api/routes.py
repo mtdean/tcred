@@ -817,6 +817,31 @@ def trigger_abs_issuance_refresh():
     return result
 
 
+# ── MACRO FORECASTS (macrobot bundle) ────────────────────────
+
+@router.get("/macro/forecasts")
+def get_macro_forecasts_latest():
+    """Latest macrobot ensemble forecasts / forward curve / regime evidence,
+    grouped by category. History per series via /fred/history/{series_id}."""
+    from data.macroforecasts import get_macro_forecasts
+    return get_macro_forecasts()
+
+
+@router.post("/macro/forecasts/refresh")
+def trigger_macro_forecasts_refresh():
+    """Re-ingest the macrobot hand-off bundle (idempotent)."""
+    from data.macroforecasts import ingest_macro_forecasts
+    return ingest_macro_forecasts()
+
+
+@router.get("/macro/forecasts/views")
+def get_macro_forecast_views():
+    """Structured visualization payload: ensemble paths with per-model members,
+    implied forward curve, regime labels + evidence (tcred_views.json)."""
+    from data.macroforecasts import get_macro_views
+    return get_macro_views()
+
+
 # ── ISSUER / DEAL PIVOT ──────────────────────────────────────
 
 @router.get("/issuers")

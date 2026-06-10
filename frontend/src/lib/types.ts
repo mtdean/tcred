@@ -162,6 +162,59 @@ export interface MetricPoint {
   value: number | null;
 }
 
+// ── Macro forecasts (macrobot bundle) ─────────────────────────
+export interface MacroForecastRow {
+  series_id: string;
+  label: string;
+  date: string;
+  value: number;
+}
+
+export interface MacroForecasts {
+  macro_forecasts: MacroForecastRow[];
+  macro_curve: MacroForecastRow[];
+  macro_regime: MacroForecastRow[];
+}
+
+export interface MacroViewPathPoint {
+  h_m: number;
+  ensemble: number | null;
+  lo: number | null;
+  hi: number | null;
+  members: Record<string, number | null>;
+  weights: Record<string, number | null>;
+}
+
+export interface MacroViewConcept {
+  key: string;
+  label: string;
+  unit: string;
+  band_multiplier?: number | null;
+  path: MacroViewPathPoint[];
+}
+
+export interface MacroViewForwardSegment {
+  segment: string;
+  start_m: number;
+  end_m: number;
+  ensemble: number | null;
+  lo: number | null;
+  hi: number | null;
+  members: Record<string, number | null>;
+}
+
+export interface MacroViews {
+  available: boolean;
+  reason?: string;
+  asof?: string;
+  concepts?: MacroViewConcept[];
+  forward_curve?: MacroViewForwardSegment[];
+  regime?: {
+    labels: Record<string, string | boolean>;
+    evidence: Record<string, number | null>;
+  };
+}
+
 export interface ForwardCurveData {
   tenors: string[];
   today: Record<string, number | null>;

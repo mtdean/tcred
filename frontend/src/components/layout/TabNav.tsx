@@ -5,6 +5,7 @@ const TABS: { to: string; label: string }[] = [
   { to: '/news', label: 'News' },
   { to: '/markets', label: 'Markets' },
   { to: '/macro', label: 'Macro' },
+  { to: '/forecasts', label: 'Forecasts' },
   { to: '/private-credit', label: 'Private Credit' },
   { to: '/regulatory', label: 'Regulatory' },
   { to: '/abs', label: 'ABS/EDGAR' },

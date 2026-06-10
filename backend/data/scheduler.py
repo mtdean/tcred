@@ -201,6 +201,14 @@ def _article_dedup_inner() -> int:
     return result["duplicates"]
 
 
+def _macro_forecasts_inner() -> int:
+    """Macrobot bundle: ingest the latest forecast/ensemble/regime snapshot."""
+    from data.macroforecasts import ingest_macro_forecasts
+    result = ingest_macro_forecasts()
+    logger.info("Scheduler: macro forecasts — %s", result)
+    return int(result.get("records", 0))
+
+
 def _sifma_inner() -> int:
     """SIFMA: ingest any newly-dropped xlsx files + refresh FRED supplement."""
     from data.sifma import fetch_fred_abs_issuance, ingest_sifma_drops
@@ -229,6 +237,7 @@ _job_trust_perf = _instrument("trust_perf", _trust_perf_inner)
 _job_manheim = _instrument("manheim", _manheim_inner)
 _job_cfpb = _instrument("cfpb", _cfpb_inner)
 _job_trace = _instrument("trace", _trace_inner)
+_job_macro_forecasts = _instrument("macro_forecasts", _macro_forecasts_inner)
 
 
 async def start_scheduler():
@@ -318,6 +327,17 @@ async def start_scheduler():
         _job_trace,
         IntervalTrigger(hours=12),
         id="trace",
+        max_instances=1,
+        replace_existing=True,
+    )
+
+    # Macrobot forecast bundle is rewritten whenever run_synthesis runs; an
+    # hourly file read is cheap and keeps the dashboard within an hour of the
+    # latest model run (re-ingestion is idempotent).
+    _scheduler.add_job(
+        _job_macro_forecasts,
+        IntervalTrigger(hours=1),
+        id="macro_forecasts",
         max_instances=1,
         replace_existing=True,
     )

@@ -25,6 +25,8 @@ import type {
   FeedHealth,
   ForwardCurveData,
   H8SeriesMetrics,
+  MacroForecasts,
+  MacroViews,
   KbraPresale,
   MarketRow,
   MetricPoint,
@@ -419,6 +421,8 @@ export const getFredLatest = () => api.get('/fred/latest');
 export const getFredHistory = (seriesId: string, limit = 260) =>
   api.get<MetricPoint[]>(`/fred/history/${seriesId}`, { params: { limit } });
 export const getForwardCurve = () => api.get<ForwardCurveData>('/fred/forward-curve');
+export const getMacroForecasts = () => api.get<MacroForecasts>('/macro/forecasts');
+export const getMacroViews = () => api.get<MacroViews>('/macro/forecasts/views');
 export const getSofrRates = (limit = 300) =>
   api.get<SofrPoint[]>('/fred/sofr', { params: { limit } });
 
