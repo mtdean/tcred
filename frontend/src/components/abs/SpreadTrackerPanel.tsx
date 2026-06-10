@@ -33,6 +33,7 @@ import type {
   AbsSpreadSeriesPoint,
 } from '../../lib/types';
 import { COLORS } from '../../lib/colors';
+import TooltipShell from '../charts/TooltipShell';
 import { currency, fmtDate, fmtRelative, num } from '../../lib/utils';
 import Panel from '../shared/Panel';
 import RangeToggle from '../shared/RangeToggle';
@@ -134,18 +135,7 @@ function ChartTooltip({
   if (!active || !payload?.length) return null;
   const row = payload[0].payload;
   return (
-    <div
-      style={{
-        background: COLORS.bgPanel,
-        border: `1px solid ${COLORS.borderBright}`,
-        padding: '4px 8px',
-        fontSize: 11,
-        fontVariantNumeric: 'tabular-nums',
-      }}
-    >
-      <div style={{ color: COLORS.textSecondary }}>
-        wk of {row.week_start ? fmtDate(row.week_start) : label}
-      </div>
+    <TooltipShell title={<>wk of {row.week_start ? fmtDate(row.week_start) : label}</>}>
       <div style={{ color: COLORS.chartPrimary }}>
         median: {row.median != null ? `${row.median.toFixed(0)} bps` : '—'}
       </div>
@@ -155,7 +145,7 @@ function ChartTooltip({
         </div>
       )}
       <div style={{ color: COLORS.textSecondary }}>n = {row.n}</div>
-    </div>
+    </TooltipShell>
   );
 }
 

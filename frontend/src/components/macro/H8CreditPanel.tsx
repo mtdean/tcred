@@ -19,6 +19,7 @@ import { getCreditImpulse, getH8Metrics } from '../../lib/api';
 import { qk } from '../../lib/queryKeys';
 import type { CreditImpulsePoint, H8SeriesMetrics } from '../../lib/types';
 import { COLORS } from '../../lib/colors';
+import TooltipShell from '../charts/TooltipShell';
 import { fmtDate, num, pct, signClass } from '../../lib/utils';
 import Panel from '../shared/Panel';
 import LoadingCursor from '../shared/LoadingCursor';
@@ -43,16 +44,7 @@ function ImpulseTooltip({
   if (!active || !payload?.length) return null;
   const row = payload[0].payload;
   return (
-    <div
-      style={{
-        background: COLORS.bgPanel,
-        border: `1px solid ${COLORS.borderBright}`,
-        padding: '4px 8px',
-        fontSize: 11,
-        fontVariantNumeric: 'tabular-nums',
-      }}
-    >
-      <div style={{ color: COLORS.textSecondary }}>{fmtDate(row.date)}</div>
+    <TooltipShell title={fmtDate(row.date)}>
       <div
         style={{
           color:
@@ -69,7 +61,7 @@ function ImpulseTooltip({
       <div style={{ color: COLORS.textSecondary }}>
         loans: {fmtDollars(row.total_loans)}
       </div>
-    </div>
+    </TooltipShell>
   );
 }
 

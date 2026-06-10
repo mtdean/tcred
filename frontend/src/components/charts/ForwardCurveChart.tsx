@@ -12,6 +12,7 @@ import {
 } from 'recharts';
 import { COLORS } from '../../lib/colors';
 import type { ForwardCurveData } from '../../lib/types';
+import TooltipShell from './TooltipShell';
 
 interface Props {
   data: ForwardCurveData;
@@ -35,22 +36,13 @@ function TooltipBox({
 }) {
   if (!active || !payload?.length) return null;
   return (
-    <div
-      style={{
-        background: COLORS.bgPanel,
-        border: `1px solid ${COLORS.borderBright}`,
-        padding: '4px 8px',
-        fontSize: 11,
-        fontVariantNumeric: 'tabular-nums',
-      }}
-    >
-      <div style={{ color: COLORS.textSecondary }}>{label}</div>
+    <TooltipShell title={label}>
       {payload.map((p) => (
         <div key={p.name} style={{ color: p.color }}>
           {p.name}: {p.value != null ? `${p.value.toFixed(2)}%` : '—'}
         </div>
       ))}
-    </div>
+    </TooltipShell>
   );
 }
 

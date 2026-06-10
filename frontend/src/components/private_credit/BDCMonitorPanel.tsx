@@ -40,6 +40,7 @@ import type {
   BdcWatchEntry,
 } from '../../lib/types';
 import { COLORS } from '../../lib/colors';
+import TooltipShell from '../charts/TooltipShell';
 import { currency, num } from '../../lib/utils';
 import Panel from '../shared/Panel';
 import LoadingCursor from '../shared/LoadingCursor';
@@ -98,16 +99,7 @@ function ChartTooltip({
   if (!active || !payload?.length) return null;
   const row = payload[0].payload;
   return (
-    <div
-      style={{
-        background: COLORS.bgPanel,
-        border: `1px solid ${COLORS.borderBright}`,
-        padding: '4px 8px',
-        fontSize: 11,
-        fontVariantNumeric: 'tabular-nums',
-      }}
-    >
-      <div style={{ color: COLORS.textSecondary }}>{fmtPeriod(row.period)}</div>
+    <TooltipShell title={fmtPeriod(row.period)}>
       <div style={{ color: WARNING_HEX }}>
         non-accrual: {row.avg_nonaccrual_rate != null
           ? `${(row.avg_nonaccrual_rate * 100).toFixed(2)}%`
@@ -119,7 +111,7 @@ function ChartTooltip({
           : '—'}
       </div>
       <div style={{ color: COLORS.textSecondary }}>n = {row.n_bdcs}</div>
-    </div>
+    </TooltipShell>
   );
 }
 

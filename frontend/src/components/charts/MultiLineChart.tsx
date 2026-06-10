@@ -14,6 +14,7 @@ import {
 } from 'recharts';
 import { COLORS } from '../../lib/colors';
 import { fmtDate, seriesReference } from '../../lib/utils';
+import TooltipShell from './TooltipShell';
 
 export interface SeriesDef {
   key: string;
@@ -59,22 +60,13 @@ function TooltipBox({
 }) {
   if (!active || !payload?.length) return null;
   return (
-    <div
-      style={{
-        background: COLORS.bgPanel,
-        border: `1px solid ${COLORS.borderBright}`,
-        padding: '4px 8px',
-        fontSize: 11,
-        fontVariantNumeric: 'tabular-nums',
-      }}
-    >
-      <div style={{ color: COLORS.textSecondary }}>{xFmt(label ?? '')}</div>
+    <TooltipShell title={xFmt(label ?? '')}>
       {payload.map((p) => (
         <div key={p.name} style={{ color: p.color }}>
           {p.name}: {p.value != null ? fmt(p.value) : '—'}
         </div>
       ))}
-    </div>
+    </TooltipShell>
   );
 }
 
