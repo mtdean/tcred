@@ -24,6 +24,7 @@ import Panel from '../components/shared/Panel';
 import LoadingCursor from '../components/shared/LoadingCursor';
 import TooltipShell from '../components/charts/TooltipShell';
 import FredSeriesPanel from '../components/macro/FredSeriesPanel';
+import CreditForecastsPanel from '../components/macro/CreditForecastsPanel';
 
 // Stable colors / display names per model across all charts on the page.
 const MODEL_META: Record<string, { name: string; color: string }> = {
@@ -339,6 +340,8 @@ export default function ForecastsPage() {
       </div>
 
       <RegimeTiles views={data} />
+
+      <CreditForecastsPanel views={data} />
 
       {(data.forward_curve?.length ?? 0) > 0 && (
         <ForwardCurvePanel segments={data.forward_curve!} />
