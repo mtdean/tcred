@@ -28,6 +28,8 @@ export type SourceType =
   | 'cnbc'
   | 'nyt'
   | 'reuters'
+  | 'research'      // economist / central-bank research-blog newsletters
+  | 'restructuring' // distressed / restructuring credit letters
   | 'letter'
   | 'news'; // catch-all for aggregator feeds (e.g. Google News queries)
 
@@ -211,6 +213,19 @@ export interface MacroViews {
   forward_curve?: MacroViewForwardSegment[];
   regime?: {
     labels: Record<string, string | boolean>;
+    evidence: Record<string, number | null>;
+  };
+  credit_view?: {
+    stance: string;
+    score: number | null;
+    n_signals: number;
+    rationale: string;
+    components: {
+      valuation: string;
+      loss_cycle: string;
+      volatility: string;
+      funding: string;
+    };
     evidence: Record<string, number | null>;
   };
 }

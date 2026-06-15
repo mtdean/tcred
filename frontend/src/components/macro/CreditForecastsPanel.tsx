@@ -224,6 +224,53 @@ function CreditPathChart({
   );
 }
 
+// ── integrated stance banner ──────────────────────────────────
+
+const STANCE_META: Record<string, { label: string; color: string }> = {
+  risk_off: { label: 'RISK-OFF', color: COLORS.negative },
+  neutral: { label: 'NEUTRAL', color: COLORS.neutral },
+  risk_on: { label: 'RISK-ON', color: COLORS.positive },
+  unknown: { label: '—', color: COLORS.textDim },
+};
+
+const COMPONENT_COLOR: Record<string, string> = {
+  cheap: COLORS.positive, improving: COLORS.positive, low: COLORS.positive, calm: COLORS.positive,
+  fair: COLORS.neutral, stable: COLORS.neutral, normal: COLORS.neutral,
+  rich: COLORS.negative, deteriorating: COLORS.negative, elevated: COLORS.accent,
+  stressed: COLORS.negative, unknown: COLORS.textDim,
+};
+
+function CreditStanceBanner({ cv }: { cv: NonNullable<MacroViews['credit_view']> }) {
+  const meta = STANCE_META[cv.stance] ?? STANCE_META.unknown;
+  const comps: [string, string][] = [
+    ['valuation', cv.components.valuation],
+    ['loss cycle', cv.components.loss_cycle],
+    ['volatility', cv.components.volatility],
+    ['funding', cv.components.funding],
+  ];
+  return (
+    <Panel title="Credit Stance" subtitle={`integrated read · ${cv.n_signals} signals · score ${cv.score ?? '—'}`}>
+      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
+        <div style={{ fontSize: 26, fontWeight: 700, color: meta.color, minWidth: 130 }}>
+          {meta.label}
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, flex: 1 }}>
+          {comps.map(([k, v]) => (
+            <div key={k} style={{ border: `1px solid ${COLORS.border}`, padding: '4px 8px' }}>
+              <span className="muted" style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                {k}
+              </span>
+              <div style={{ fontSize: 12, fontWeight: 600, color: COMPONENT_COLOR[v] ?? COLORS.textPrimary }}>
+                {v.replace(/_/g, ' ').toUpperCase()}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
 // ── section ───────────────────────────────────────────────────
 
 export default function CreditForecastsPanel({ views }: { views: MacroViews }) {
@@ -246,6 +293,10 @@ export default function CreditForecastsPanel({ views }: { views: MacroViews }) {
       <div className="muted" style={{ fontSize: 10, letterSpacing: '0.14em', marginTop: 8 }}>
         CREDIT FORECASTS — SPREADS, DEFAULT CYCLE & VOLATILITY (the desk&apos;s P&amp;L variables)
       </div>
+
+      {views.credit_view && views.credit_view.n_signals > 0 && (
+        <CreditStanceBanner cv={views.credit_view} />
+      )}
 
       <CreditTiles ev={ev} />
 
