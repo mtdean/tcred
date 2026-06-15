@@ -63,6 +63,15 @@ function valuationCall(gapPct: number | null): { word: string; color: string } {
   return { word: 'FAIR', color: COLORS.neutral };
 }
 
+// Composite funding-stress z-score → regime label, mirroring the model thresholds.
+function fundingCall(z: number | null): { word: string; color: string } {
+  if (z == null) return { word: '—', color: COLORS.textDim };
+  if (z >= 2) return { word: 'STRESSED', color: COLORS.negative };
+  if (z >= 1) return { word: 'ELEVATED', color: COLORS.accent };
+  if (z >= 0) return { word: 'NORMAL', color: COLORS.neutral };
+  return { word: 'CALM', color: COLORS.positive };
+}
+
 function CreditTiles({ ev }: { ev: Record<string, number | null> }) {
   const pct = (x: number | null, d = 2) => (x == null ? '—' : `${x.toFixed(d)}%`);
   const bp = (x: number | null) => (x == null ? '—' : `${Math.round(x)}bp`);
@@ -107,6 +116,19 @@ function CreditTiles({ ev }: { ev: Record<string, number | null> }) {
         value={bp(num(ev.hy_vol_bp))}
         detail={num(ev.ig_vol_bp) == null ? undefined : `IG ${bp(num(ev.ig_vol_bp))}`}
       />
+      {(() => {
+        const z = num(ev.funding_stress_z);
+        const call = fundingCall(z);
+        return (
+          <Tile
+            label="Funding Stress"
+            value={call.word}
+            color={call.color}
+            detail={num(ev.cp_bill_spread_bp) == null ? undefined
+              : `CP–bill ${bp(num(ev.cp_bill_spread_bp))} · z ${z != null ? z.toFixed(2) : '—'}`}
+          />
+        );
+      })()}
     </div>
   );
 }
@@ -215,7 +237,7 @@ export default function CreditForecastsPanel({ views }: { views: MacroViews }) {
     ? (ev.ig_oas_pct as number) - (ev.ig_oas_fairvalue_gap_pct as number)
     : null;
 
-  const hasAny = ['hy_oas', 'ig_oas', 'default_rate', 'rates_vol', 'hy_vol']
+  const hasAny = ['hy_oas', 'ig_oas', 'default_rate', 'rates_vol', 'hy_vol', 'funding_spread']
     .some((k) => concepts.has(k)) || num(ev.hy_oas_pct) != null;
   if (!hasAny) return null;
 
@@ -255,6 +277,12 @@ export default function CreditForecastsPanel({ views }: { views: MacroViews }) {
           color={COLORS.chart6mo}
           decimals={0}
           unitLabel="bp p.a. · GARCH conditional vol (MOVE proxy)"
+        />
+        <CreditPathChart
+          concept={concepts.get('funding_spread')}
+          color={COLORS.chartTertiary}
+          decimals={0}
+          unitLabel="bp · CP–bill funding spread · mean-reverting"
         />
       </div>
 
