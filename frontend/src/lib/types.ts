@@ -243,6 +243,17 @@ export interface MacroViews {
     paper: { cite: string; link: string } | null;
     notebook: string | null;
   }>;
+  forecast_skill?: {
+    concept: string;
+    label: string;
+    best_model: string;
+    best_rmse: number | null;
+    benchmark: string;
+    benchmark_rmse: number | null;
+    skill_ratio: number | null;
+    verdict: string;
+    n: number;
+  }[];
   credit_total_return?: {
     horizon_m: number;
     indices: Record<string, {

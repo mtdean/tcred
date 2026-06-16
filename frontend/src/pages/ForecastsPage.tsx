@@ -2,6 +2,7 @@
 // Forward curve with model-disagreement band, per-concept fan charts showing
 // every model's path against the weighted ensemble, and regime tiles.
 
+import { Fragment } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Area,
@@ -307,6 +308,51 @@ function RegimeTiles({ views }: { views: MacroViews }) {
   );
 }
 
+// ── forecast skill scorecard ──────────────────────────────────
+
+const VERDICT_META: Record<string, { label: string; color: string }> = {
+  beats: { label: 'BEATS', color: COLORS.positive },
+  ties: { label: 'TIES', color: COLORS.neutral },
+  loses: { label: 'NAIVE', color: COLORS.negative },
+};
+
+function ForecastSkillPanel({ views }: { views: MacroViews }) {
+  const skill = views.forecast_skill ?? [];
+  if (skill.length === 0) return null;
+  const MODEL_NAMES = (id: string) => MODEL_META[id]?.name ?? id.replace(/_/g, ' ').toUpperCase();
+  return (
+    <Panel
+      title="Forecast Skill (backtested)"
+      subtitle="best model vs its naive benchmark — which forecasts to trust · lower RMSE = better"
+    >
+      <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr auto auto auto', gap: '4px 14px',
+        fontSize: 11, alignItems: 'center' }}>
+        {['Forecast', 'Best model', 'RMSE', 'vs naive', ''].map((h, i) => (
+          <span key={h} className="muted" style={{ fontSize: 9, letterSpacing: '0.1em',
+            textTransform: 'uppercase', textAlign: i >= 2 ? 'right' : 'left' }}>{h}</span>
+        ))}
+        {skill.map((r) => {
+          const v = VERDICT_META[r.verdict] ?? VERDICT_META.ties;
+          return (
+            <Fragment key={r.concept}>
+              <span style={{ color: COLORS.textPrimary }}>{r.label}</span>
+              <span className="muted">{MODEL_NAMES(r.best_model)}</span>
+              <span style={{ textAlign: 'right' }}>{r.best_rmse == null ? '—' : r.best_rmse.toFixed(2)}</span>
+              <span className="muted" style={{ textAlign: 'right' }}>
+                {r.benchmark_rmse == null ? '—' : r.benchmark_rmse.toFixed(2)}
+              </span>
+              <span style={{ textAlign: 'right', fontWeight: 600, color: v.color }}>{v.label}</span>
+            </Fragment>
+          );
+        })}
+      </div>
+      <div className="muted" style={{ fontSize: 9, marginTop: 6 }}>
+        BEATS = lower error than the random-walk/persistence benchmark · NAIVE = no better than naive (use with care)
+      </div>
+    </Panel>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────
 
 export default function ForecastsPage() {
@@ -345,6 +391,8 @@ export default function ForecastsPage() {
       </div>
 
       <RegimeTiles views={data} />
+
+      <ForecastSkillPanel views={data} />
 
       <CreditForecastsPanel views={data} />
 
