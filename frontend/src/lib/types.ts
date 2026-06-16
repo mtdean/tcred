@@ -227,6 +227,18 @@ export interface MacroViews {
       funding: string;
     };
     evidence: Record<string, number | null>;
+    scenarios?: {
+      name: string;
+      stance: string;
+      score: number | null;
+      rationale: string;
+      components: {
+        valuation: string;
+        loss_cycle: string;
+        volatility: string;
+        funding: string;
+      };
+    }[];
   };
 }
 

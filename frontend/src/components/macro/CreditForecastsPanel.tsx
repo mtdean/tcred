@@ -267,6 +267,25 @@ function CreditStanceBanner({ cv }: { cv: NonNullable<MacroViews['credit_view']>
           ))}
         </div>
       </div>
+      {(cv.scenarios?.length ?? 0) > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginTop: 10 }}>
+          <span className="muted" style={{ fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+            under stress
+          </span>
+          {cv.scenarios!.map((s) => {
+            const m = STANCE_META[s.stance] ?? STANCE_META.unknown;
+            return (
+              <div key={s.name} title={s.rationale}
+                style={{ border: `1px solid ${COLORS.border}`, padding: '3px 8px' }}>
+                <span className="muted" style={{ fontSize: 9, textTransform: 'uppercase' }}>{s.name}</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: m.color, marginLeft: 6 }}>
+                  {m.label}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </Panel>
   );
 }
