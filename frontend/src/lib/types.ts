@@ -254,6 +254,7 @@ export interface MacroViews {
       duration: number | null;
       d_rate_bp: number | null;
       d_spread_bp: number | null;
+      breakeven_spread_bp: number | null;
     }>;
   };
 }

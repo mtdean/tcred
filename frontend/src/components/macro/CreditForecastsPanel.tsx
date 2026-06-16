@@ -418,6 +418,13 @@ function TotalReturnPanel({ tr }: { tr: NonNullable<MacroViews['credit_total_ret
               <div className="muted" style={{ fontSize: 9, marginTop: 3 }}>
                 dur {x.duration ?? '—'} · Δrate {sign(x.d_rate_bp)}bp · ΔOAS {sign(x.d_spread_bp)}bp
               </div>
+              <div style={{ fontSize: 10, marginTop: 3, color: COLORS.textSecondary }}>
+                breakeven: spreads can widen{' '}
+                <span style={{ color: (num(x.breakeven_spread_bp) ?? 0) >= 0 ? COLORS.positive : COLORS.negative,
+                  fontWeight: 600 }}>
+                  {x.breakeven_spread_bp == null ? '—' : `${Math.round(x.breakeven_spread_bp)}bp`}
+                </span>{' '}before TR &lt; 0
+              </div>
             </div>
           );
         })}
