@@ -363,6 +363,52 @@ function CreditStanceBanner({ cv, meth }: {
   );
 }
 
+// ── total return ──────────────────────────────────────────────
+
+function TotalReturnPanel({ tr }: { tr: NonNullable<MacroViews['credit_total_return']> }) {
+  const entries = Object.entries(tr.indices);
+  if (entries.length === 0) return null;
+  const sign = (x: number | null | undefined) =>
+    x == null ? '—' : `${x >= 0 ? '+' : ''}${x.toFixed(2)}`;
+  const part = (label: string, x: number | null | undefined, color?: string) => (
+    <span style={{ color: color ?? COLORS.textSecondary }}>
+      {label} {sign(x)}
+    </span>
+  );
+  return (
+    <Panel
+      title={`Credit Total Return (${tr.horizon_m}m, est.)`}
+      subtitle="carry − duration·Δrate − duration·ΔOAS − expected loss · % "
+    >
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
+        {entries.map(([tag, x]) => {
+          const total = num(x.total_return);
+          return (
+            <div key={tag} style={{ border: `1px solid ${COLORS.border}`, padding: '10px 14px',
+              flex: '1 1 280px', background: COLORS.bgPanel }}>
+              <div className="muted" style={{ fontSize: 9, letterSpacing: '0.12em',
+                textTransform: 'uppercase' }}>{tag} · 12m total return</div>
+              <div style={{ fontSize: 24, fontWeight: 700, marginTop: 2,
+                color: (total ?? 0) >= 0 ? COLORS.positive : COLORS.negative }}>
+                {total == null ? '—' : `${total >= 0 ? '+' : ''}${total.toFixed(2)}%`}
+              </div>
+              <div style={{ fontSize: 10, marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                {part('carry', x.carry, COLORS.positive)}
+                {part('rate', x.rate_pnl, (num(x.rate_pnl) ?? 0) >= 0 ? COLORS.positive : COLORS.negative)}
+                {part('spread', x.spread_pnl, (num(x.spread_pnl) ?? 0) >= 0 ? COLORS.positive : COLORS.negative)}
+                {part('−loss', x.expected_loss == null ? null : -x.expected_loss, COLORS.negative)}
+              </div>
+              <div className="muted" style={{ fontSize: 9, marginTop: 3 }}>
+                dur {x.duration ?? '—'} · Δrate {sign(x.d_rate_bp)}bp · ΔOAS {sign(x.d_spread_bp)}bp
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Panel>
+  );
+}
+
 // ── section ───────────────────────────────────────────────────
 
 export default function CreditForecastsPanel({ views }: { views: MacroViews }) {
@@ -392,6 +438,11 @@ export default function CreditForecastsPanel({ views }: { views: MacroViews }) {
       )}
 
       <CreditTiles ev={ev} carry={views.credit_view?.carry_to_risk} meth={meth} />
+
+      {views.credit_total_return
+        && Object.keys(views.credit_total_return.indices).length > 0 && (
+        <TotalReturnPanel tr={views.credit_total_return} />
+      )}
 
       <div className="grid-2">
         <CreditPathChart

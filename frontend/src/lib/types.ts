@@ -247,6 +247,19 @@ export interface MacroViews {
     paper: { cite: string; link: string } | null;
     notebook: string | null;
   }>;
+  credit_total_return?: {
+    horizon_m: number;
+    indices: Record<string, {
+      total_return: number | null;
+      carry: number | null;
+      rate_pnl: number | null;
+      spread_pnl: number | null;
+      expected_loss: number | null;
+      duration: number | null;
+      d_rate_bp: number | null;
+      d_spread_bp: number | null;
+    }>;
+  };
 }
 
 export interface ForwardCurveData {
