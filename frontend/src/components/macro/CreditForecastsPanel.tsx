@@ -454,6 +454,29 @@ export default function CreditForecastsPanel({ views }: { views: MacroViews }) {
           decimals={2}
           unit="plain"
         />
+        <FredSeriesPanel
+          title="Credit Stance History"
+          subtitle="integrated stance score · >0 risk-off, <0 risk-on"
+          series={[
+            { seriesId: 'MACRO_CREDIT_STANCE_SCORE', key: 'score', name: 'STANCE SCORE', color: COLORS.accent },
+          ]}
+          ranges={HISTORY_RANGES}
+          defaultRange="MAX"
+          decimals={1}
+          unit="plain"
+        />
+        <FredSeriesPanel
+          title="Carry-to-Risk History"
+          subtitle="OAS per unit of spread vol · higher = better paid"
+          series={[
+            { seriesId: 'MACRO_CREDIT_CARRY_HY', key: 'hy', name: 'HY CARRY', color: COLORS.negative },
+            { seriesId: 'MACRO_CREDIT_CARRY_IG', key: 'ig', name: 'IG CARRY', color: COLORS.chartSecondary },
+          ]}
+          ranges={HISTORY_RANGES}
+          defaultRange="MAX"
+          decimals={2}
+          unit="plain"
+        />
       </div>
     </div>
   );
