@@ -241,6 +241,12 @@ export interface MacroViews {
       };
     }[];
   };
+  methodology?: Record<string, {
+    label: string;
+    explanation: string;
+    paper: { cite: string; link: string } | null;
+    notebook: string | null;
+  }>;
 }
 
 export interface ForwardCurveData {

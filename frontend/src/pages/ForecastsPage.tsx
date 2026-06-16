@@ -25,6 +25,7 @@ import LoadingCursor from '../components/shared/LoadingCursor';
 import TooltipShell from '../components/charts/TooltipShell';
 import FredSeriesPanel from '../components/macro/FredSeriesPanel';
 import CreditForecastsPanel from '../components/macro/CreditForecastsPanel';
+import DocLink, { type MethodologyEntry } from '../components/macro/DocLink';
 
 // Stable colors / display names per model across all charts on the page.
 const MODEL_META: Record<string, { name: string; color: string }> = {
@@ -45,9 +46,9 @@ const MODEL_META: Record<string, { name: string; color: string }> = {
 
 const meta = (id: string) => MODEL_META[id] ?? { name: id.toUpperCase(), color: COLORS.textDim };
 
-// Concepts worth a fan chart, in display order.
+// Concepts worth a fan chart, grouped: rates first, then macro.
 const FAN_CONCEPTS = [
-  'ust_10y', 'ust_1y', 'gdp_growth', 'inflation', 'policy_rate', 'tp_10y',
+  'ust_10y', 'ust_1y', 'tp_10y', 'policy_rate', 'gdp_growth', 'inflation',
 ];
 
 function ChartTooltip({
@@ -232,8 +233,8 @@ const REGIME_COLOR: Record<string, string> = {
   stressed: COLORS.negative, high: COLORS.negative, very_tight: COLORS.negative,
 };
 
-function Tile({ label, value, color, detail }: {
-  label: string; value: string; color?: string; detail?: string;
+function Tile({ label, value, color, detail, doc }: {
+  label: string; value: string; color?: string; detail?: string; doc?: MethodologyEntry;
 }) {
   return (
     <div
@@ -245,8 +246,10 @@ function Tile({ label, value, color, detail }: {
         background: COLORS.bgPanel,
       }}
     >
-      <div className="muted" style={{ fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-        {label}
+      <div className="muted" style={{ fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase',
+        display: 'flex', justifyContent: 'space-between', gap: 6 }}>
+        <span>{label}</span>
+        <DocLink m={doc} />
       </div>
       <div style={{ fontSize: 18, fontWeight: 600, color: color ?? COLORS.textPrimary, marginTop: 2 }}>
         {value}
@@ -261,6 +264,7 @@ function Tile({ label, value, color, detail }: {
 function RegimeTiles({ views }: { views: MacroViews }) {
   const labels = views.regime?.labels ?? {};
   const ev = views.regime?.evidence ?? {};
+  const meth = views.methodology ?? {};
   const fmtLabel = (v: unknown) => String(v ?? '?').replace(/_/g, ' ').toUpperCase();
   const pct = (x: number | null | undefined, d = 1) => (x == null ? '—' : `${x.toFixed(d)}%`);
   const pRec = ev.p_recession_12m;
@@ -270,6 +274,7 @@ function RegimeTiles({ views }: { views: MacroViews }) {
         label="Credit Regime"
         value={fmtLabel(labels.credit_regime)}
         color={REGIME_COLOR[String(labels.credit_regime)]}
+        doc={meth.credit_regime}
         detail={ev.ebp_pp != null ? `EBP ${ev.ebp_pp.toFixed(2)}pp` : undefined}
       />
       <Tile
@@ -342,6 +347,10 @@ export default function ForecastsPage() {
       <RegimeTiles views={data} />
 
       <CreditForecastsPanel views={data} />
+
+      <div className="muted" style={{ fontSize: 10, letterSpacing: '0.14em', marginTop: 8 }}>
+        RATES &amp; MACRO MODEL FORECASTS — IMPLIED CURVE AND PER-CONCEPT ENSEMBLE FANS
+      </div>
 
       {(data.forward_curve?.length ?? 0) > 0 && (
         <ForwardCurvePanel segments={data.forward_curve!} />

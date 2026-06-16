@@ -19,6 +19,9 @@ import type { MacroViewConcept, MacroViews } from '../../lib/types';
 import Panel from '../shared/Panel';
 import TooltipShell from '../charts/TooltipShell';
 import FredSeriesPanel from './FredSeriesPanel';
+import DocLink, { type MethodologyEntry } from './DocLink';
+
+type Methodology = Record<string, MethodologyEntry>;
 
 const HISTORY_RANGES = [
   { label: '3M', years: 0.25 },
@@ -31,8 +34,8 @@ const num = (x: number | null | undefined): number | null =>
 
 // ── valuation tiles ───────────────────────────────────────────
 
-function Tile({ label, value, color, detail }: {
-  label: string; value: string; color?: string; detail?: string;
+function Tile({ label, value, color, detail, doc }: {
+  label: string; value: string; color?: string; detail?: string; doc?: MethodologyEntry;
 }) {
   return (
     <div
@@ -44,8 +47,10 @@ function Tile({ label, value, color, detail }: {
         background: COLORS.bgPanel,
       }}
     >
-      <div className="muted" style={{ fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-        {label}
+      <div className="muted" style={{ fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase',
+        display: 'flex', justifyContent: 'space-between', gap: 6 }}>
+        <span>{label}</span>
+        <DocLink m={doc} />
       </div>
       <div style={{ fontSize: 18, fontWeight: 600, color: color ?? COLORS.textPrimary, marginTop: 2 }}>
         {value}
@@ -72,12 +77,14 @@ function fundingCall(z: number | null): { word: string; color: string } {
   return { word: 'CALM', color: COLORS.positive };
 }
 
-function CreditTiles({ ev, carry }: {
+function CreditTiles({ ev, carry, meth }: {
   ev: Record<string, number | null>;
   carry?: Record<string, number | null>;
+  meth?: Methodology;
 }) {
   const pct = (x: number | null, d = 2) => (x == null ? '—' : `${x.toFixed(d)}%`);
   const bp = (x: number | null) => (x == null ? '—' : `${Math.round(x)}bp`);
+  const m = meth ?? {};
 
   const hyGap = num(ev.hy_oas_fairvalue_gap_pct);
   const igGap = num(ev.ig_oas_fairvalue_gap_pct);
@@ -91,6 +98,7 @@ function CreditTiles({ ev, carry }: {
         label="HY OAS"
         value={pct(num(ev.hy_oas_pct))}
         color={hyCall.color}
+        doc={m.valuation}
         detail={hyGap == null ? undefined
           : `${hyCall.word} · ${hyGap >= 0 ? '+' : ''}${Math.round(hyGap * 100)}bp vs fair`}
       />
@@ -98,6 +106,7 @@ function CreditTiles({ ev, carry }: {
         label="IG OAS"
         value={pct(num(ev.ig_oas_pct))}
         color={igCall.color}
+        doc={m.valuation}
         detail={igGap == null ? undefined
           : `${igCall.word} · ${igGap >= 0 ? '+' : ''}${Math.round(igGap * 100)}bp vs fair`}
       />
@@ -105,18 +114,21 @@ function CreditTiles({ ev, carry }: {
         label="Default / Loss Rate"
         value={pct(num(ev.default_rate_pct))}
         color={drChg == null ? undefined : drChg > 0 ? COLORS.negative : COLORS.positive}
+        doc={m.loss_cycle}
         detail={num(ev.default_rate_4q_fcst_pct) == null ? undefined
           : `4q → ${pct(num(ev.default_rate_4q_fcst_pct))} (${drChg != null && drChg >= 0 ? '+' : ''}${drChg != null ? (drChg * 100).toFixed(0) : '—'}bp)`}
       />
       <Tile
         label="Rates Vol (MOVE-proxy)"
         value={bp(num(ev.rates_vol_bp))}
+        doc={m.volatility}
         detail={num(ev.rates_vol_persistence) == null ? undefined
           : `persistence ${num(ev.rates_vol_persistence)!.toFixed(2)}`}
       />
       <Tile
         label="HY Spread Vol"
         value={bp(num(ev.hy_vol_bp))}
+        doc={m.volatility}
         detail={num(ev.ig_vol_bp) == null ? undefined : `IG ${bp(num(ev.ig_vol_bp))}`}
       />
       {(() => {
@@ -127,6 +139,7 @@ function CreditTiles({ ev, carry }: {
             label="Funding Stress"
             value={call.word}
             color={call.color}
+            doc={m.funding}
             detail={num(ev.cp_bill_spread_bp) == null ? undefined
               : `CP–bill ${bp(num(ev.cp_bill_spread_bp))} · z ${z != null ? z.toFixed(2) : '—'}`}
           />
@@ -252,33 +265,81 @@ const COMPONENT_COLOR: Record<string, string> = {
   stressed: COLORS.negative, unknown: COLORS.textDim,
 };
 
-function CreditStanceBanner({ cv }: { cv: NonNullable<MacroViews['credit_view']> }) {
+function CreditStanceBanner({ cv, meth }: {
+  cv: NonNullable<MacroViews['credit_view']>;
+  meth?: Methodology;
+}) {
   const meta = STANCE_META[cv.stance] ?? STANCE_META.unknown;
-  const comps: [string, string][] = [
-    ['valuation', cv.components.valuation],
-    ['loss cycle', cv.components.loss_cycle],
-    ['volatility', cv.components.volatility],
-    ['funding', cv.components.funding],
+  const m = meth ?? {};
+  const e = cv.evidence ?? {};
+  const fmt = (x: number | null | undefined, suf = '', d = 2) =>
+    (x == null ? '—' : `${x.toFixed(d)}${suf}`);
+  // Per-component: label, current value, the live evidence behind it, and the doc.
+  const comps: { key: string; label: string; value: string; why: string; doc?: MethodologyEntry }[] = [
+    {
+      key: 'valuation', label: 'valuation', value: cv.components.valuation, doc: m.valuation,
+      why: `HY OAS ${fmt(num(e.hy_oas_pct), '%')} · ${fmt(num(e.hy_oas_fairvalue_gap_pct) != null
+        ? (e.hy_oas_fairvalue_gap_pct as number) * 100 : null, 'bp', 0)} vs macro fair value`,
+    },
+    {
+      key: 'loss cycle', label: 'loss cycle', value: cv.components.loss_cycle, doc: m.loss_cycle,
+      why: `loss rate ${fmt(num(e.default_rate_pct), '%')} · 4q Δ ${fmt(num(e.default_rate_4q_change_pct) != null
+        ? (e.default_rate_4q_change_pct as number) * 100 : null, 'bp', 0)}`,
+    },
+    {
+      key: 'volatility', label: 'volatility', value: cv.components.volatility, doc: m.volatility,
+      why: `rates vol ${fmt(num(e.rates_vol_bp), 'bp', 0)} vs ${fmt(num(e.rates_vol_uncond_bp), 'bp', 0)} long-run`,
+    },
+    {
+      key: 'funding', label: 'funding', value: cv.components.funding, doc: m.funding,
+      why: `stress z ${fmt(num(e.funding_stress_z))} · CP–bill ${fmt(num(e.cp_bill_spread_bp), 'bp', 0)}`,
+    },
   ];
   return (
-    <Panel title="Credit Stance" subtitle={`integrated read · ${cv.n_signals} signals · score ${cv.score ?? '—'}`}>
+    <Panel
+      title="Credit Stance"
+      subtitle={(
+        <span>
+          integrated read · {cv.n_signals} signals · score {cv.score ?? '—'}{' '}
+          <DocLink m={m.credit_stance} />
+        </span>
+      )}
+    >
       <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
         <div style={{ fontSize: 26, fontWeight: 700, color: meta.color, minWidth: 130 }}>
           {meta.label}
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, flex: 1 }}>
-          {comps.map(([k, v]) => (
-            <div key={k} style={{ border: `1px solid ${COLORS.border}`, padding: '4px 8px' }}>
+          {comps.map((c) => (
+            <div key={c.key} style={{ border: `1px solid ${COLORS.border}`, padding: '4px 8px' }}>
               <span className="muted" style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-                {k}
+                {c.label}
               </span>
-              <div style={{ fontSize: 12, fontWeight: 600, color: COMPONENT_COLOR[v] ?? COLORS.textPrimary }}>
-                {v.replace(/_/g, ' ').toUpperCase()}
+              <div style={{ fontSize: 12, fontWeight: 600, color: COMPONENT_COLOR[c.value] ?? COLORS.textPrimary }}>
+                {c.value.replace(/_/g, ' ').toUpperCase()}
               </div>
             </div>
           ))}
         </div>
       </div>
+
+      <details style={{ marginTop: 10 }}>
+        <summary className="muted" style={{ fontSize: 10, letterSpacing: '0.1em',
+          textTransform: 'uppercase', cursor: 'pointer' }}>
+          Why this stance?
+        </summary>
+        <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {comps.map((c) => (
+            <div key={c.key} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 11 }}>
+              <span style={{ minWidth: 80, color: COMPONENT_COLOR[c.value] ?? COLORS.textPrimary }}>
+                {c.value.replace(/_/g, ' ')}
+              </span>
+              <span className="muted" style={{ flex: 1 }}>{c.why}</span>
+              <DocLink m={c.doc} />
+            </div>
+          ))}
+        </div>
+      </details>
       {(cv.scenarios?.length ?? 0) > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginTop: 10 }}>
           <span className="muted" style={{ fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
@@ -306,6 +367,7 @@ function CreditStanceBanner({ cv }: { cv: NonNullable<MacroViews['credit_view']>
 
 export default function CreditForecastsPanel({ views }: { views: MacroViews }) {
   const ev = views.regime?.evidence ?? {};
+  const meth = views.methodology;
   const concepts = new Map((views.concepts ?? []).map((c) => [c.key, c]));
 
   const hyFair = num(ev.hy_oas_pct) != null && num(ev.hy_oas_fairvalue_gap_pct) != null
@@ -326,10 +388,10 @@ export default function CreditForecastsPanel({ views }: { views: MacroViews }) {
       </div>
 
       {views.credit_view && views.credit_view.n_signals > 0 && (
-        <CreditStanceBanner cv={views.credit_view} />
+        <CreditStanceBanner cv={views.credit_view} meth={meth} />
       )}
 
-      <CreditTiles ev={ev} carry={views.credit_view?.carry_to_risk} />
+      <CreditTiles ev={ev} carry={views.credit_view?.carry_to_risk} meth={meth} />
 
       <div className="grid-2">
         <CreditPathChart
