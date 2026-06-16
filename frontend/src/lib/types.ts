@@ -226,6 +226,7 @@ export interface MacroViews {
       volatility: string;
       funding: string;
     };
+    carry_to_risk?: Record<string, number | null>;
     evidence: Record<string, number | null>;
     scenarios?: {
       name: string;

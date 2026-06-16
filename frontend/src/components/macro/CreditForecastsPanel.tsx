@@ -72,7 +72,10 @@ function fundingCall(z: number | null): { word: string; color: string } {
   return { word: 'CALM', color: COLORS.positive };
 }
 
-function CreditTiles({ ev }: { ev: Record<string, number | null> }) {
+function CreditTiles({ ev, carry }: {
+  ev: Record<string, number | null>;
+  carry?: Record<string, number | null>;
+}) {
   const pct = (x: number | null, d = 2) => (x == null ? '—' : `${x.toFixed(d)}%`);
   const bp = (x: number | null) => (x == null ? '—' : `${Math.round(x)}bp`);
 
@@ -129,6 +132,15 @@ function CreditTiles({ ev }: { ev: Record<string, number | null> }) {
           />
         );
       })()}
+      {carry && num(carry.hy) != null && (
+        <Tile
+          label="Carry / Risk (HY)"
+          value={num(carry.hy)!.toFixed(1)}
+          detail={num(carry.ig) != null
+            ? `IG ${num(carry.ig)!.toFixed(1)} · OAS per unit spread-vol`
+            : 'OAS per unit spread-vol'}
+        />
+      )}
     </div>
   );
 }
@@ -317,7 +329,7 @@ export default function CreditForecastsPanel({ views }: { views: MacroViews }) {
         <CreditStanceBanner cv={views.credit_view} />
       )}
 
-      <CreditTiles ev={ev} />
+      <CreditTiles ev={ev} carry={views.credit_view?.carry_to_risk} />
 
       <div className="grid-2">
         <CreditPathChart
