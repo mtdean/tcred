@@ -228,19 +228,15 @@ export interface MacroViews {
     };
     carry_to_risk?: Record<string, number | null>;
     evidence: Record<string, number | null>;
-    scenarios?: {
-      name: string;
-      stance: string;
-      score: number | null;
-      rationale: string;
-      components: {
-        valuation: string;
-        loss_cycle: string;
-        volatility: string;
-        funding: string;
-      };
-    }[];
   };
+  scenarios?: {
+    name: string;
+    label: string;
+    stance: string;
+    score: number | null;
+    rationale: string;
+    total_return: Record<string, number | null>;
+  }[];
   methodology?: Record<string, {
     label: string;
     explanation: string;

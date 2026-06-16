@@ -3,6 +3,7 @@
 // with a fair-value reference line, the default/loss cycle, and vol (MOVE proxy).
 // Fed by macrobot's credit_spread / default_cycle / volatility models.
 
+import { Fragment } from 'react';
 import {
   Area,
   CartesianGrid,
@@ -340,25 +341,41 @@ function CreditStanceBanner({ cv, meth }: {
           ))}
         </div>
       </details>
-      {(cv.scenarios?.length ?? 0) > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginTop: 10 }}>
-          <span className="muted" style={{ fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-            under stress
-          </span>
-          {cv.scenarios!.map((s) => {
-            const m = STANCE_META[s.stance] ?? STANCE_META.unknown;
-            return (
-              <div key={s.name} title={s.rationale}
-                style={{ border: `1px solid ${COLORS.border}`, padding: '3px 8px' }}>
-                <span className="muted" style={{ fontSize: 9, textTransform: 'uppercase' }}>{s.name}</span>
-                <span style={{ fontSize: 12, fontWeight: 600, color: m.color, marginLeft: 6 }}>
-                  {m.label}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      )}
+    </Panel>
+  );
+}
+
+// ── scenario analysis ─────────────────────────────────────────
+
+function ScenarioPanel({ scenarios }: { scenarios: NonNullable<MacroViews['scenarios']> }) {
+  if (scenarios.length === 0) return null;
+  const tr = (x: number | null | undefined) =>
+    x == null ? '—' : `${x >= 0 ? '+' : ''}${x.toFixed(1)}%`;
+  const trColor = (x: number | null | undefined) =>
+    x == null ? COLORS.textDim : x >= 0 ? COLORS.positive : COLORS.negative;
+  return (
+    <Panel
+      title="Scenario Analysis"
+      subtitle="arbitrary stresses → credit stance + 12m total return (HY / IG)"
+    >
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: '4px 14px',
+        fontSize: 11, alignItems: 'center' }}>
+        <span className="muted" style={{ fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase' }}>Scenario</span>
+        <span className="muted" style={{ fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', textAlign: 'right' }}>Stance</span>
+        <span className="muted" style={{ fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', textAlign: 'right' }}>HY TR</span>
+        <span className="muted" style={{ fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', textAlign: 'right' }}>IG TR</span>
+        {scenarios.map((s) => {
+          const m = STANCE_META[s.stance] ?? STANCE_META.unknown;
+          return (
+            <Fragment key={s.name}>
+              <span title={s.rationale} style={{ color: COLORS.textPrimary }}>{s.label}</span>
+              <span style={{ textAlign: 'right', fontWeight: 600, color: m.color }}>{m.label}</span>
+              <span style={{ textAlign: 'right', color: trColor(s.total_return?.hy) }}>{tr(s.total_return?.hy)}</span>
+              <span style={{ textAlign: 'right', color: trColor(s.total_return?.ig) }}>{tr(s.total_return?.ig)}</span>
+            </Fragment>
+          );
+        })}
+      </div>
     </Panel>
   );
 }
@@ -442,6 +459,10 @@ export default function CreditForecastsPanel({ views }: { views: MacroViews }) {
       {views.credit_total_return
         && Object.keys(views.credit_total_return.indices).length > 0 && (
         <TotalReturnPanel tr={views.credit_total_return} />
+      )}
+
+      {(views.scenarios?.length ?? 0) > 0 && (
+        <ScenarioPanel scenarios={views.scenarios!} />
       )}
 
       <div className="grid-2">
