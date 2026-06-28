@@ -50,21 +50,82 @@ _SOURCE_PREFIXES: tuple[tuple[str, str], ...] = (
 )
 
 
+# Newsletter sub-group slugs. Newsletters used to all collapse under 'letter';
+# these split out the high-signal research and restructuring letters so they
+# earn their own filter chips and highlight cards on the news tab. Matched
+# case-insensitively as a substring of the feed name; first hit wins.
+_LETTER_SUBGROUPS: tuple[tuple[str, str], ...] = (
+    # Economist / central-bank / analytical research blogs.
+    ("liberty street", "research"),
+    ("calculated risk", "research"),
+    ("fed guy",        "research"),
+    ("apricitas",      "research"),
+    ("apollo academy", "research"),
+    ("concoda",        "research"),
+    ("econbrowser",    "research"),
+    ("net interest",   "research"),
+    # Restructuring / distressed-credit letters.
+    ("petition",       "restructuring"),
+    ("pari passu",     "restructuring"),
+    ("junk bond",      "restructuring"),
+    ("credit crunch",  "restructuring"),
+    ("cold capital",   "restructuring"),
+    ("wolf street",    "restructuring"),
+)
+
+
 def derive_source_type(feed_name: str, kind: str = "news") -> str:
     """Map a feed_name → granular source slug.
 
-    kind: 'news' (publisher feeds) or 'letter' (newsletters). Newsletter feeds
-    are all collapsed under 'letter' so the chip set stays small; publisher
-    feeds map by prefix (Bloomberg, WSJ, FT, MarketWatch, CNBC, NYT, Reuters).
-    Anything that doesn't match falls back to 'news' (a catch-all for things
-    like the 'Securitization & ABS News' Google-News aggregator).
+    kind: 'news' (publisher feeds) or 'letter' (newsletters). Publisher feeds
+    map by prefix (Bloomberg, WSJ, FT, MarketWatch, CNBC, NYT, Reuters);
+    anything unmatched falls back to 'news' (a catch-all for aggregators like
+    the 'Securitization & ABS News' Google-News query). Newsletters split into
+    'research' and 'restructuring' sub-groups by name (see _LETTER_SUBGROUPS),
+    with the rest collapsing under 'letter'.
     """
     if kind == "letter":
+        name_l = feed_name.lower()
+        for sub, slug in _LETTER_SUBGROUPS:
+            if sub in name_l:
+                return slug
         return "letter"
     for prefix, slug in _SOURCE_PREFIXES:
         if feed_name.startswith(prefix):
             return slug
     return "news"
+
+
+def backfill_source_types() -> int:
+    """Re-derive source_type for every stored article from the current config.
+
+    source_type is written once at insert time, so when the derivation rules
+    change (e.g. splitting 'letter' into research/restructuring sub-groups)
+    existing rows go stale. This recomputes the slug for each feed from
+    feeds.yaml and updates only the rows whose value actually changed.
+    Idempotent — a no-op once every row matches. Returns rows updated.
+    """
+    cfg = load_feeds()
+    name_to_slug: dict[str, str] = {}
+    for f in cfg.get("news_feeds", []):
+        name_to_slug[f["name"]] = derive_source_type(f["name"], "news")
+    for f in cfg.get("newsletter_feeds", []):
+        name_to_slug[f["name"]] = derive_source_type(f["name"], "letter")
+
+    from cache.db import get_conn
+
+    updated = 0
+    with get_conn() as conn:
+        for name, slug in name_to_slug.items():
+            cur = conn.execute(
+                "UPDATE articles SET source_type = ? "
+                "WHERE feed_name = ? AND source_type IS NOT ?",
+                (slug, name, slug),
+            )
+            updated += cur.rowcount
+    if updated:
+        logger.info("Backfilled source_type on %d article(s)", updated)
+    return updated
 
 
 _TAG_RE = re.compile(r"<[^>]+>")

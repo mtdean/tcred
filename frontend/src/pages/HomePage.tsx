@@ -31,6 +31,21 @@ export default function HomePage() {
         <TopArticlesPanel title="Top Stories — Macro" category="macro" />
       </div>
 
+      <div className="grid-2">
+        <TopArticlesPanel
+          title="Research & Analyst Notes"
+          sourceType="research"
+          minScore={3}
+          limit={6}
+        />
+        <TopArticlesPanel
+          title="Distressed & Restructuring"
+          sourceType="restructuring"
+          minScore={3}
+          limit={6}
+        />
+      </div>
+
       <RecentFilingsStrip />
     </div>
   );

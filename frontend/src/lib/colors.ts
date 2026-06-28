@@ -63,6 +63,8 @@ const SOURCE_SLUG_COLOR: Record<string, string> = {
   cnbc:        '#4a90d9',
   nyt:         '#c9c9c9',
   reuters:     '#ff7676',
+  research:     '#5dade2',
+  restructuring: '#e74c3c',
   letter:      '#9b59b6',
   news:        '#1abc9c',
 };

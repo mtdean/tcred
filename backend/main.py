@@ -31,6 +31,9 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Startup: run feed health checks and kick off background scheduler."""
     logger.info("Starting Situation Monitor...")
+    from data.feeds import backfill_source_types
+
+    backfill_source_types()
     await start_scheduler()
     yield
     logger.info("Shutting down...")

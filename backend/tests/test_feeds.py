@@ -63,8 +63,14 @@ class TestDeriveSourceType:
         ("NYT Business", "news", "nyt"),
         ("Reuters Finance", "news", "reuters"),
         ("Securitization & ABS News", "news", "news"),       # no prefix → fallback
-        ("Matt Levine's Money Stuff", "letter", "letter"),    # letter always overrides
+        ("Matt Levine's Money Stuff", "letter", "letter"),    # unmatched newsletter
         ("Bloomberg Markets", "letter", "letter"),            # letter wins over publisher
+        ("Apollo Academy (Torsten Slok)", "letter", "research"),   # research sub-group
+        ("Fed Guy (Joseph Wang)", "letter", "research"),
+        ("Liberty Street Economics (NY Fed)", "letter", "research"),
+        ("Petition (Restructuring)", "letter", "restructuring"),   # distressed sub-group
+        ("Wolf Street", "letter", "restructuring"),
+        ("The Diff (Byrne Hobart)", "letter", "letter"),     # newsletter, no sub-group
     ])
     def test_mapping(self, feed_name, kind, expected):
         assert f.derive_source_type(feed_name, kind) == expected
@@ -378,3 +384,48 @@ class TestFetchAllFeeds:
             lambda: {"news_feeds": [], "newsletter_feeds": []},
         )
         assert await f.fetch_all_feeds() == 0
+
+
+# ─── backfill_source_types (DB-coupled) ──────────────────────────────────────
+class TestBackfillSourceTypes:
+    @staticmethod
+    def _seed(conn, id_, feed_name, source_type):
+        conn.execute(
+            "INSERT INTO articles (id, feed_name, feed_category, title, url, "
+            "fetched_at, source_type) VALUES (?,?,?,?,?,?,?)",
+            (id_, feed_name, "macro", "t", f"https://x/{id_}",
+             "2026-06-15T00:00:00+00:00", source_type),
+        )
+
+    def test_reslugs_stale_rows_and_is_idempotent(self, fresh_db, monkeypatch):
+        cfg = {
+            "news_feeds": [{"name": "Bloomberg Markets", "url": "u"}],
+            "newsletter_feeds": [
+                {"name": "Apollo Academy (Torsten Slok)", "url": "u"},
+                {"name": "Petition (Restructuring)", "url": "u"},
+                {"name": "The Diff (Byrne Hobart)", "url": "u"},
+            ],
+        }
+        monkeypatch.setattr(f, "load_feeds", lambda: cfg)
+
+        with db.get_conn() as conn:
+            # All seeded with the pre-split 'letter' slug (stale for the first two).
+            self._seed(conn, "a", "Apollo Academy (Torsten Slok)", "letter")
+            self._seed(conn, "b", "Petition (Restructuring)", "letter")
+            self._seed(conn, "c", "The Diff (Byrne Hobart)", "letter")
+            self._seed(conn, "d", "Bloomberg Markets", "bloomberg")
+
+        assert f.backfill_source_types() == 2  # only Apollo + Petition change
+        assert f.backfill_source_types() == 0  # idempotent — no-op second run
+
+        with db.get_conn() as conn:
+            got = {
+                r["id"]: r["source_type"]
+                for r in conn.execute("SELECT id, source_type FROM articles")
+            }
+        assert got == {
+            "a": "research",
+            "b": "restructuring",
+            "c": "letter",
+            "d": "bloomberg",
+        }

@@ -20,6 +20,8 @@ export const SOURCE_OPTIONS: readonly { value: SourceType; label: string }[] = [
   { value: 'cnbc',        label: 'CNBC' },
   { value: 'nyt',         label: 'NYT' },
   { value: 'reuters',     label: 'REUTERS' },
+  { value: 'research',    label: 'RESEARCH' },
+  { value: 'restructuring', label: 'DISTRESSED' },
   { value: 'letter',      label: 'LETTERS' },
   { value: 'news',        label: 'OTHER' },
 ] as const;

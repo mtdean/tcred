@@ -10,8 +10,14 @@ interface Props {
   sourceType: SourceType;
 }
 
+const NEWSLETTER_TYPES: ReadonlySet<SourceType> = new Set([
+  'letter',
+  'research',
+  'restructuring',
+]);
+
 export default function SourceChip({ feedName, sourceType }: Props) {
-  const isLetter = sourceType === 'letter';
+  const isLetter = NEWSLETTER_TYPES.has(sourceType);
   const color = sourceColor(feedName);
   const Icon = isLetter ? Mail : Newspaper;
   return (

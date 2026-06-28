@@ -12,7 +12,10 @@ import ScoreDots from '../shared/ScoreDots';
 
 interface Props {
   title: string;
-  category: string;
+  // Filter by topic category, source-type slug, or both. At least one is
+  // expected; with neither this is just the top-scored stories overall.
+  category?: string;
+  sourceType?: string;
   minScore?: number;
   limit?: number;
 }
@@ -35,8 +38,14 @@ function Row({ a }: { a: Article }) {
   );
 }
 
-export default function TopArticlesPanel({ title, category, minScore = 4, limit = 5 }: Props) {
-  const params = { category, min_score: minScore, limit };
+export default function TopArticlesPanel({
+  title,
+  category,
+  sourceType,
+  minScore = 4,
+  limit = 5,
+}: Props) {
+  const params = { category, source_type: sourceType, min_score: minScore, limit };
   const { data, isLoading, isError } = useQuery({
     queryKey: qk.articles(params),
     queryFn: () => getArticles(params).then((r) => r.data),
