@@ -59,6 +59,27 @@ class TestJobRunHelpers:
         assert by_job["market"]["status"] == "error"
         assert by_job["fred"]["rows_ingested"] == 99
 
+    def test_reap_stale_job_runs_errors_orphaned_running_rows(self, fresh_db):
+        # Two orphaned 'running' rows + one already-finished row.
+        db.start_job_run("manheim")           # left running
+        db.start_job_run("trace")             # left running
+        done = db.start_job_run("market")
+        db.finish_job_run(done, "success", rows_ingested=1)
+
+        reaped = db.reap_stale_job_runs()
+        assert reaped == 2
+
+        latest = {r["job_id"]: r for r in db.get_latest_job_runs()}
+        for job in ("manheim", "trace"):
+            assert latest[job]["status"] == "error"
+            assert latest[job]["ended_at"] is not None
+            assert "orphaned" in latest[job]["error"]
+        # The already-finished row is untouched.
+        assert latest["market"]["status"] == "success"
+
+        # Idempotent: nothing left to reap on a second pass.
+        assert db.reap_stale_job_runs() == 0
+
     def test_get_job_run_history_filters_and_orders(self, fresh_db):
         for job in ("market", "market", "fred"):
             rid = db.start_job_run(job)

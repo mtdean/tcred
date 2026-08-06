@@ -24,7 +24,7 @@ from typing import Callable
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
-from cache.db import finish_job_run, start_job_run
+from cache.db import finish_job_run, reap_stale_job_runs, start_job_run
 from config import load_data_sources
 
 logger = logging.getLogger(__name__)
@@ -244,6 +244,13 @@ async def start_scheduler():
     global _scheduler
     cfg = load_data_sources()
     intervals = cfg.get("refresh_intervals", {})
+
+    # Any 'running' row still present at startup is orphaned — the process that
+    # owned it exited before finish_job_run() fired. Reap them so /api/jobs/status
+    # doesn't report a job as forever-running.
+    reaped = reap_stale_job_runs()
+    if reaped:
+        logger.info("Reaped %d orphaned 'running' job run(s)", reaped)
 
     _scheduler = AsyncIOScheduler()
 

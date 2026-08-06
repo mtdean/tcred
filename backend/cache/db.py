@@ -776,6 +776,26 @@ def finish_job_run(
         )
 
 
+def reap_stale_job_runs() -> int:
+    """Mark orphaned 'running' job rows as errored.
+
+    A run is left in 'running' when the process dies mid-job (restart, crash,
+    kill) so finish_job_run() never fires. At startup no job can legitimately
+    still be running, so every remaining 'running' row is orphaned. Returns the
+    number of rows reaped. duration_ms is left NULL — the wall-clock gap to now
+    would be misleading (often days).
+    """
+    ended = _utcnow().isoformat() + "Z"
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE job_runs SET ended_at = ?, status = 'error', "
+            "error = 'orphaned: process exited before the job finished' "
+            "WHERE status = 'running'",
+            (ended,),
+        )
+        return cur.rowcount
+
+
 def get_latest_job_runs() -> list[dict]:
     """One row per job_id: the most recent invocation. Used for /api/jobs/status."""
     with get_conn() as conn:

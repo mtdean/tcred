@@ -706,7 +706,7 @@ sifma:
 refresh_intervals:
   market_data_minutes: 15       # yfinance tickers (token-free)
   fred_data_hours: 6            # FRED (token-free)
-  news_feeds_minutes: 0         # 0 = OFF. News fetch+classify spends Claude tokens,
-                                # so it runs only on demand via the REFRESH button.
-                                # Set to e.g. 30 to re-enable automatic classification.
+  news_feeds_minutes: 60        # News fetch+classify — the ONLY token-spending job.
+                                # 60 = auto-refresh hourly. Set 0 to disable and go
+                                # back to on-demand-only via the REFRESH button.
   edgar_filings_hours: 4        # EDGAR new filings (token-free)
