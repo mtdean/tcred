@@ -26,6 +26,54 @@ def _seed(id_, title, feed_name="Bloomberg", published_at=None,
         db.update_article_relevance(id_, score, "[]")
 
 
+class TestPickPrimaryPublisherTier:
+    @pytest.fixture(autouse=True)
+    def tiers(self, monkeypatch):
+        from data import feeds
+        monkeypatch.setattr(feeds, "load_data_sources", lambda: {
+            "publisher_tiers": {
+                "trusted": ["WSJ"],
+                "junk": ["Stock Titan"],
+            }
+        })
+
+    def test_trusted_publisher_beats_earlier_junk(self, fresh_db):
+        # Junk site "broke" the story an hour earlier — trusted must still win.
+        _seed("junk", "Carvana ABS deal prices tight", score=4,
+              published_at="2026-09-01T08:00:00+00:00")
+        _seed("wsj", "Carvana ABS deal prices tight", score=4,
+              published_at="2026-09-01T09:00:00+00:00")
+        with db.get_conn() as conn:
+            conn.execute("UPDATE articles SET publisher='Stock Titan' WHERE id='junk'")
+            conn.execute("UPDATE articles SET publisher='WSJ' WHERE id='wsj'")
+
+        members = [
+            {"id": "junk", "relevance_score": 4, "publisher": "Stock Titan",
+             "published_at": "2026-09-01T08:00:00+00:00", "fetched_at": NOW},
+            {"id": "wsj", "relevance_score": 4, "publisher": "WSJ",
+             "published_at": "2026-09-01T09:00:00+00:00", "fetched_at": NOW},
+        ]
+        assert dedup._pick_primary(members)["id"] == "wsj"
+
+    def test_score_still_outranks_tier(self, fresh_db):
+        members = [
+            {"id": "junk5", "relevance_score": 5, "publisher": "Stock Titan",
+             "published_at": "2026-09-01T08:00:00+00:00", "fetched_at": NOW},
+            {"id": "wsj4", "relevance_score": 4, "publisher": "WSJ",
+             "published_at": "2026-09-01T09:00:00+00:00", "fetched_at": NOW},
+        ]
+        assert dedup._pick_primary(members)["id"] == "junk5"
+
+    def test_earliest_wins_within_same_tier(self, fresh_db):
+        members = [
+            {"id": "later", "relevance_score": 4, "publisher": None,
+             "published_at": "2026-09-01T09:00:00+00:00", "fetched_at": NOW},
+            {"id": "earlier", "relevance_score": 4, "publisher": None,
+             "published_at": "2026-09-01T08:00:00+00:00", "fetched_at": NOW},
+        ]
+        assert dedup._pick_primary(members)["id"] == "earlier"
+
+
 # ─── Title normalization ────────────────────────────────────────────────────
 class TestNormalizeTitle:
     @pytest.mark.parametrize("raw, expected", [

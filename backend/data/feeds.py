@@ -20,7 +20,7 @@ import aiohttp
 import feedparser
 
 from cache.db import upsert_article, upsert_feed_health
-from config import load_feeds
+from config import load_data_sources, load_feeds
 
 logger = logging.getLogger(__name__)
 
@@ -148,6 +148,57 @@ def strip_html(text: str) -> str:
     return _WS_RE.sub(" ", text).strip()  # collapse whitespace
 
 
+# Google News aggregator entries append the real publisher to the title as
+# " - Publisher" and also carry it in a <source> element. Capture it (for
+# quality tiering) and strip the suffix (cleaner titles, better dedup).
+_GN_TITLE_SUFFIX_RE = re.compile(r"\s+-\s+([^-]{2,60})$")
+
+
+def split_gn_publisher(title: str, entry=None) -> tuple[str, Optional[str]]:
+    """(clean_title, publisher) for a Google News entry.
+
+    Prefers the entry's <source> element; falls back to the title suffix.
+    The suffix is stripped from the title whenever one is present.
+    """
+    src = getattr(entry, "source", None) if entry is not None else None
+    publisher = strip_html(getattr(src, "title", "") or "") or None
+    m = _GN_TITLE_SUFFIX_RE.search(title)
+    if m:
+        if publisher is None:
+            publisher = m.group(1).strip()
+        title = title[: m.start()].strip()
+    return title, publisher
+
+
+_TIER_RANK = {"trusted": 0, "unknown": 1, "junk": 2}
+
+
+def publisher_tier(publisher: Optional[str]) -> str:
+    """'trusted' | 'junk' | 'unknown' per data_sources.yaml publisher_tiers.
+
+    Case-insensitive substring match of the configured names against the
+    publisher string; junk wins over trusted (catches "X via PR Newswire").
+    Articles without a captured publisher (direct feeds — the feed itself is
+    the publisher) rank as 'unknown', which sorts between the two.
+    """
+    if not publisher:
+        return "unknown"
+    cfg = load_data_sources().get("publisher_tiers") or {}
+    p = publisher.lower()
+    for name in cfg.get("junk") or []:
+        if str(name).lower() in p:
+            return "junk"
+    for name in cfg.get("trusted") or []:
+        if str(name).lower() in p:
+            return "trusted"
+    return "unknown"
+
+
+def publisher_tier_rank(publisher: Optional[str]) -> int:
+    """Sortable rank: trusted=0, unknown=1, junk=2."""
+    return _TIER_RANK[publisher_tier(publisher)]
+
+
 # Tags whose end (or self-closing form) means "paragraph break here" — enough
 # structure for a readable article body without keeping any markup.
 _BLOCK_BREAK_RE = re.compile(
@@ -241,12 +292,21 @@ async def _fetch_feed(
     parsed = feedparser.parse(raw)
     articles = []
     now = datetime.now(timezone.utc).isoformat()
+    is_google_news = "news.google.com" in url
+    drop_junk = bool(
+        (load_data_sources().get("publisher_tiers") or {}).get("drop_junk_at_ingest")
+    )
 
     for entry in parsed.entries[:20]:  # cap at 20 per fetch
         link = getattr(entry, "link", None)
         if not link:
             continue
         title = strip_html(getattr(entry, "title", ""))
+        publisher = None
+        if is_google_news:
+            title, publisher = split_gn_publisher(title, entry)
+            if drop_junk and publisher_tier(publisher) == "junk":
+                continue
         snippet = strip_html(
             getattr(entry, "summary", "") or getattr(entry, "description", "")
         )[:500]
@@ -263,6 +323,7 @@ async def _fetch_feed(
                 "fetched_at": now,
                 "source_type": source_type,
                 "content_text": extract_full_text(entry),
+                "publisher": publisher,
             }
         )
 

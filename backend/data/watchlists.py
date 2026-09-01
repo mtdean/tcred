@@ -178,10 +178,15 @@ def update_watchlist(watchlist_id: str, patch: dict) -> Optional[dict]:
 
     with db.get_conn() as conn:
         conn.execute(f"UPDATE watchlists SET {set_clause} WHERE id = :id", updates)
+    if "keywords" in updates:
+        # Cached verdicts answered "does this article match the OLD keywords" —
+        # stale the moment the question changes.
+        db.delete_watchlist_verifications(watchlist_id)
     return get_watchlist(watchlist_id)
 
 
 def delete_watchlist(watchlist_id: str) -> bool:
+    db.delete_watchlist_verifications(watchlist_id)
     with db.get_conn() as conn:
         cur = conn.execute("DELETE FROM watchlists WHERE id = ?", (watchlist_id,))
         return cur.rowcount > 0
@@ -201,20 +206,28 @@ def mark_viewed(watchlist_id: str) -> Optional[dict]:
 # ── Match engine ───────────────────────────────────────────────────────────
 
 def _keyword_re(keywords: list[str]) -> re.Pattern:
-    """Build a case-insensitive regex matching ANY of the supplied keywords as
-    a substring. Each keyword is regex-escaped, so phrase-like inputs (e.g.
-    'subprime auto') work as expected."""
-    escaped = [re.escape(k) for k in keywords if k]
+    """Build a case-insensitive regex matching ANY of the supplied keywords at
+    word boundaries. Each keyword is regex-escaped, so phrase-like inputs
+    (e.g. 'subprime auto') work as expected.
+
+    Boundary matching is what keeps company-name watchlists usable: plain
+    substring matching had "Ares" hitting every "shares" and "Affirm" hitting
+    every "affirmed". Lookarounds (rather than \\b) so keywords that start or
+    end with non-word chars ("S&P") still match.
+    """
+    escaped = [rf"(?<!\w){re.escape(k)}(?!\w)" for k in keywords if k]
     pattern = "|".join(escaped) if escaped else r"$.^"  # never matches if empty
     return re.compile(pattern, re.IGNORECASE)
 
 
 def _match_articles(rx: re.Pattern, wl: dict, limit: int) -> list[dict]:
+    from data.feeds import publisher_tier, publisher_tier_rank
+
     sql = (
         "SELECT id, feed_name, feed_category, title, snippet, url, "
         "published_at, fetched_at, relevance_score, relevance_tags, "
-        "source_type "
-        "FROM articles WHERE relevance_score >= ?"
+        "source_type, publisher "
+        "FROM articles WHERE relevance_score >= ? AND duplicate_of IS NULL"
     )
     params: list = [wl.get("min_score") or 3]
     cats = wl.get("news_categories") or []
@@ -230,10 +243,19 @@ def _match_articles(rx: re.Pattern, wl: dict, limit: int) -> list[dict]:
     for r in rows:
         haystack = f"{r['title'] or ''} | {r['snippet'] or ''}"
         if rx.search(haystack):
-            matched.append(dict(r))
-            if len(matched) >= limit:
-                break
-    return matched
+            d = dict(r)
+            d["publisher_tier"] = publisher_tier(d.get("publisher"))
+            matched.append(d)
+
+    # Trusted publishers first, junk last; newest first within each tier
+    # (stable two-pass sort). Sorting happens over the full candidate set so
+    # a junk hit can't crowd a trusted one out of the limit window.
+    matched.sort(
+        key=lambda a: a.get("published_at") or a.get("fetched_at") or "",
+        reverse=True,
+    )
+    matched.sort(key=lambda a: publisher_tier_rank(a.get("publisher")))
+    return matched[:limit]
 
 
 def _match_edgar(rx: re.Pattern, wl: dict, limit: int) -> list[dict]:
@@ -300,6 +322,16 @@ def run_watchlist(
     articles = _match_articles(rx, wl, per_source_limit)
     edgar = _match_edgar(rx, wl, per_source_limit)
     regulatory = _match_regulatory(rx, wl, per_source_limit)
+
+    # Attach cached Claude entity-verification verdicts (see watchlist_verify).
+    verdicts = db.get_watchlist_verifications(
+        watchlist_id, [a["id"] for a in articles]
+    )
+    for a in articles:
+        v = verdicts.get(a["id"])
+        a["verification"] = (
+            {"verdict": v["verdict"], "reason": v["reason"]} if v else None
+        )
     return {
         "watchlist": wl,
         "as_of": _now_iso(),

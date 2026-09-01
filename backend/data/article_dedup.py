@@ -118,7 +118,7 @@ def _fetch_recent_articles(window_hours: int) -> list[dict]:
     with db.get_conn() as conn:
         rows = conn.execute(
             """
-            SELECT id, title, published_at, fetched_at, relevance_score
+            SELECT id, title, published_at, fetched_at, relevance_score, publisher
             FROM articles
             WHERE COALESCE(published_at, fetched_at) >= ?
             ORDER BY COALESCE(published_at, fetched_at) ASC, id ASC
@@ -168,11 +168,19 @@ def _cluster_articles(articles: list[dict]) -> list[list[str]]:
 
 
 def _pick_primary(members: list[dict]) -> dict:
-    """Highest relevance_score, then earliest published_at, then lowest id."""
+    """Highest relevance_score, then best publisher tier, then earliest
+    published_at, then lowest id.
+
+    The tier check (trusted < unknown < junk) outranks recency on purpose:
+    press-release mills syndicate a story minutes before real outlets pick it
+    up, and "earliest wins" was making the junk version the visible card.
+    """
+    from data.feeds import publisher_tier_rank
+
     def _key(a: dict) -> tuple:
         score = a.get("relevance_score") or 0
         when = a.get("published_at") or a.get("fetched_at") or ""
-        return (-int(score), when, a["id"])
+        return (-int(score), publisher_tier_rank(a.get("publisher")), when, a["id"])
     return sorted(members, key=_key)[0]
 
 

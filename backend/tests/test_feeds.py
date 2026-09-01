@@ -96,6 +96,68 @@ class TestStripHtml:
         assert f.strip_html(text) == expected
 
 
+class TestSplitGnPublisher:
+    def test_prefers_source_element_and_strips_suffix(self):
+        class Src:
+            title = "The Wall Street Journal"
+
+        class E:
+            source = Src()
+        title, pub = f.split_gn_publisher("Yields Jump - The Wall Street Journal", E())
+        assert title == "Yields Jump"
+        assert pub == "The Wall Street Journal"
+
+    def test_falls_back_to_title_suffix(self):
+        title, pub = f.split_gn_publisher("CLO Market Update - GlobalCapital", None)
+        assert title == "CLO Market Update"
+        assert pub == "GlobalCapital"
+
+    def test_no_suffix_leaves_title_and_publisher(self):
+        title, pub = f.split_gn_publisher("A headline with no publisher", None)
+        assert title == "A headline with no publisher"
+        assert pub is None
+
+    def test_hyphenated_headline_keeps_long_tail(self):
+        # Only a short trailing segment (<=60 chars after " - ") is treated as
+        # a publisher; the segment here is the publisher, not the clause.
+        title, pub = f.split_gn_publisher(
+            "Fed cuts rates - markets rally on the decision - Reuters", None
+        )
+        assert pub == "Reuters"
+        assert title == "Fed cuts rates - markets rally on the decision"
+
+
+class TestPublisherTier:
+    @pytest.fixture(autouse=True)
+    def tiers(self, monkeypatch):
+        monkeypatch.setattr(f, "load_data_sources", lambda: {
+            "publisher_tiers": {
+                "trusted": ["WSJ", "GlobalCapital"],
+                "junk": ["PR Newswire", "Stock Titan"],
+            }
+        })
+
+    @pytest.mark.parametrize("pub, tier", [
+        ("WSJ", "trusted"),
+        ("The WSJ Online", "trusted"),          # substring match
+        ("globalcapital", "trusted"),           # case-insensitive
+        ("Stock Titan", "junk"),
+        ("Newswatch via PR Newswire", "junk"),
+        ("Random Blog", "unknown"),
+        (None, "unknown"),
+    ])
+    def test_mapping(self, pub, tier):
+        assert f.publisher_tier(pub) == tier
+
+    def test_junk_wins_over_trusted(self):
+        # A junk wire syndicating under a trusted banner stays junk.
+        assert f.publisher_tier("WSJ via PR Newswire") == "junk"
+
+    def test_rank_ordering(self):
+        assert f.publisher_tier_rank("WSJ") < f.publisher_tier_rank("Blog")
+        assert f.publisher_tier_rank("Blog") < f.publisher_tier_rank("Stock Titan")
+
+
 class TestHtmlToText:
     @pytest.mark.parametrize("text, expected", [
         # Paragraph structure survives as blank lines.
@@ -188,6 +250,62 @@ class TestExtractFullText:
         assert "substantial newsletter prose" in articles[0]["content_text"]
         # Snippet still comes from the (short) description.
         assert articles[0]["snippet"] == "Short teaser only"
+
+    async def test_google_news_feed_captures_publisher(self, mocked_aiohttp):
+        url = "https://news.google.com/rss/search?q=clo"
+        xml = """<?xml version="1.0"?><rss version="2.0"><channel><title>GN</title>
+          <item><title>CLO Spreads Tighten - GlobalCapital</title>
+                <link>https://news.google.com/articles/abc</link></item>
+        </channel></rss>"""
+        mocked_aiohttp.get(url, body=xml, status=200)
+
+        import aiohttp
+        async with aiohttp.ClientSession() as session:
+            articles = await f._fetch_feed(
+                session,
+                {"name": "Securitization & ABS News", "url": url, "category": "structured_finance"},
+                kind="news",
+            )
+        assert len(articles) == 1
+        assert articles[0]["title"] == "CLO Spreads Tighten"
+        assert articles[0]["publisher"] == "GlobalCapital"
+
+    async def test_non_aggregator_feed_has_null_publisher(self, mocked_aiohttp):
+        url = "https://example.com/rss"
+        mocked_aiohttp.get(url, body=SAMPLE_RSS, status=200)
+
+        import aiohttp
+        async with aiohttp.ClientSession() as session:
+            articles = await f._fetch_feed(
+                session,
+                {"name": "Bloomberg Markets", "url": url, "category": "macro"},
+                kind="news",
+            )
+        assert all(a["publisher"] is None for a in articles)
+
+    async def test_drop_junk_at_ingest(self, mocked_aiohttp, monkeypatch):
+        monkeypatch.setattr(f, "load_data_sources", lambda: {
+            "publisher_tiers": {
+                "drop_junk_at_ingest": True,
+                "junk": ["Stock Titan"],
+                "trusted": [],
+            }
+        })
+        url = "https://news.google.com/rss/search?q=abs"
+        xml = """<?xml version="1.0"?><rss version="2.0"><channel><title>GN</title>
+          <item><title>Real Story - GlobalCapital</title><link>https://g/1</link></item>
+          <item><title>PR Rehash - Stock Titan</title><link>https://g/2</link></item>
+        </channel></rss>"""
+        mocked_aiohttp.get(url, body=xml, status=200)
+
+        import aiohttp
+        async with aiohttp.ClientSession() as session:
+            articles = await f._fetch_feed(
+                session,
+                {"name": "Securitization & ABS News", "url": url, "category": "structured_finance"},
+                kind="news",
+            )
+        assert [a["title"] for a in articles] == ["Real Story"]
 
     async def test_fetch_feed_headline_only_has_no_content(self, mocked_aiohttp):
         url = "https://example.com/rss"

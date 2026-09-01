@@ -93,6 +93,9 @@ export default function ArticleCard({ article: a, onRead, onOpenReader }: Props)
 
       <div className="muted" style={{ fontSize: 11, marginTop: 3 }}>
         {fmtRelative(a.published_at ?? a.fetched_at)}
+        {a.publisher && (
+          <span style={{ color: 'var(--text-secondary)' }}> · {a.publisher}</span>
+        )}
         {hasReader && (
           <span style={{ color: 'var(--text-secondary)' }}> · FULL TEXT</span>
         )}

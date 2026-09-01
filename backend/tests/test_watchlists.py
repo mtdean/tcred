@@ -130,6 +130,59 @@ class TestKeywordRegex:
         rx = wl._keyword_re(["AAA(sf)"])
         assert rx.search("Rating: AAA(sf)")
 
+    def test_word_boundaries_kill_substring_false_positives(self):
+        # The classic company-name traps: Ares/shares, Affirm/affirmed, SoFi/Sofia.
+        rx = wl._keyword_re(["Ares", "Affirm", "SoFi"])
+        assert rx.search("Ares Management raises new fund")
+        assert rx.search("Affirm reports quarterly earnings")
+        assert not rx.search("Bank shares rally on the news")
+        assert not rx.search("Moody's affirmed the ratings")
+        assert not rx.search("Sofia hosts the conference")
+
+    def test_boundary_match_with_leading_symbol_keyword(self):
+        rx = wl._keyword_re(["S&P"])
+        assert rx.search("S&P Global downgraded the tranche")
+        assert not rx.search("CUSIP codes are unrelated")
+
+
+class TestMatchArticlesPublisherTier:
+    @pytest.fixture(autouse=True)
+    def tiers(self, monkeypatch):
+        from data import feeds
+        monkeypatch.setattr(feeds, "load_data_sources", lambda: {
+            "publisher_tiers": {
+                "trusted": ["WSJ"],
+                "junk": ["Stock Titan"],
+            }
+        })
+
+    def test_sorted_trusted_first_junk_last_with_tier_field(self, fresh_db):
+        for id_, pub, when in [
+            ("junk", "Stock Titan", "2026-09-01T10:00:00+00:00"),  # newest
+            ("blog", None,          "2026-09-01T09:00:00+00:00"),
+            ("wsj",  "WSJ",         "2026-09-01T08:00:00+00:00"),  # oldest
+        ]:
+            _seed_article(id_, "Carvana deal news", score=4,
+                          published_at=when, publisher=pub)
+        w = wl.create_watchlist({"name": "S", "keywords": ["Carvana"], "min_score": 3})
+        out = wl._match_articles(wl._keyword_re(w["keywords"]), w, 100)
+        assert [a["id"] for a in out] == ["wsj", "blog", "junk"]
+        assert [a["publisher_tier"] for a in out] == ["trusted", "unknown", "junk"]
+
+    def test_junk_cannot_crowd_trusted_out_of_limit(self, fresh_db):
+        # 3 junk hits are newer than the single trusted hit; with limit=2 the
+        # trusted article must still make the cut.
+        for i in range(3):
+            _seed_article(f"j{i}", "Carvana promo rehash", score=4,
+                          published_at=f"2026-09-01T1{i}:00:00+00:00",
+                          publisher="Stock Titan")
+        _seed_article("wsj", "Carvana earnings analysis", score=4,
+                      published_at="2026-09-01T01:00:00+00:00", publisher="WSJ")
+        w = wl.create_watchlist({"name": "S", "keywords": ["Carvana"], "min_score": 3})
+        out = wl._match_articles(wl._keyword_re(w["keywords"]), w, 2)
+        assert out[0]["id"] == "wsj"
+        assert len(out) == 2
+
 
 class TestMatchArticles:
     def test_or_match_with_min_score(self, fresh_db):

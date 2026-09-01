@@ -17,6 +17,9 @@ export interface Article {
   // ai_summary the Claude-written 2-3 sentence summary of that body.
   ai_summary?: string | null;
   has_full_text?: number;
+  // Real publisher behind aggregator entries (Google News); null for direct
+  // feeds where the feed itself is the publisher.
+  publisher?: string | null;
   // Dedup metadata (populated when /api/articles excludes duplicates).
   cluster_id?: string | null;
   duplicate_of?: string | null;

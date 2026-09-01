@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Save, Trash2, Eye, X } from 'lucide-react';
+import { Plus, Save, ShieldCheck, Trash2, Eye, X } from 'lucide-react';
 import {
   createWatchlist,
   deleteWatchlist,
@@ -10,7 +10,9 @@ import {
   listWatchlists,
   markWatchlistViewed,
   updateWatchlist,
+  verifyWatchlist,
   type Watchlist,
+  type WatchlistArticleMatch,
   type WatchlistCreate,
 } from '../lib/api';
 import { qk } from '../lib/queryKeys';
@@ -468,10 +470,52 @@ function ChipPicker({
 }
 
 // ─── Results panel ──────────────────────────────────────────────────────────
+
+function TierBadge({ a }: { a: WatchlistArticleMatch }) {
+  if (a.publisher_tier === 'junk') {
+    return (
+      <span
+        className="mono"
+        title="Press-release wire / stock-promo aggregator (publisher_tiers in data_sources.yaml)"
+        style={{ color: 'var(--warning)', fontSize: 9, marginLeft: 6 }}
+      >
+        [LOW-CRED]
+      </span>
+    );
+  }
+  return null;
+}
+
+function VerificationBadge({ a }: { a: WatchlistArticleMatch }) {
+  const v = a.verification;
+  if (!v) return null;
+  const reject = v.verdict === 'reject';
+  return (
+    <span
+      className="mono"
+      title={v.reason ?? undefined}
+      style={{
+        color: reject ? 'var(--negative)' : 'var(--positive)',
+        fontSize: 9,
+        marginLeft: 6,
+      }}
+    >
+      {reject ? '✗ OFF-TOPIC' : '✓ VERIFIED'}
+    </span>
+  );
+}
+
 function WatchlistResultsPanel({ watchlistId }: { watchlistId: string }) {
+  const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: qk.watchlistResults(watchlistId),
     queryFn: () => getWatchlistResults(watchlistId).then((r) => r.data),
+  });
+
+  const verify = useMutation({
+    mutationFn: () => verifyWatchlist(watchlistId),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: qk.watchlistResults(watchlistId) }),
   });
 
   if (isLoading || !data) {
@@ -508,31 +552,62 @@ function WatchlistResultsPanel({ watchlistId }: { watchlistId: string }) {
       </Panel>
 
       {matches.articles.length > 0 && (
-        <Panel title="News" subtitle={`${matches.articles.length} MATCHES`}>
+        <Panel
+          title="News"
+          subtitle={`${matches.articles.length} MATCHES · TRUSTED SOURCES FIRST`}
+          actions={
+            <button
+              className="btn"
+              onClick={() => verify.mutate()}
+              disabled={verify.isPending}
+              title="Claude checks each match is genuinely about this watchlist's subject (cached per article)"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              {...staticDisabledProps()}
+            >
+              <ShieldCheck size={12} />
+              {verify.isPending ? 'VERIFYING' : 'VERIFY'}
+            </button>
+          }
+        >
+          {verify.isError && (
+            <div className="muted" style={{ color: 'var(--warning)', fontSize: 11, marginBottom: 6 }}>
+              ⚠ Verification failed: {String(verify.error)}
+            </div>
+          )}
           <table className="data-table">
             <thead>
               <tr>
                 <th style={{ width: 60 }}>Score</th>
                 <th>Title</th>
-                <th style={{ width: 130 }}>Source</th>
+                <th style={{ width: 150 }}>Source</th>
                 <th style={{ width: 140 }}>Published</th>
               </tr>
             </thead>
             <tbody>
-              {matches.articles.map((a) => (
-                <tr key={a.id}>
-                  <td><ScoreDots score={a.relevance_score} /></td>
-                  <td>
-                    <a href={a.url} target="_blank" rel="noopener noreferrer">
-                      {a.title}
-                    </a>
-                  </td>
-                  <td className="muted">{a.feed_name}</td>
-                  <td className="num dim">
-                    {fmtDateTime(a.published_at ?? a.fetched_at)}
-                  </td>
-                </tr>
-              ))}
+              {matches.articles.map((a) => {
+                const rejected = a.verification?.verdict === 'reject';
+                return (
+                  <tr key={a.id} style={rejected ? { opacity: 0.45 } : undefined}>
+                    <td><ScoreDots score={a.relevance_score} /></td>
+                    <td>
+                      <a
+                        href={a.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={rejected ? { textDecoration: 'line-through' } : undefined}
+                      >
+                        {a.title}
+                      </a>
+                      <TierBadge a={a} />
+                      <VerificationBadge a={a} />
+                    </td>
+                    <td className="muted">{a.publisher ?? a.feed_name}</td>
+                    <td className="num dim">
+                      {fmtDateTime(a.published_at ?? a.fetched_at)}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </Panel>

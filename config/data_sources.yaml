@@ -702,6 +702,67 @@ sifma:
   # Refresh: monthly (data lags ~3-4 weeks)
   refresh_frequency: monthly
 
+# ── PUBLISHER QUALITY TIERS ──────────────────────────────────
+# Applied to the real publisher behind Google News aggregator entries
+# (captured into articles.publisher at fetch time). Matching is
+# case-insensitive substring; junk wins over trusted so "X via PR Newswire"
+# lands in junk. Publishers matching neither list are 'unknown' and rank
+# between the two. Effects:
+#   - dedup picks trusted publishers as the primary story card
+#   - watchlist matches sort trusted-first and flag junk
+#   - drop_junk_at_ingest: true skips junk articles entirely at fetch time
+publisher_tiers:
+  drop_junk_at_ingest: false
+  trusted:
+    - WSJ
+    - Wall Street Journal
+    - Bloomberg
+    - Financial Times
+    - Reuters
+    - Barron's
+    - MarketWatch
+    - CNBC
+    - New York Times
+    - The Economist
+    - Asset Securitization Report
+    - American Banker
+    - Auto Finance News
+    - Law360
+    - GlobalCapital
+    - Global Capital
+    - Structured Credit Investor
+    - ABF Journal
+    - Alternative Credit Investor
+    - HousingWire
+    - Morningstar
+    - S&P Global
+    - Fitch Ratings
+    - Moody's
+    - KBRA
+    - Axios
+    - Yahoo Finance
+    - J.P. Morgan
+  junk:
+    # Press-release wires + stock-promo aggregators. These "break" news only
+    # because they syndicate PRs instantly.
+    - PR Newswire
+    - Business Wire
+    - GlobeNewswire
+    - EIN Presswire
+    - openPR
+    - ACCESSWIRE
+    - Newsfile
+    - Stock Titan
+    - StockTitan
+    - Pulse 2.0
+    - citybiz
+    - connectmoney
+    - MarketBeat
+    - TipRanks
+    - Simply Wall St
+    - Zacks
+    - Insider Monkey
+
 # ── REFRESH SCHEDULE ─────────────────────────────────────────
 refresh_intervals:
   market_data_minutes: 15       # yfinance tickers (token-free)

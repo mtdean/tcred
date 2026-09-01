@@ -302,11 +302,26 @@ export interface Watchlist {
   last_viewed_at: string | null;
 }
 
+export type PublisherTier = 'trusted' | 'unknown' | 'junk';
+
+// Article match rows carry publisher-quality + Claude-verification metadata.
+export interface WatchlistArticleMatch extends Article {
+  publisher_tier: PublisherTier;
+  verification: { verdict: 'match' | 'reject'; reason: string | null } | null;
+}
+
+export interface WatchlistVerifyResult {
+  verified: number;
+  matches: number;
+  rejects: number;
+  pending: number;
+}
+
 export interface WatchlistResults {
   watchlist: Watchlist;
   as_of: string;
   matches: {
-    articles: Article[];
+    articles: WatchlistArticleMatch[];
     edgar_filings: EdgarFiling[];
     regulatory_actions: RegulatoryAction[];
   };
@@ -341,6 +356,8 @@ export const getWatchlistResults = (id: string) =>
   api.get<WatchlistResults>(`/watchlists/${id}/results`);
 export const markWatchlistViewed = (id: string) =>
   api.post<Watchlist>(`/watchlists/${id}/viewed`);
+export const verifyWatchlist = (id: string) =>
+  api.post<WatchlistVerifyResult>(`/watchlists/${id}/verify`);
 
 // ── Freshness ──────────────────────────────────────────
 export type FreshnessStatus = 'fresh' | 'stale' | 'dead' | 'missing';

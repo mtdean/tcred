@@ -295,6 +295,18 @@ CREATE TABLE IF NOT EXISTS watchlists (
 );
 CREATE INDEX IF NOT EXISTS idx_watchlists_updated ON watchlists(updated_at DESC);
 
+-- Claude entity-verification verdicts for watchlist article matches. Cached
+-- per (watchlist, article) so a verdict is paid for once; rows are wiped when
+-- a watchlist's keywords change (the question itself changed).
+CREATE TABLE IF NOT EXISTS watchlist_verifications (
+    watchlist_id  TEXT NOT NULL,
+    article_id    TEXT NOT NULL,
+    verdict       TEXT NOT NULL,   -- 'match' | 'reject'
+    reason        TEXT,
+    verified_at   TEXT NOT NULL,
+    PRIMARY KEY (watchlist_id, article_id)
+);
+
 -- ── Analyst briefings ────────────────────────────────────────────────────────
 -- A briefing is a Claude-synthesized macro/credit narrative built from a
 -- structured snapshot of recent indicators + digests + ABS/BDC/regulatory state.
@@ -377,6 +389,10 @@ def _migrate(conn) -> None:
     _add_column_if_missing(conn, "articles", "content_text", "TEXT")
     _add_column_if_missing(conn, "articles", "ai_summary", "TEXT")
     _add_column_if_missing(conn, "articles", "summarized_at", "TEXT")
+    # Real publisher behind aggregator entries (Google News " - Publisher"
+    # suffix / <source> element). NULL for direct feeds — the feed IS the
+    # publisher there. Drives quality tiering (see feeds.publisher_tier).
+    _add_column_if_missing(conn, "articles", "publisher", "TEXT")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_articles_cluster ON articles(cluster_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_articles_dupof ON articles(duplicate_of)")
 
@@ -441,16 +457,16 @@ def init_db() -> None:
 
 def upsert_article(row: dict) -> None:
     # Defaults if caller omits them (older code paths / tests).
-    row = {"source_type": "news", "content_text": None, **row}
+    row = {"source_type": "news", "content_text": None, "publisher": None, **row}
     with get_conn() as conn:
         conn.execute(
             """
             INSERT OR IGNORE INTO articles
               (id, feed_name, feed_category, title, snippet, url,
-               published_at, fetched_at, source_type, content_text)
+               published_at, fetched_at, source_type, content_text, publisher)
             VALUES
               (:id, :feed_name, :feed_category, :title, :snippet, :url,
-               :published_at, :fetched_at, :source_type, :content_text)
+               :published_at, :fetched_at, :source_type, :content_text, :publisher)
             """,
             row,
         )
@@ -515,7 +531,7 @@ def get_article_content(article_id: str) -> Optional[dict]:
         row = conn.execute(
             """SELECT id, feed_name, feed_category, title, snippet, url,
                       published_at, fetched_at, relevance_score, relevance_tags,
-                      is_read, source_type, ai_summary, content_text
+                      is_read, source_type, ai_summary, content_text, publisher
                FROM articles WHERE id = ?""",
             (article_id,),
         ).fetchone()
@@ -543,7 +559,7 @@ def search_articles_fts(
     sql = """
         SELECT a.id, a.feed_name, a.feed_category, a.title, a.snippet, a.url,
                a.published_at, a.fetched_at, a.relevance_score, a.relevance_tags,
-               a.is_read, a.source_type, a.ai_summary,
+               a.is_read, a.source_type, a.ai_summary, a.publisher,
                (a.content_text IS NOT NULL) AS has_full_text,
                snippet(articles_fts, -1, '[', ']', ' … ', 18) AS match_snippet
         FROM articles_fts f
@@ -797,6 +813,46 @@ def upsert_feed_health(row: dict) -> None:
             """,
             row,
         )
+
+
+# ── Watchlist verifications ──────────────────────────────────────────────────
+
+def upsert_watchlist_verification(row: dict) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO watchlist_verifications
+              (watchlist_id, article_id, verdict, reason, verified_at)
+            VALUES
+              (:watchlist_id, :article_id, :verdict, :reason, :verified_at)
+            """,
+            {"reason": None, **row},
+        )
+
+
+def get_watchlist_verifications(
+    watchlist_id: str, article_ids: list[str]
+) -> dict[str, dict]:
+    """{article_id: verification row} for the given articles."""
+    if not article_ids:
+        return {}
+    placeholders = ",".join("?" * len(article_ids))
+    with get_conn() as conn:
+        rows = conn.execute(
+            f"SELECT * FROM watchlist_verifications "
+            f"WHERE watchlist_id = ? AND article_id IN ({placeholders})",
+            [watchlist_id, *article_ids],
+        ).fetchall()
+    return {r["article_id"]: dict(r) for r in rows}
+
+
+def delete_watchlist_verifications(watchlist_id: str) -> int:
+    with get_conn() as conn:
+        cur = conn.execute(
+            "DELETE FROM watchlist_verifications WHERE watchlist_id = ?",
+            (watchlist_id,),
+        )
+        return cur.rowcount
 
 
 # ── Analyst briefings ────────────────────────────────────────────────────────

@@ -42,7 +42,7 @@ def get_articles(
             SELECT id, feed_name, feed_category, title, snippet, url,
                    published_at, fetched_at, relevance_score, relevance_tags,
                    is_read, source_type, cluster_id, duplicate_of, ai_summary,
-                   (content_text IS NOT NULL) AS has_full_text
+                   publisher, (content_text IS NOT NULL) AS has_full_text
             FROM articles
             WHERE relevance_score >= ?
         """
@@ -1038,6 +1038,22 @@ def get_watchlist_results(
 ):
     from data.watchlists import run_watchlist
     result = run_watchlist(watchlist_id, per_source_limit=per_source_limit)
+    if result is None:
+        raise HTTPException(status_code=404, detail="watchlist not found")
+    return result
+
+
+@router.post("/watchlists/{watchlist_id}/verify")
+def verify_watchlist_route(watchlist_id: str):
+    """
+    Claude entity verification for this watchlist's article matches — rejects
+    keyword false positives (wrong entity, incidental mention, stock-promo
+    rehash). Verdicts are cached per article; spends tokens only on
+    not-yet-verified matches.
+    """
+    from data.watchlist_verify import verify_watchlist
+
+    result = verify_watchlist(watchlist_id)
     if result is None:
         raise HTTPException(status_code=404, detail="watchlist not found")
     return result
