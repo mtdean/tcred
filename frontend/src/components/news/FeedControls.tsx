@@ -32,6 +32,9 @@ export const CATEGORY_OPTIONS: readonly { value: string; label: string }[] = [
   { value: 'structured_finance', label: 'STRUCTURED' },
   { value: 'fintech',            label: 'FINTECH' },
   { value: 'data_science',       label: 'DATA' },
+  // Meco/Gmail-ingested newsletters (data/gmail_ingest.py) without a
+  // per-sender category override land here.
+  { value: 'newsletter',         label: 'NEWSLETTER' },
 ] as const;
 
 export const ALL_SOURCES: SourceFilter = new Set(SOURCE_OPTIONS.map((o) => o.value));

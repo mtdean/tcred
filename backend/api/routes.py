@@ -173,13 +173,16 @@ async def trigger_feed_refresh():
     This is the only on-demand path that spends Claude tokens (automatic
     classification is disabled — see refresh_intervals.news_feeds_minutes).
     """
+    import asyncio
     from datetime import datetime, timezone
     from data.feeds import fetch_all_feeds
     from data.classifier import classify_articles
+    from data.gmail_ingest import fetch_meco_newsletters
     from data.summarizer import summarize_articles
     from cache.db import set_meta
 
     n = await fetch_all_feeds()
+    n += await asyncio.to_thread(fetch_meco_newsletters)
     scored = 0
     for _ in range(20):  # safety cap (~1000 articles) to bound a single command
         c = await classify_articles(batch_size=50)
@@ -194,6 +197,34 @@ async def trigger_feed_refresh():
             break
     set_meta("last_news_refresh", datetime.now(timezone.utc).isoformat())
     return {"fetched": n, "classified": scored, "summarized": summarized}
+
+
+@router.post("/gmail/refresh")
+async def trigger_gmail_refresh(
+    days_back: int = Query(default=3, ge=1, le=90),
+    limit: int = Query(default=100, ge=1, le=500),
+):
+    """
+    Pull Meco-labeled newsletters from Gmail into the articles pipeline.
+    Use days_back=30+ once for the initial backfill; the hourly feeds job
+    keeps it current after that. 422 when Gmail credentials aren't configured.
+    """
+    import asyncio
+    from config import settings
+    from data.gmail_ingest import fetch_meco_newsletters
+
+    if not (settings.GMAIL_ADDRESS and settings.GMAIL_APP_PASSWORD):
+        raise HTTPException(
+            status_code=422,
+            detail="GMAIL_ADDRESS / GMAIL_APP_PASSWORD not set in .env",
+        )
+    try:
+        fetched = await asyncio.to_thread(
+            fetch_meco_newsletters, days_back=days_back, limit=limit
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Gmail ingest failed: {e}")
+    return {"fetched": fetched}
 
 
 @router.post("/articles/summarize")

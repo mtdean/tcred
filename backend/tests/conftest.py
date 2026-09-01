@@ -34,6 +34,12 @@ os.environ["MONITOR_DB_PATH"] = str(_SESSION_TMP / "monitor.db")
 os.environ.setdefault("FRED_API_KEY", "test-fred-key")
 os.environ.setdefault("ANTHROPIC_API_KEY", "test-anthropic-key")
 os.environ.setdefault("EDGAR_USER_AGENT", "TestRunner/0.1 test@example.com")
+# Force-blank (not setdefault): config.py's load_dotenv() won't override
+# existing env vars, so this guarantees the developer's real Gmail creds in
+# .env never reach a test run — gmail ingest must stay a no-op unless a test
+# patches credentials in explicitly.
+os.environ["GMAIL_ADDRESS"] = ""
+os.environ["GMAIL_APP_PASSWORD"] = ""
 
 
 # Now safe to import backend modules. They'll all see the test DB path.

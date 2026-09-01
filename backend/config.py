@@ -64,6 +64,12 @@ class Settings:
         "EDGAR_USER_AGENT", "SituationMonitor/0.1 contact@example.com"
     )
 
+    # Gmail IMAP — Meco newsletter ingest (data/gmail_ingest.py). Optional:
+    # when unset, the ingest step is a silent no-op.
+    GMAIL_ADDRESS: str = os.getenv("GMAIL_ADDRESS", "")
+    GMAIL_APP_PASSWORD: str = os.getenv("GMAIL_APP_PASSWORD", "").replace(" ", "")
+    GMAIL_MECO_LABEL: str = os.getenv("GMAIL_MECO_LABEL", "Meco")
+
     CACHE_DIR: Path = Path(__file__).parent / "cache" / "store"
     # MONITOR_DB_PATH lets tests (and one-off scripts) redirect persistence to a
     # throwaway file without monkey-patching the real cache.

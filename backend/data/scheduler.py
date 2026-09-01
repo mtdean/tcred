@@ -78,9 +78,16 @@ def _instrument(job_id: str, fn: Callable, triggered_by: str = "scheduler"):
 async def _feeds_inner() -> int:
     from data.feeds import fetch_all_feeds
     from data.classifier import classify_articles
+    from data.gmail_ingest import fetch_meco_newsletters
     from data.summarizer import summarize_articles
     n = await fetch_all_feeds()
     logger.info(f"Scheduler: feed fetch — {n} articles")
+    # Meco/Gmail newsletters land before the classifier so new issues get
+    # scored (and summarized) in the same cycle. No-op without Gmail creds.
+    g = await asyncio.to_thread(fetch_meco_newsletters)
+    if g:
+        logger.info(f"Scheduler: Gmail/Meco ingest — {g} newsletters")
+    n += g
     scored = await classify_articles(batch_size=50)
     logger.info(f"Scheduler: classified {scored} articles")
     # Summaries need scores first, so this runs after the classifier. One batch

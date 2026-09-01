@@ -341,3 +341,6 @@ categories:
   data_science:
     label: "Data Science / Quant"
     color: "#6b7280"
+  newsletter:
+    label: "Newsletter (Meco/Gmail)"
+    color: "#94a3b8"
