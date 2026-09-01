@@ -17,7 +17,12 @@ __pycache__/
 
 # SQLite cache / data
 backend/cache/*.db
+backend/cache/*.db-journal
+backend/cache/*.db-wal
+backend/cache/*.db-shm
 backend/cache/store/
+# Nightly rolling DB snapshots (data/backups.py)
+backend/cache/backups/
 
 # Node / frontend build
 frontend/node_modules/
