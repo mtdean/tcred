@@ -11,6 +11,9 @@ import ScoreDots from '../shared/ScoreDots';
 interface Props {
   article: Article;
   onRead: (id: string) => void;
+  // When set and the article has a stored body, clicking the title opens the
+  // in-app reader instead of the source site (the link icon still does).
+  onOpenReader?: (id: string) => void;
 }
 
 function parseTags(raw: string | null): string[] {
@@ -23,13 +26,18 @@ function parseTags(raw: string | null): string[] {
   }
 }
 
-export default function ArticleCard({ article: a, onRead }: Props) {
+export default function ArticleCard({ article: a, onRead, onOpenReader }: Props) {
   const read = a.is_read === 1;
   const tags = parseTags(a.relevance_tags);
+  const hasReader = Boolean(onOpenReader && a.has_full_text);
 
   const open = () => {
     if (!read) onRead(a.id);
-    window.open(a.url, '_blank', 'noopener,noreferrer');
+    if (hasReader) {
+      onOpenReader!(a.id);
+    } else {
+      window.open(a.url, '_blank', 'noopener,noreferrer');
+    }
   };
 
   return (
@@ -85,6 +93,9 @@ export default function ArticleCard({ article: a, onRead }: Props) {
 
       <div className="muted" style={{ fontSize: 11, marginTop: 3 }}>
         {fmtRelative(a.published_at ?? a.fetched_at)}
+        {hasReader && (
+          <span style={{ color: 'var(--text-secondary)' }}> · FULL TEXT</span>
+        )}
       </div>
 
       {a.ai_summary ? (

@@ -1,8 +1,10 @@
 import axios from 'axios';
 import type {
   Article,
+  ArticleContent,
   ArticleListResponse,
   ArticleParams,
+  ArticleSearchResponse,
   DigestParams,
   DigestResponse,
   EdgarFacets,
@@ -125,6 +127,12 @@ if (STATIC_MODE) {
 export const getArticles = (params: ArticleParams) =>
   api.get<ArticleListResponse>('/articles', { params });
 export const getFeedHealth = () => api.get<FeedHealth[]>('/articles/feed-health');
+export const getArticleContent = (id: string) =>
+  api.get<ArticleContent>(`/articles/${id}/content`);
+export const searchArticles = (q: string, daysBack = 365, limit = 50) =>
+  api.get<ArticleSearchResponse>('/articles/search', {
+    params: { q, days_back: daysBack, limit },
+  });
 export const markRead = (id: string) => api.post(`/articles/${id}/read`);
 export const triggerRefresh = () => api.post('/articles/refresh');
 export const triggerMarketRefresh = () => api.post<{ rows: number }>('/market/refresh');

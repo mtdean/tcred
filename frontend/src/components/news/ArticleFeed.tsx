@@ -16,11 +16,13 @@ interface Props {
   category?: string;
   // CSV of source-type slugs (e.g. 'wsj,ft,bloomberg'). Omitted = all sources.
   sourceType?: string;
+  // Opens the in-app reader for full-text articles.
+  onOpenReader?: (id: string) => void;
 }
 
 type FeedData = { pages: ArticleListResponse[]; pageParams: number[] };
 
-export default function ArticleFeed({ minScore, category, sourceType }: Props) {
+export default function ArticleFeed({ minScore, category, sourceType, onOpenReader }: Props) {
   const queryClient = useQueryClient();
   const key = ['articles-feed', { minScore, category, sourceType }] as const;
 
@@ -68,7 +70,12 @@ export default function ArticleFeed({ minScore, category, sourceType }: Props) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {items.map((a) => (
-        <ArticleCard key={a.id} article={a} onRead={(id) => read.mutate(id)} />
+        <ArticleCard
+          key={a.id}
+          article={a}
+          onRead={(id) => read.mutate(id)}
+          onOpenReader={onOpenReader}
+        />
       ))}
 
       {hasNextPage && (

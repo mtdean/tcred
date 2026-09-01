@@ -97,6 +97,21 @@ export interface ArticleListResponse {
   limit: number;
 }
 
+// GET /articles/{id}/content — full payload for the in-app reader.
+export interface ArticleContent extends Article {
+  content_text: string | null;
+}
+
+// GET /articles/search — FTS5 result rows; match_snippet wraps hits in [].
+export interface ArticleSearchResult extends Article {
+  match_snippet: string;
+}
+
+export interface ArticleSearchResponse {
+  query: string;
+  items: ArticleSearchResult[];
+}
+
 export interface ArticleParams {
   min_score?: number;
   category?: string;

@@ -75,6 +75,37 @@ def get_articles(
     return {"items": rows, "offset": offset, "limit": limit}
 
 
+@router.get("/articles/search")
+def search_articles(
+    q: str = Query(min_length=2, max_length=200),
+    min_score: int = Query(default=1, ge=1, le=5),
+    days_back: int = Query(default=365, ge=1, le=3650),
+    limit: int = Query(default=50, le=200),
+):
+    """
+    Full-text search (FTS5) over article titles, snippets, and stored bodies.
+    Ranked by BM25 with title matches weighted highest. Supports FTS5 syntax
+    (quoted phrases, AND/OR/NEAR); plain words otherwise.
+    """
+    from cache.db import search_articles_fts
+
+    items = search_articles_fts(
+        q, min_score=min_score, days_back=days_back, limit=limit
+    )
+    return {"query": q, "items": items}
+
+
+@router.get("/articles/{article_id}/content")
+def get_article_content(article_id: str):
+    """Full article payload for the in-app reader (body + summary + metadata)."""
+    from cache.db import get_article_content as _get
+
+    row = _get(article_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Article not found")
+    return row
+
+
 @router.post("/articles/{article_id}/read")
 def mark_article_read(article_id: str):
     """Mark an article as read."""

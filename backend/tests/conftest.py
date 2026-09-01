@@ -52,6 +52,9 @@ def fresh_db():
     """Wipe + recreate every table so each test starts from empty state."""
     with db_module.get_conn() as conn:
         # Drop everything then re-run the schema. Cheaper than a new file.
+        # FTS5 virtual tables go first: dropping one removes its shadow tables
+        # (articles_fts_data etc.), which cannot be dropped directly.
+        conn.execute("DROP TABLE IF EXISTS articles_fts")
         rows = conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table'"
         ).fetchall()

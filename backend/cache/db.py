@@ -380,6 +380,39 @@ def _migrate(conn) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_articles_cluster ON articles(cluster_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_articles_dupof ON articles(duplicate_of)")
 
+    # Full-text search (Phase 8): external-content FTS5 index over articles,
+    # kept in sync by triggers. Created here (not in SCHEMA) so we can detect
+    # first creation and backfill the index from existing rows exactly once.
+    fts_exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='articles_fts'"
+    ).fetchone()
+    conn.executescript(
+        """
+        CREATE VIRTUAL TABLE IF NOT EXISTS articles_fts USING fts5(
+            title, snippet, content_text,
+            content='articles', content_rowid='rowid',
+            tokenize='porter unicode61'
+        );
+        CREATE TRIGGER IF NOT EXISTS articles_fts_ai AFTER INSERT ON articles BEGIN
+            INSERT INTO articles_fts(rowid, title, snippet, content_text)
+            VALUES (new.rowid, new.title, new.snippet, new.content_text);
+        END;
+        CREATE TRIGGER IF NOT EXISTS articles_fts_ad AFTER DELETE ON articles BEGIN
+            INSERT INTO articles_fts(articles_fts, rowid, title, snippet, content_text)
+            VALUES ('delete', old.rowid, old.title, old.snippet, old.content_text);
+        END;
+        CREATE TRIGGER IF NOT EXISTS articles_fts_au
+        AFTER UPDATE OF title, snippet, content_text ON articles BEGIN
+            INSERT INTO articles_fts(articles_fts, rowid, title, snippet, content_text)
+            VALUES ('delete', old.rowid, old.title, old.snippet, old.content_text);
+            INSERT INTO articles_fts(rowid, title, snippet, content_text)
+            VALUES (new.rowid, new.title, new.snippet, new.content_text);
+        END;
+        """
+    )
+    if not fts_exists:
+        conn.execute("INSERT INTO articles_fts(articles_fts) VALUES('rebuild')")
+
     # digests: migrate the original (date PRIMARY KEY, one/day) schema to the
     # (date, session) composite — two slots per day (AM/PM, US/Eastern).
     dcols = {r[1] for r in conn.execute("PRAGMA table_info(digests)")}
@@ -474,6 +507,63 @@ def update_article_relevance(article_id: str, score: int, tags: str) -> None:
             "UPDATE articles SET relevance_score=?, relevance_tags=? WHERE id=?",
             (score, tags, article_id),
         )
+
+
+def get_article_content(article_id: str) -> Optional[dict]:
+    """One article with its full body — the in-app reader payload."""
+    with get_conn() as conn:
+        row = conn.execute(
+            """SELECT id, feed_name, feed_category, title, snippet, url,
+                      published_at, fetched_at, relevance_score, relevance_tags,
+                      is_read, source_type, ai_summary, content_text
+               FROM articles WHERE id = ?""",
+            (article_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def _fts_quote(query: str) -> str:
+    """Quote each word so user input can't be FTS5 syntax (AND, ", NEAR...)."""
+    words = [w.replace('"', "") for w in query.split()]
+    return " ".join(f'"{w}"' for w in words if w)
+
+
+def search_articles_fts(
+    query: str,
+    min_score: int = 1,
+    days_back: int = 365,
+    limit: int = 50,
+) -> list[dict]:
+    """BM25-ranked full-text search over title/snippet/body.
+
+    Tries the query as raw FTS5 syntax first (so AND/OR/NEAR/phrases work),
+    falling back to a fully-quoted form when the raw parse fails.
+    """
+    since = utc_days_ago_str(days_back)
+    sql = """
+        SELECT a.id, a.feed_name, a.feed_category, a.title, a.snippet, a.url,
+               a.published_at, a.fetched_at, a.relevance_score, a.relevance_tags,
+               a.is_read, a.source_type, a.ai_summary,
+               (a.content_text IS NOT NULL) AS has_full_text,
+               snippet(articles_fts, -1, '[', ']', ' … ', 18) AS match_snippet
+        FROM articles_fts f
+        JOIN articles a ON a.rowid = f.rowid
+        WHERE articles_fts MATCH ?
+          AND COALESCE(a.relevance_score, 1) >= ?
+          AND COALESCE(a.published_at, a.fetched_at) >= ?
+        ORDER BY bm25(articles_fts, 5.0, 2.0, 1.0)
+        LIMIT ?
+    """
+    with get_conn() as conn:
+        for q in (query, _fts_quote(query)):
+            if not q:
+                continue
+            try:
+                rows = conn.execute(sql, (q, min_score, since, limit)).fetchall()
+                return [dict(r) for r in rows]
+            except sqlite3.OperationalError:
+                continue  # raw query wasn't valid FTS5 syntax — retry quoted
+    return []
 
 
 def get_unsummarized_articles(min_score: int = 4, limit: int = 8) -> list[dict]:

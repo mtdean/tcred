@@ -114,8 +114,30 @@ def _tool_search_articles(
     category: Optional[str] = None,
     days_back: int = 14,
     limit: int = 30,
+    query: Optional[str] = None,
 ) -> dict:
-    """Scored news articles in a recent window."""
+    """Scored news articles in a recent window; keyword `query` runs FTS5."""
+    if query:
+        rows = db.search_articles_fts(
+            query,
+            min_score=int(min_score),
+            days_back=int(days_back),
+            limit=min(int(limit), 100),
+        )
+        if category:
+            rows = [r for r in rows if r["feed_category"] == category]
+        # Drop reader-only fields the model doesn't need.
+        for r in rows:
+            r.pop("has_full_text", None)
+            r.pop("ai_summary", None)
+        return {
+            "window_days": days_back,
+            "min_score": min_score,
+            "category": category,
+            "query": query,
+            "n": len(rows),
+            "articles": rows,
+        }
     cutoff = (datetime.now(timezone.utc) - timedelta(days=days_back)).isoformat()
     sql = ("SELECT id, feed_name, feed_category, title, snippet, url, "
            "published_at, fetched_at, relevance_score, relevance_tags "
@@ -235,7 +257,10 @@ TOOL_SCHEMAS: list[dict] = [
         "description": (
             "Scored news articles in a recent window. Filter by min_score (1-5; "
             "4+ is recommended for high-relevance) and feed_category (one of: "
-            "macro, credit, structured_finance, fintech, regulation, data_science)."
+            "macro, credit, structured_finance, fintech, regulation, data_science). "
+            "Pass `query` for full-text keyword search over titles, snippets, and "
+            "stored article bodies (BM25-ranked; supports quoted phrases); with a "
+            "query, widen days_back (e.g. 365) to search the archive."
         ),
         "input_schema": {
             "type": "object",
@@ -244,6 +269,7 @@ TOOL_SCHEMAS: list[dict] = [
                 "category": {"type": "string"},
                 "days_back": {"type": "integer", "default": 14},
                 "limit": {"type": "integer", "default": 30},
+                "query": {"type": "string", "description": "Keywords or a quoted phrase, e.g. 'subprime auto delinquencies'."},
             },
         },
     },
