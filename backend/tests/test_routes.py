@@ -316,7 +316,9 @@ class TestAbsDealSummaryRoute:
                         principal_amount=50_000_000, accession_no="acc2")
         _seed_new_issue("h3", asset_class="credit_card",
                         principal_amount=200_000_000, accession_no="acc3")
-        data = api_client.get("/api/abs/deal-summary").json()
+        # Explicit window: the seeded 2026-05-15 filing_date is fixed, so the
+        # route's default 90-day lookback ages out of it (date rot).
+        data = api_client.get("/api/abs/deal-summary?days_back=3650").json()
         by_class = {r["asset_class"]: r for r in data}
         assert by_class["prime_auto_loan"]["total_volume"] == 150_000_000
         assert by_class["credit_card"]["total_volume"] == 200_000_000

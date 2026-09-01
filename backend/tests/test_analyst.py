@@ -187,7 +187,9 @@ class TestToolDispatch:
 
     def test_get_market_history(self, fresh_db):
         _seed_market("SPY", [("2026-05-28", 500.0), ("2026-05-29", 510.0)])
-        out = analyst_tools._tool_get_market_history("SPY", days_back=30)
+        # Explicit wide window: the seeded dates are fixed, so short
+        # lookbacks from "now" rot as the calendar advances.
+        out = analyst_tools._tool_get_market_history("SPY", days_back=3650)
         assert out["ticker"] == "SPY"
         assert out["n"] == 2
         assert out["observations"][-1]["close"] == 510.0
@@ -199,7 +201,10 @@ class TestToolDispatch:
             "published_at": "2026-05-28T10:00:00+00:00", "fetched_at": NOW,
         })
         db.update_article_relevance("a1", 5, "[]")
-        out = analyst_tools._tool_search_articles(min_score=4, category="macro")
+        # Explicit wide window — same date-rot guard as above.
+        out = analyst_tools._tool_search_articles(
+            min_score=4, category="macro", days_back=3650
+        )
         assert out["n"] == 1
         assert out["articles"][0]["title"] == "t"
 
