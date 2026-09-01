@@ -41,8 +41,8 @@ def _fetch_window(hours_back: int, min_score: int) -> tuple[list[dict], str, str
     with get_conn() as conn:
         rows = conn.execute(
             """
-            SELECT id, feed_name, feed_category, title, snippet, published_at, fetched_at,
-                   relevance_score
+            SELECT id, feed_name, feed_category, title, snippet, ai_summary,
+                   published_at, fetched_at, relevance_score
             FROM articles
             WHERE relevance_score >= ?
               AND COALESCE(published_at, fetched_at) >= ?
@@ -61,9 +61,11 @@ def _fetch_window(hours_back: int, min_score: int) -> tuple[list[dict], str, str
 def _build_prompt(articles: list[dict]) -> str:
     lines = []
     for a in articles:
-        snippet = (a.get("snippet") or "")[:240]
+        # Full-text articles carry an AI summary — a far richer digest input
+        # than the raw RSS snippet. Fall back to the snippet otherwise.
+        body = (a.get("ai_summary") or "")[:500] or (a.get("snippet") or "")[:240]
         lines.append(
-            f'[{a["feed_category"]}/{a["relevance_score"]}] {a["title"]} — {snippet}'
+            f'[{a["feed_category"]}/{a["relevance_score"]}] {a["title"]} — {body}'
         )
     return "Recent items:\n\n" + "\n".join(lines)
 
