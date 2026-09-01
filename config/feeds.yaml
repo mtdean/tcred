@@ -244,6 +244,50 @@ newsletter_feeds:
     platform: custom
     health_check: true
 
+  # ── KILL THE NEWSLETTER (email → full-text RSS) ─────────
+  # Bloomberg/WSJ have no article API, but their email newsletters carry the
+  # full text you're entitled to as a subscriber. One-time setup per entry:
+  #   1. Go to https://kill-the-newsletter.com and create a feed named after
+  #      the newsletter (e.g. "Money Stuff"). You get a unique @kill-the-newsletter.com
+  #      email address + an Atom feed URL.
+  #   2. Subscribe to the newsletter using that email address:
+  #        Bloomberg: bloomberg.com/account/newsletters
+  #        WSJ:       wsj.com → Account → Newsletters & Alerts
+  #      (Money Stuff is free and doesn't need a Bloomberg subscription.)
+  #   3. Paste the Atom feed URL below and remove needs_url, then restart or
+  #      hit POST /api/articles/refresh.
+  # Full bodies land in articles.content_text and get AI summaries automatically.
+
+  - name: "Bloomberg Money Stuff (Matt Levine)"
+    url: "NEEDS_URL"
+    category: credit
+    platform: kill-the-newsletter
+    needs_url: true
+
+  - name: "Bloomberg Credit Weekly"
+    url: "NEEDS_URL"
+    category: credit
+    platform: kill-the-newsletter
+    needs_url: true
+
+  - name: "Bloomberg Odd Lots"
+    url: "NEEDS_URL"
+    category: macro
+    platform: kill-the-newsletter
+    needs_url: true
+
+  - name: "WSJ Heard on the Street"
+    url: "NEEDS_URL"
+    category: credit
+    platform: kill-the-newsletter
+    needs_url: true
+
+  - name: "WSJ Central Banking (Fed Wire)"
+    url: "NEEDS_URL"
+    category: macro
+    platform: kill-the-newsletter
+    needs_url: true
+
   # ── BEEHIIV / CUSTOM — URL NEEDS MANUAL LOOKUP ──────────
   # To find: visit the site, Cmd+F in page source for "rss" or ".xml"
   # Then replace the placeholder URL below.

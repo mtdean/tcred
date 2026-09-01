@@ -130,15 +130,72 @@ def backfill_source_types() -> int:
 
 _TAG_RE = re.compile(r"<[^>]+>")
 _WS_RE = re.compile(r"\s+")
+# Containers whose *text content* is code, not prose — newsletter emails carry
+# huge <style> blocks that would otherwise survive tag-stripping as CSS soup.
+_CODE_BLOCK_RE = re.compile(
+    r"<(style|script)\b[^>]*>.*?</\1\s*>|<!--.*?-->",
+    re.IGNORECASE | re.DOTALL,
+)
 
 
 def strip_html(text: str) -> str:
     """Turn an RSS summary/description (often HTML — esp. Google News) into clean text."""
     if not text:
         return ""
+    text = _CODE_BLOCK_RE.sub(" ", text)  # drop style/script bodies + comments
     text = _TAG_RE.sub(" ", text)      # drop tags
     text = html.unescape(text)          # decode &amp; &#39; etc.
     return _WS_RE.sub(" ", text).strip()  # collapse whitespace
+
+
+# Tags whose end (or self-closing form) means "paragraph break here" — enough
+# structure for a readable article body without keeping any markup.
+_BLOCK_BREAK_RE = re.compile(
+    r"<(?:br\s*/?|/(?:p|div|h[1-6]|li|tr|blockquote|table|section|article))\s*>",
+    re.IGNORECASE,
+)
+_HORIZ_WS_RE = re.compile(r"[^\S\n]+")   # whitespace except newlines
+_NL_RUN_RE = re.compile(r"\n{3,}")
+
+
+def html_to_text(text: str) -> str:
+    """Like strip_html, but preserves paragraph structure as blank lines.
+
+    Used for stored article bodies (the in-app reader renders the \\n\\n breaks
+    as paragraphs); snippets and titles keep using strip_html's flat output.
+    """
+    if not text:
+        return ""
+    text = _CODE_BLOCK_RE.sub(" ", text)
+    text = _BLOCK_BREAK_RE.sub("\n\n", text)
+    text = _TAG_RE.sub(" ", text)
+    text = html.unescape(text)
+    text = _HORIZ_WS_RE.sub(" ", text)
+    lines = (ln.strip() for ln in text.split("\n"))
+    return _NL_RUN_RE.sub("\n\n", "\n".join(lines)).strip()
+
+
+# A body must beat the 500-char snippet by a real margin to be worth storing —
+# otherwise <content:encoded> that merely repeats the description would flag
+# headline-only items as "full text".
+MIN_FULL_TEXT_CHARS = 800
+MAX_FULL_TEXT_CHARS = 25_000
+
+
+def extract_full_text(entry) -> Optional[str]:
+    """Return the entry's full-text body as clean text, or None.
+
+    Full-content feeds (Substack, WordPress, Kill the Newsletter) ship the body
+    in <content:encoded> / Atom <content>, which feedparser exposes as
+    entry.content — a list of blocks; take the longest. Feeds that only carry a
+    description (Google News, Bloomberg) have no such attribute and return None.
+    """
+    blocks = getattr(entry, "content", None) or []
+    raw = max((b.get("value", "") for b in blocks), key=len, default="")
+    text = html_to_text(raw)
+    if len(text) < MIN_FULL_TEXT_CHARS:
+        return None
+    return text[:MAX_FULL_TEXT_CHARS]
 
 
 def _parse_date(entry) -> Optional[str]:
@@ -205,6 +262,7 @@ async def _fetch_feed(
                 "published_at": _parse_date(entry),
                 "fetched_at": now,
                 "source_type": source_type,
+                "content_text": extract_full_text(entry),
             }
         )
 

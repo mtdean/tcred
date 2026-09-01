@@ -559,13 +559,33 @@ class TestArticlesRefreshRoute:
         async def fake_classify(batch_size=50):
             return next(batches)
 
+        summary_batches = iter([2, 0])
+
+        async def fake_summarize(batch_size=8, min_score=4):
+            return next(summary_batches)
+
         monkeypatch.setattr("data.feeds.fetch_all_feeds", fake_fetch)
         monkeypatch.setattr("data.classifier.classify_articles", fake_classify)
+        monkeypatch.setattr("data.summarizer.summarize_articles", fake_summarize)
 
         resp = api_client.post("/api/articles/refresh")
         assert resp.status_code == 200
-        assert resp.json() == {"fetched": 17, "classified": 8}
+        assert resp.json() == {"fetched": 17, "classified": 8, "summarized": 2}
         assert db.get_meta("last_news_refresh") is not None
+
+    def test_summarize_endpoint_loops_until_zero(
+        self, api_client, fresh_db, monkeypatch
+    ):
+        batches = iter([8, 3, 0])
+
+        async def fake_summarize(batch_size=8, min_score=4):
+            return next(batches)
+
+        monkeypatch.setattr("data.summarizer.summarize_articles", fake_summarize)
+
+        resp = api_client.post("/api/articles/summarize")
+        assert resp.status_code == 200
+        assert resp.json() == {"summarized": 11}
 
 
 # ─── /api/abs/spread-series — BB_and_below / unknown-bucket branch ───────────

@@ -41,7 +41,8 @@ def get_articles(
         base = """
             SELECT id, feed_name, feed_category, title, snippet, url,
                    published_at, fetched_at, relevance_score, relevance_tags,
-                   is_read, source_type, cluster_id, duplicate_of
+                   is_read, source_type, cluster_id, duplicate_of, ai_summary,
+                   (content_text IS NOT NULL) AS has_full_text
             FROM articles
             WHERE relevance_score >= ?
         """
@@ -175,6 +176,7 @@ async def trigger_feed_refresh():
     from datetime import datetime, timezone
     from data.feeds import fetch_all_feeds
     from data.classifier import classify_articles
+    from data.summarizer import summarize_articles
     from cache.db import set_meta
 
     n = await fetch_all_feeds()
@@ -184,8 +186,31 @@ async def trigger_feed_refresh():
         scored += c
         if c == 0:
             break
+    summarized = 0
+    for _ in range(10):  # cap (~80 articles) — summaries are the pricier call
+        s = await summarize_articles()
+        summarized += s
+        if s == 0:
+            break
     set_meta("last_news_refresh", datetime.now(timezone.utc).isoformat())
-    return {"fetched": n, "classified": scored}
+    return {"fetched": n, "classified": scored, "summarized": summarized}
+
+
+@router.post("/articles/summarize")
+async def trigger_summarize(batches: int = Query(default=5, ge=1, le=20)):
+    """
+    Summarize the backlog of full-text, high-relevance articles that don't yet
+    have an AI summary. Spends Claude tokens (one call per batch of 8).
+    """
+    from data.summarizer import summarize_articles
+
+    summarized = 0
+    for _ in range(batches):
+        s = await summarize_articles()
+        summarized += s
+        if s == 0:
+            break
+    return {"summarized": summarized}
 
 
 # ── MARKET DATA ──────────────────────────────────────────────

@@ -87,20 +87,40 @@ export default function ArticleCard({ article: a, onRead }: Props) {
         {fmtRelative(a.published_at ?? a.fetched_at)}
       </div>
 
-      {a.snippet && (
+      {a.ai_summary ? (
         <p
-          className="prose muted"
+          className="prose"
           style={{
             fontSize: 12,
             margin: '5px 0 0',
+            padding: '4px 8px',
+            color: 'var(--text-secondary)',
+            borderLeft: '2px solid var(--border-bright)',
             display: '-webkit-box',
-            WebkitLineClamp: 2,
+            WebkitLineClamp: 4,
             WebkitBoxOrient: 'vertical',
             overflow: 'hidden',
           }}
+          title="AI summary of the full article"
         >
-          {a.snippet}
+          {a.ai_summary}
         </p>
+      ) : (
+        a.snippet && (
+          <p
+            className="prose muted"
+            style={{
+              fontSize: 12,
+              margin: '5px 0 0',
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+            }}
+          >
+            {a.snippet}
+          </p>
+        )
       )}
 
       {tags.length > 0 && (

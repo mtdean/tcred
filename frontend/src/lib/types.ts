@@ -13,6 +13,10 @@ export interface Article {
   relevance_tags: string | null;
   is_read: number;
   source_type: SourceType;
+  // Set when the feed shipped a full body: has_full_text is a 0/1 flag,
+  // ai_summary the Claude-written 2-3 sentence summary of that body.
+  ai_summary?: string | null;
+  has_full_text?: number;
   // Dedup metadata (populated when /api/articles excludes duplicates).
   cluster_id?: string | null;
   duplicate_of?: string | null;

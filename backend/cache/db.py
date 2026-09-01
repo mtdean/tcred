@@ -371,6 +371,12 @@ def _migrate(conn) -> None:
     _add_column_if_missing(conn, "articles", "cluster_id", "TEXT")
     _add_column_if_missing(conn, "articles", "duplicate_of", "TEXT")
     _add_column_if_missing(conn, "articles", "deduped_at", "TEXT")
+    # Full-text + AI summary (Phase 8): content_text holds the article body when
+    # the feed ships it (full-content RSS / Kill the Newsletter); ai_summary is
+    # the Claude-written 2-3 sentence summary of that body.
+    _add_column_if_missing(conn, "articles", "content_text", "TEXT")
+    _add_column_if_missing(conn, "articles", "ai_summary", "TEXT")
+    _add_column_if_missing(conn, "articles", "summarized_at", "TEXT")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_articles_cluster ON articles(cluster_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_articles_dupof ON articles(duplicate_of)")
 
@@ -401,16 +407,17 @@ def init_db() -> None:
 
 
 def upsert_article(row: dict) -> None:
-    row = {"source_type": "news", **row}  # default if caller omits it
+    # Defaults if caller omits them (older code paths / tests).
+    row = {"source_type": "news", "content_text": None, **row}
     with get_conn() as conn:
         conn.execute(
             """
             INSERT OR IGNORE INTO articles
               (id, feed_name, feed_category, title, snippet, url,
-               published_at, fetched_at, source_type)
+               published_at, fetched_at, source_type, content_text)
             VALUES
               (:id, :feed_name, :feed_category, :title, :snippet, :url,
-               :published_at, :fetched_at, :source_type)
+               :published_at, :fetched_at, :source_type, :content_text)
             """,
             row,
         )
@@ -466,6 +473,29 @@ def update_article_relevance(article_id: str, score: int, tags: str) -> None:
         conn.execute(
             "UPDATE articles SET relevance_score=?, relevance_tags=? WHERE id=?",
             (score, tags, article_id),
+        )
+
+
+def get_unsummarized_articles(min_score: int = 4, limit: int = 8) -> list[dict]:
+    """High-relevance articles with a stored full-text body but no AI summary."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT id, title, content_text FROM articles
+               WHERE content_text IS NOT NULL
+                 AND ai_summary IS NULL
+                 AND relevance_score >= ?
+               ORDER BY COALESCE(published_at, fetched_at) DESC LIMIT ?""",
+            (min_score, limit),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def update_article_summary(article_id: str, summary: str) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE articles SET ai_summary=?, summarized_at=? WHERE id=?",
+            (summary, now, article_id),
         )
 
 

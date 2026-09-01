@@ -78,10 +78,15 @@ def _instrument(job_id: str, fn: Callable, triggered_by: str = "scheduler"):
 async def _feeds_inner() -> int:
     from data.feeds import fetch_all_feeds
     from data.classifier import classify_articles
+    from data.summarizer import summarize_articles
     n = await fetch_all_feeds()
     logger.info(f"Scheduler: feed fetch — {n} articles")
     scored = await classify_articles(batch_size=50)
     logger.info(f"Scheduler: classified {scored} articles")
+    # Summaries need scores first, so this runs after the classifier. One batch
+    # per cycle keeps the token spend bounded; the backlog drains across runs.
+    summarized = await summarize_articles()
+    logger.info(f"Scheduler: summarized {summarized} articles")
     return n
 
 

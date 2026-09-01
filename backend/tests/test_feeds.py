@@ -84,9 +84,124 @@ class TestStripHtml:
         ("", ""),
         (None, ""),
         ("<a href='x'>link</a> text", "link text"),
+        # Style/script bodies are code, not prose — must vanish entirely
+        # (email newsletters embed huge CSS blocks).
+        ("<style type='text/css'>.a { color: red; }</style><p>real text</p>", "real text"),
+        ("<script>var x = 1;</script>prose", "prose"),
+        ("<STYLE>.b{x:y}</STYLE>keep", "keep"),
+        ("<!-- hidden preheader -->visible", "visible"),
+        ("<style>.a{}</style>one<style>.b{}</style>two", "one two"),
     ])
     def test_strips_tags_and_collapses_ws(self, text, expected):
         assert f.strip_html(text) == expected
+
+
+class TestHtmlToText:
+    @pytest.mark.parametrize("text, expected", [
+        # Paragraph structure survives as blank lines.
+        ("<p>one</p><p>two</p>", "one\n\ntwo"),
+        ("line<br>break", "line\n\nbreak"),
+        ("<div>a</div><div>b</div>", "a\n\nb"),
+        # Inline tags don't break paragraphs.
+        ("<p>a <b>bold</b> word</p>", "a bold word"),
+        # Style bodies vanish; entities decode.
+        ("<style>.x{}</style><p>M&amp;A</p>", "M&A"),
+        # Runs of breaks collapse to one blank line.
+        ("<p>a</p><br><br><br><p>b</p>", "a\n\nb"),
+        ("", ""),
+        (None, ""),
+    ])
+    def test_structure(self, text, expected):
+        assert f.html_to_text(text) == expected
+
+
+# ─── extract_full_text ───────────────────────────────────────────────────────
+def _rss_with_content(body_html: str) -> str:
+    """One-item RSS feed carrying a <content:encoded> full body."""
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>Full Content Feed</title>
+    <link>https://example.com</link>
+    <item>
+      <title>Long Read</title>
+      <link>https://example.com/long</link>
+      <description>Short teaser only</description>
+      <content:encoded><![CDATA[{body_html}]]></content:encoded>
+      <pubDate>Wed, 28 May 2026 12:00:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>
+"""
+
+
+class TestExtractFullText:
+    def test_none_when_entry_has_no_content(self):
+        class E:
+            pass
+        assert f.extract_full_text(E()) is None
+
+    def test_none_when_body_below_threshold(self):
+        class E:
+            content = [{"value": "<p>too short</p>"}]
+        assert f.extract_full_text(E()) is None
+
+    def test_strips_html_and_returns_body(self):
+        long_html = "<p>" + "word " * 400 + "</p>"
+
+        class E:
+            content = [{"value": long_html}]
+        out = f.extract_full_text(E())
+        assert out is not None
+        assert "<" not in out
+        assert out.startswith("word word")
+
+    def test_picks_longest_content_block(self):
+        long_body = "long " * 400
+
+        class E:
+            content = [{"value": "tiny"}, {"value": long_body}]
+        out = f.extract_full_text(E())
+        assert out is not None and out.startswith("long long")
+
+    def test_caps_at_max_chars(self):
+        class E:
+            content = [{"value": "a" * (f.MAX_FULL_TEXT_CHARS + 10_000)}]
+        out = f.extract_full_text(E())
+        assert out is not None and len(out) == f.MAX_FULL_TEXT_CHARS
+
+    async def test_fetch_feed_stores_content_text(self, mocked_aiohttp):
+        url = "https://example.com/fullrss"
+        body = "<p>" + "substantial newsletter prose " * 60 + "</p>"
+        mocked_aiohttp.get(url, body=_rss_with_content(body), status=200)
+
+        import aiohttp
+        async with aiohttp.ClientSession() as session:
+            articles = await f._fetch_feed(
+                session,
+                {"name": "Net Interest (Marc Rubinstein)", "url": url, "category": "credit"},
+                kind="letter",
+            )
+
+        assert len(articles) == 1
+        assert articles[0]["content_text"] is not None
+        assert "substantial newsletter prose" in articles[0]["content_text"]
+        # Snippet still comes from the (short) description.
+        assert articles[0]["snippet"] == "Short teaser only"
+
+    async def test_fetch_feed_headline_only_has_no_content(self, mocked_aiohttp):
+        url = "https://example.com/rss"
+        mocked_aiohttp.get(url, body=SAMPLE_RSS, status=200)
+
+        import aiohttp
+        async with aiohttp.ClientSession() as session:
+            articles = await f._fetch_feed(
+                session,
+                {"name": "Bloomberg Markets", "url": url, "category": "macro"},
+                kind="news",
+            )
+
+        assert all(a["content_text"] is None for a in articles)
 
 
 # ─── _parse_date ─────────────────────────────────────────────────────────────
