@@ -90,6 +90,58 @@ news_feeds:
     category: structured_finance
     health_check: true
 
+  # ── Sept 2026 additions ─────────────────────────────────────
+  # Trepp's data products are paywalled but the TreppTalk blog is free and
+  # carries real CMBS/CRE delinquency numbers.
+  - name: "TreppTalk (CMBS/CRE)"
+    url: "https://www.trepp.com/trepptalk/rss.xml"
+    category: structured_finance
+    health_check: true
+
+  - name: "Structured Finance Association"
+    url: "https://structuredfinance.org/feed/"
+    category: structured_finance
+    health_check: true
+
+  - name: "HousingWire"
+    url: "https://www.housingwire.com/feed/"
+    category: structured_finance
+    health_check: true
+
+  - name: "FEDS Notes (Fed Board)"
+    url: "https://www.federalreserve.gov/feeds/feds_notes.xml"
+    category: macro
+    health_check: true
+
+  # Paywalled trade press — headlines via Google News queries (same pattern
+  # as WSJ/ASR above).
+  - name: "GlobalCapital Securitization"
+    url: "https://news.google.com/rss/search?q=when:7d+site:globalcapital.com+(securitization+OR+ABS+OR+CLO+OR+RMBS)&hl=en-US&gl=US&ceid=US:en"
+    category: structured_finance
+    health_check: true
+
+  - name: "National Mortgage News"
+    url: "https://news.google.com/rss/search?q=when:7d+site:nationalmortgagenews.com&hl=en-US&gl=US&ceid=US:en"
+    category: structured_finance
+    health_check: true
+
+  - name: "Private Debt Investor"
+    url: "https://news.google.com/rss/search?q=when:7d+site:privatedebtinvestor.com&hl=en-US&gl=US&ceid=US:en"
+    category: credit
+    health_check: true
+
+  # Reuters has no public RSS; Google News query recovers markets headlines.
+  - name: "Reuters Markets"
+    url: "https://news.google.com/rss/search?q=when:7d+site:reuters.com+(markets+OR+bonds+OR+credit+OR+fed)&hl=en-US&gl=US&ceid=US:en"
+    category: macro
+    health_check: true
+
+  # 9fin gates most content; their free posts still surface via Google News.
+  - name: "9fin Headlines"
+    url: "https://news.google.com/rss/search?q=when:7d+site:9fin.com&hl=en-US&gl=US&ceid=US:en"
+    category: credit
+    health_check: true
+
 newsletter_feeds:
 
   # ── SUBSTACK (predictable pattern) ──────────────────────
@@ -275,6 +327,27 @@ newsletter_feeds:
     url: "https://www.deeplearningweekly.com/feed"
     category: data_science
     platform: beehiiv
+    health_check: true
+
+  # ── Sept 2026 additions (Substack research letters) ────────
+  - name: "Without Warning (Steven Kelly)"
+    url: "https://www.withoutwarningresearch.com/feed"
+    category: credit
+    platform: substack
+    health_check: true
+
+  - name: "Chartbook (Adam Tooze)"
+    url: "https://adamtooze.substack.com/feed"
+    category: macro
+    platform: substack
+    health_check: true
+
+  # Curated earnings-call quotes — early read on consumer credit from
+  # lender management commentary.
+  - name: "The Transcript"
+    url: "https://thetranscript.substack.com/feed"
+    category: credit
+    platform: substack
     health_check: true
 
 # ── CATEGORIES (used for frontend filtering) ────────────────
