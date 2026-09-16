@@ -138,6 +138,7 @@ function BriefingArchive({
   return (
     <Panel
       title="Archive"
+      className="analyst-archive"
       subtitle={`${list.length} BRIEFINGS`}
       actions={
         <button
@@ -154,7 +155,7 @@ function BriefingArchive({
       }
       bodyStyle={{ padding: 0 }}
     >
-      <div style={{ display: 'flex', flexDirection: 'column' }}>
+      <div className="archive-list" style={{ display: 'flex', flexDirection: 'column' }}>
         {list.length === 0 && (
           <div className="muted" style={{ padding: 12, fontSize: 12 }}>
             No briefings yet.
@@ -243,6 +244,7 @@ function BriefingBody({ briefing }: { briefing: Briefing }) {
                 fontSize: 12,
                 marginBottom: 6,
                 alignItems: 'baseline',
+                flexWrap: 'wrap',
               }}
             >
               <span
@@ -272,6 +274,15 @@ function ChatPanel({ briefingId }: { briefingId: string }) {
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-grow the textarea with its content (capped via CSS max-height).
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [draft]);
 
   // Reset chat when the user picks a different briefing.
   useEffect(() => {
@@ -298,11 +309,15 @@ function ChatPanel({ briefingId }: { briefingId: string }) {
     onError: (err) => setError(errMessage(err)),
   });
 
-  const onSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const send = () => {
     const text = draft.trim();
     if (!text || chat.isPending) return;
     chat.mutate(text);
+  };
+
+  const onSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    send();
   };
 
   return (
@@ -325,15 +340,7 @@ function ChatPanel({ briefingId }: { briefingId: string }) {
         ) : null
       }
     >
-      <div
-        ref={scrollerRef}
-        style={{
-          maxHeight: 420,
-          overflowY: 'auto',
-          marginBottom: 10,
-          paddingRight: 4,
-        }}
-      >
+      <div ref={scrollerRef} className="chat-scroller">
         {history.length === 0 && !chat.isPending && (
           <div className="muted" style={{ fontSize: 12 }}>
             Ask about anything in the briefing or the underlying data — recession
@@ -380,23 +387,23 @@ function ChatPanel({ briefingId }: { briefingId: string }) {
         )}
       </div>
 
-      <form onSubmit={onSubmit} style={{ display: 'flex', gap: 8 }}>
-        <input
-          type="text"
+      <form onSubmit={onSubmit} className="chat-form">
+        <textarea
+          ref={inputRef}
+          rows={1}
+          className="chat-input"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            // Enter sends; Shift+Enter inserts a newline (desktop). On touch
+            // keyboards Enter just wraps — the SEND button is the submit path.
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              send();
+            }
+          }}
           placeholder="Ask the analyst…"
           disabled={chat.isPending}
-          style={{
-            flex: 1,
-            background: 'var(--bg-panel-alt)',
-            color: 'var(--text-primary)',
-            border: '1px solid var(--border-bright)',
-            padding: '6px 10px',
-            fontSize: 12,
-            fontFamily: 'inherit',
-            borderRadius: 2,
-          }}
           {...staticDisabledProps()}
         />
         <button

@@ -436,6 +436,21 @@ a:hover { text-decoration: underline; }
   .grid-3 { grid-template-columns: 1fr; }
   .stat-grid { grid-template-columns: 1fr 1fr; }
   .app-main { padding: 8px; }
+
+  /* Analyst on phone: content first — the briefing leads, the archive drops
+     below it and scrolls inside a capped rail instead of pushing the chat
+     off-screen. */
+  .analyst-archive { order: 2; }
+  .archive-list { max-height: 240px; overflow-y: auto; }
+
+  /* 16px is the threshold below which iOS Safari auto-zooms a focused
+     field — keep the chat input at exactly that. */
+  .chat-input { font-size: 16px; }
+  .chat-scroller { max-height: 55dvh; }
+
+  /* Wide briefing tables scroll inside the panel instead of blowing out
+     the page width. */
+  .md-body table { display: block; max-width: 100%; overflow-x: auto; }
 }
 
 @media (max-width: 480px) {
@@ -541,3 +556,32 @@ a:hover { text-decoration: underline; }
   text-align: left;
 }
 .md-body th { background: var(--bg-panel-alt); font-weight: 700; }
+
+/* ── Analyst chat (AnalystPage.tsx) ─────────────────────── */
+.chat-scroller {
+  max-height: 420px;
+  overflow-y: auto;
+  margin-bottom: 10px;
+  padding-right: 4px;
+}
+.chat-form {
+  display: flex;
+  gap: 8px;
+  /* Bottom-align the SEND button as the textarea grows. */
+  align-items: flex-end;
+}
+.chat-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-panel-alt);
+  color: var(--text-primary);
+  border: 1px solid var(--border-bright);
+  padding: 6px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  line-height: 1.45;
+  border-radius: 2px;
+  resize: none;
+  max-height: 120px;
+  overflow-y: auto;
+}
