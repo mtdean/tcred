@@ -489,6 +489,16 @@ export interface BdcAggregateTrendPoint {
   pct_equity: number | null;
 }
 
+export interface BdcSectorTrendPoint {
+  period: string;
+  sector: string;
+  n_bdcs: number;
+  total_fv: number | null;
+  total_cost: number | null;
+  mark_to_cost: number | null;
+  fv_share: number | null;
+}
+
 export interface BdcNonaccrualHolding {
   bdc_name: string;
   company_name: string | null;

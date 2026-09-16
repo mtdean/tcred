@@ -27,14 +27,13 @@ logger = logging.getLogger(__name__)
 
 HEADERS = {"User-Agent": settings.EDGAR_USER_AGENT}
 
-# SEC publishes BDC dataset ZIPs under
-# /files/structureddata/data/business-development-company-bdc-data-sets/.
-# Historical files are quarterly (e.g. 2024q3_bdc.zip); from 2025_04 onward the
-# release cadence switched to monthly (e.g. 2026_04_bdc.zip).
+# SEC publishes BDC dataset ZIPs linked from the index page below. The
+# directory has moved before (structureddata → datastandardsinnovation in
+# 2026), so discovery matches any /files/…_bdc.zip link rather than pinning
+# the path. Historical files are quarterly (e.g. 2024q3_bdc.zip); from
+# 2025_04 onward the release cadence switched to monthly (e.g. 2026_04_bdc.zip).
 BDC_DATA_INDEX = "https://www.sec.gov/data-research/sec-markets-data/bdc-data-sets"
-BDC_BASE_PATH = (
-    "/files/structureddata/data/business-development-company-bdc-data-sets"
-)
+BDC_ZIP_HREF_RE = r'href="(/files/[^"]+_bdc\.zip)"'
 
 
 def _sort_key(path: str) -> tuple:
@@ -61,9 +60,7 @@ def _get_latest_bdc_zip_url() -> Optional[str]:
     try:
         resp = requests.get(BDC_DATA_INDEX, headers=HEADERS, timeout=15)
         resp.raise_for_status()
-        matches = re.findall(
-            rf'href="({re.escape(BDC_BASE_PATH)}/[^"]+\.zip)"', resp.text
-        )
+        matches = re.findall(BDC_ZIP_HREF_RE, resp.text)
         if matches:
             latest = max(matches, key=_sort_key)
             return f"https://www.sec.gov{latest}"
@@ -243,6 +240,120 @@ def _norm(s) -> str:
     return str(s).replace("[Member]", "").strip()
 
 
+# ── Sector normalization ─────────────────────────────────────────────────────
+# BDCs free-type their Industry Sector Axis members ("Software", "Software
+# Sector", "Application Software", "Health Care Technology"...). Keyword rules
+# collapse them into ~12 canonical buckets so cross-BDC aggregation works.
+# ORDER MATTERS: first match wins — healthcare before tech so "Health Care
+# Technology" lands in Healthcare (mirrors GICS), structured/funds before
+# financials so "Structured Note" doesn't land in Financials.
+SECTOR_RULES: list[tuple[str, list[str]]] = [
+    ("Funds & Structured", [
+        "structured", "collateralized", "clo", "asset backed", "asset-backed",
+        "joint venture", "investment fund", "funds", "fund ", " fund",
+        "investment vehicle", "multi sector", "multi-sector",
+        "government securit", "treasur",
+    ]),
+    ("Healthcare", [
+        "health", "pharma", "biotech", "medical", "life science", "hospital",
+    ]),
+    ("Software & Tech", [
+        "software", "information technology", "it service", "itservice",
+        "itconsulting", "technology", "internet", "semiconduct", "computer",
+        "digital", "electronic", "hardware", "cyber", "high tech", "saas",
+    ]),
+    ("Media & Telecom", [
+        "media", "telecom", "entertainment", "broadcast", "cable",
+        "publishing", "wireless", "communication", "satellite",
+    ]),
+    ("Financials & Insurance", [
+        "financ", "insurance", "bank", "lending", "asset management",
+        "capital market", "consumer credit", "mortgage", "leasing",
+        "thrifts", "credit services",
+    ]),
+    ("Business Services", [
+        "professional service", "business service", "commercial service",
+        "diversified support", "human resource", "staffing", "consulting",
+        "services business", "services: business", "services, business",
+        "facilities service", "office service", "security service",
+        "environmental", "research and consulting", "conglomerate service",
+    ]),
+    ("Real Estate", [
+        "real estate", "reit", "property management",
+    ]),
+    ("Energy & Power", [
+        "energy", "oil", "gas", "power", "utilit", "renewable", "pipeline",
+        "coal", "solar", "electricity",
+    ]),
+    ("Transportation", [
+        "transport", "logistics", "airline", "airport", "marine", "shipping",
+        "freight", "rail", "trucking", "cargo",
+    ]),
+    ("Chemicals & Materials", [
+        "chemical", "packaging", "container", "paper", "metal", "mining",
+        "forest", "glass", "steel", "cement", "materials",
+    ]),
+    ("Consumer & Retail", [
+        "consumer", "retail", "food", "beverage", "restaurant",
+        "personal care", "household", "apparel", "leisure", "hotel", "gaming",
+        "education", "textile", "luxury", "grocery", "distribut",
+        "wholesale", "e-commerce", "recreation", "personal product",
+        "cannabis",
+    ]),
+    ("Industrials", [
+        "industrial", "machinery", "building product", "construction",
+        "aerospace", "defense", "auto", "capital good", "manufactur",
+        "electrical equipment", "trading compan", "engineering",
+        "infrastructure", "equipment",
+    ]),
+]
+
+SECTOR_OTHER = "Other"
+
+# Some filers abuse the Industry Sector Axis for things that aren't industries:
+# portfolio totals, lien/instrument types, geography, or individual issuer
+# names. These rows are skipped entirely (not bucketed into Other) so they
+# don't distort sector shares.
+_JUNK_INDUSTRY_SUBSTRINGS = [
+    "total", "lien", "secured debt", "unsecured debt", "senior loan",
+    "term loan", "delayed draw", "revolver", "unitranche", "geographic",
+    "subordinated note", "senior note",
+]
+_ISSUER_SUFFIX_RE = re.compile(
+    r"(,?\s(llc|l\.p\.|lp|l\.l\.c\.|inc\.?|corp\.?|ltd\.?|co\.)|"
+    r"(holdings|acquisitionco|midco|topco|bidco|buyer|parent))\s*$",
+    re.IGNORECASE,
+)
+
+
+def is_junk_industry(raw: str) -> bool:
+    """True when an Industry Sector Axis member isn't actually an industry."""
+    blob = _norm(raw).lower()
+    if not blob or blob in ("industry", "other", "sector"):
+        # bare "Other"/"industry" members are legit catch-alls — keep them
+        return blob in ("industry", "sector")
+    if any(kw in blob for kw in _JUNK_INDUSTRY_SUBSTRINGS):
+        return True
+    if _ISSUER_SUFFIX_RE.search(blob):
+        return True
+    return False
+
+
+def normalize_sector(raw: str) -> str:
+    """Map a raw Industry Sector Axis member string to a canonical sector."""
+    blob = _norm(raw).lower()
+    if not blob:
+        return SECTOR_OTHER
+    # camelCase XBRL member names arrive squashed ("HealthcareSector") —
+    # also match with spaces stripped from the keyword.
+    squashed = blob.replace(" ", "")
+    for sector, keywords in SECTOR_RULES:
+        for kw in keywords:
+            if kw in blob or kw.replace(" ", "") in squashed:
+                return sector
+    return SECTOR_OTHER
+
+
 def _pick_primary_breakdown(group_df: pd.DataFrame, fv_col: str, cost_col: str) -> str | None:
     """For one BDC's rows, return the breakdown axis whose rows sum to the
     smallest positive total cost — the cleanest non-double-counted view of the
@@ -261,6 +372,104 @@ def _pick_primary_breakdown(group_df: pd.DataFrame, fv_col: str, cost_col: str) 
         if best_total is None or cost_sum < best_total:
             best_axis, best_total = axis, cost_sum
     return best_axis
+
+
+def _extract_industry_breakdown(df: pd.DataFrame, conn, now: str) -> int:
+    """Persist per-BDC industry-sector totals into bdc_industry.
+
+    Input: the SOI frame AFTER rollup-row filtering and numeric prep
+    (_cost_num/_fv_num present), BEFORE the exactly-one-breakdown-axis filter —
+    industry disclosures often ride multi-axis rows (industry × investment
+    type × affiliation) that the holdings pipeline rightly drops.
+
+    Per (cik, ddate): among rows with Industry Sector Axis set, pick the
+    axis-combination whose fair-value sum is LARGEST — the most complete
+    partition of the portfolio. (Opposite of _pick_primary_breakdown's
+    smallest-total heuristic: there we dedupe repeated totals, here sparser
+    combos are usually partial disclosures — e.g. BPCF's industry×type combo
+    sums to $6B of an $84B book while its affiliation×industry×type combo
+    covers $74B.) Rows within one combo are distinct member tuples, so
+    summing them by industry cannot double count.
+    """
+    IND = "Industry Sector Axis"
+    if IND not in df.columns:
+        return 0
+
+    ind = df[df[IND].map(_norm) != ""].copy()
+    ind = ind[ind[["_cost_num", "_fv_num"]].notna().any(axis=1)]
+    if ind.empty:
+        return 0
+
+    present_axes = [a for a in _BREAKDOWN_AXES if a in ind.columns]
+    axis_flags = ind[present_axes].map(_norm).ne("")
+    ind["_combo"] = axis_flags.apply(
+        lambda r: "+".join(a for a, v in zip(present_axes, r) if v), axis=1
+    )
+
+    stored = 0
+    for (cik, bdc_name, ddate), group in ind.groupby(["cik", "name", "ddate"]):
+        # Most-recently-filed view wins when several filings cover this ddate.
+        if "filed" in group.columns:
+            newest = group["filed"].map(_norm).max()
+            if newest:
+                group = group[group["filed"].map(_norm) == newest]
+
+        # Pick the combo with the largest FV coverage (cost as tiebreak
+        # when FV is entirely missing).
+        best_combo, best_total = None, 0.0
+        for combo, sub in group.groupby("_combo"):
+            total = sub["_fv_num"].fillna(0).sum()
+            if total <= 0:
+                total = sub["_cost_num"].fillna(0).sum()
+            if total > best_total:
+                best_combo, best_total = combo, total
+        if best_combo is None:
+            continue
+
+        sub = group[group["_combo"] == best_combo]
+        agg = sub.groupby(sub[IND].map(_norm)).agg(
+            cost=("_cost_num", "sum"), fv=("_fv_num", "sum")
+        )
+
+        # Sanity guard: some filers ship wrong-scale XBRL values (e.g. Runway
+        # Growth's 2025-06 SOI reports $86B cost against $87mm FV on a ~$1B
+        # book). A whole-portfolio mark outside [0.3, 3.0] is a data error,
+        # not a credit event — skip the BDC-period entirely.
+        tot_cost = agg["cost"].fillna(0).sum()
+        tot_fv = agg["fv"].fillna(0).sum()
+        if tot_cost > 0 and tot_fv > 0 and not (0.3 <= tot_fv / tot_cost <= 3.0):
+            logger.debug(
+                f"BDC industry skip {bdc_name} @ {ddate}: implausible "
+                f"portfolio mark {tot_fv / tot_cost:.3f}"
+            )
+            continue
+        for industry_raw, row in agg.iterrows():
+            if not industry_raw or is_junk_industry(industry_raw):
+                continue
+            rec = {
+                "id": hashlib.sha256(
+                    f"{cik}|{ddate}|{industry_raw}".encode()
+                ).hexdigest()[:16],
+                "cik": str(cik),
+                "bdc_name": str(bdc_name),
+                "period": str(ddate),
+                "industry_raw": industry_raw[:120],
+                "sector": normalize_sector(industry_raw),
+                "cost_basis": float(row["cost"]) if pd.notna(row["cost"]) else None,
+                "fair_value": float(row["fv"]) if pd.notna(row["fv"]) else None,
+                "fetched_at": now,
+            }
+            try:
+                cols = ", ".join(rec.keys())
+                placeholders = ", ".join(f":{k}" for k in rec.keys())
+                conn.execute(
+                    f"INSERT OR REPLACE INTO bdc_industry ({cols}) VALUES ({placeholders})",
+                    rec,
+                )
+                stored += 1
+            except Exception as e:
+                logger.debug(f"BDC industry insert skip: {e}")
+    return stored
 
 
 def _ingest_dataframe(df: pd.DataFrame, source: str = "") -> int:
@@ -344,6 +553,12 @@ def _ingest_dataframe(df: pd.DataFrame, source: str = "") -> int:
     if df.empty:
         logger.warning(f"BDC SOI{tag} produced 0 usable holdings after rollup filter")
         return 0
+
+    # Industry-sector breakdown BEFORE the single-axis filter (industry
+    # disclosures often ride multi-axis rows the holdings pipeline drops).
+    with get_conn() as conn:
+        n_ind = _extract_industry_breakdown(df, conn, now)
+    logger.info(f"BDC industry breakdown{tag}: {n_ind} sector rows stored")
 
     # Each row should have exactly one breakdown axis populated; multi-axis
     # rows are sub-partitions and re-introduce double counting.
@@ -481,9 +696,7 @@ def _list_all_bdc_zip_urls() -> list[str]:
     try:
         resp = requests.get(BDC_DATA_INDEX, headers=HEADERS, timeout=15)
         resp.raise_for_status()
-        matches = re.findall(
-            rf'href="({re.escape(BDC_BASE_PATH)}/[^"]+\.zip)"', resp.text
-        )
+        matches = re.findall(BDC_ZIP_HREF_RE, resp.text)
         unique = sorted(set(matches), key=_sort_key)  # oldest first
         return [f"https://www.sec.gov{p}" for p in unique]
     except Exception as e:
@@ -604,8 +817,16 @@ def _edgar_filing_url(cik: Optional[str], adsh: Optional[str]) -> Optional[str]:
 
 
 def _attach_filing_url(row: dict) -> dict:
-    """Annotate a bdc_summary row with `filing_url` if cik+adsh are present."""
+    """Annotate a bdc_summary row with `filing_url` if cik+adsh are present.
+
+    Also nulls out implausible portfolio marks (outside [0.3, 3.0]) — a few
+    filers ship wrong-scale XBRL cost values (e.g. Prospect's 2959% mark),
+    which is a data error, not a credit event.
+    """
     row["filing_url"] = _edgar_filing_url(row.get("cik"), row.get("adsh"))
+    mark = row.get("mark_to_cost")
+    if mark is not None and not (0.3 <= mark <= 3.0):
+        row["mark_to_cost"] = None
     return row
 
 
@@ -714,6 +935,61 @@ def get_bdc_aggregate_trend() -> list[dict]:
             HAVING COUNT(DISTINCT cik) >= 5
             ORDER BY period ASC
             """
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_bdc_sector_trend(min_bdcs: int = 3) -> list[dict]:
+    """Cross-BDC sector performance time series from bdc_industry.
+
+    Per (period, sector): total fair value / cost, mark-to-cost, share of
+    that period's total FV, and the number of BDCs contributing. Mark-to-cost
+    is computed only over rows carrying BOTH cost and FV so cost-only or
+    FV-only disclosures don't skew the ratio. Periods with < 5 reporting
+    BDCs overall are dropped (off-cycle fiscal closes), and sectors with
+    < `min_bdcs` contributors in a period are dropped as too thin.
+    """
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            WITH good_periods AS (
+                SELECT period
+                FROM bdc_industry
+                GROUP BY period
+                HAVING COUNT(DISTINCT cik) >= 5
+            ),
+            period_totals AS (
+                SELECT period, SUM(fair_value) AS period_fv
+                FROM bdc_industry
+                WHERE fair_value > 0
+                GROUP BY period
+            )
+            SELECT
+                b.period,
+                b.sector,
+                COUNT(DISTINCT b.cik)  AS n_bdcs,
+                SUM(b.fair_value)      AS total_fv,
+                SUM(b.cost_basis)      AS total_cost,
+                CASE WHEN SUM(CASE WHEN b.cost_basis > 0 AND b.fair_value > 0
+                                   THEN b.cost_basis ELSE 0 END) > 0
+                     THEN SUM(CASE WHEN b.cost_basis > 0 AND b.fair_value > 0
+                                   THEN b.fair_value ELSE 0 END) * 1.0
+                          / SUM(CASE WHEN b.cost_basis > 0 AND b.fair_value > 0
+                                     THEN b.cost_basis ELSE 0 END)
+                     ELSE NULL END     AS mark_to_cost,
+                CASE WHEN t.period_fv > 0
+                     THEN SUM(CASE WHEN b.fair_value > 0
+                                   THEN b.fair_value ELSE 0 END) * 1.0
+                          / t.period_fv
+                     ELSE NULL END     AS fv_share
+            FROM bdc_industry b
+            JOIN good_periods g ON g.period = b.period
+            LEFT JOIN period_totals t ON t.period = b.period
+            GROUP BY b.period, b.sector
+            HAVING COUNT(DISTINCT b.cik) >= ?
+            ORDER BY b.period ASC, total_fv DESC
+            """,
+            (min_bdcs,),
         ).fetchall()
     return [dict(r) for r in rows]
 

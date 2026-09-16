@@ -223,6 +223,23 @@ CREATE TABLE IF NOT EXISTS bdc_summary (
 CREATE INDEX IF NOT EXISTS idx_bdc_summary_period ON bdc_summary(period DESC);
 CREATE INDEX IF NOT EXISTS idx_bdc_summary_cik    ON bdc_summary(cik);
 
+-- Per-BDC industry-sector breakdown from the SOI Industry Sector Axis rows.
+-- One row per (cik, period, raw industry member); `sector` is the normalized
+-- canonical bucket (see data/bdc.py normalize_sector).
+CREATE TABLE IF NOT EXISTS bdc_industry (
+    id            TEXT PRIMARY KEY,  -- SHA256(cik + period + industry_raw)[:16]
+    cik           TEXT NOT NULL,
+    bdc_name      TEXT NOT NULL,
+    period        TEXT NOT NULL,
+    industry_raw  TEXT NOT NULL,
+    sector        TEXT NOT NULL,
+    cost_basis    REAL,
+    fair_value    REAL,
+    fetched_at    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_bdc_industry_period ON bdc_industry(period DESC);
+CREATE INDEX IF NOT EXISTS idx_bdc_industry_sector ON bdc_industry(sector);
+
 -- ── Phase 7: Regulatory Flow Monitor ──
 -- Federal Register API documents + agency RSS press releases.
 -- relevance_score is Claude-set and ONLY filled when the manual SCORE button fires.

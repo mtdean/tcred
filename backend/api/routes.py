@@ -633,6 +633,13 @@ def get_bdc_aggregate_trend():
     return _agg()
 
 
+@router.get("/bdc/sector-trend")
+def get_bdc_sector_trend(min_bdcs: int = Query(default=3, ge=1, le=50)):
+    """Cross-BDC sector performance time series (FV, mark-to-cost, share)."""
+    from data.bdc import get_bdc_sector_trend as _sectors
+    return _sectors(min_bdcs=min_bdcs)
+
+
 @router.get("/bdc/nonaccruals")
 def get_bdc_nonaccruals(limit: int = Query(default=100, le=500)):
     """Individual non-accrual holdings across all BDCs, latest period."""

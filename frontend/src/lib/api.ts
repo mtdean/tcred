@@ -20,6 +20,7 @@ import type {
   BdcAggregateTrendPoint,
   BdcNonaccrualHolding,
   BdcNonaccrualTrendPoint,
+  BdcSectorTrendPoint,
   BdcSummaryRow,
   BdcWatchEntry,
   CloSpreadProxyPoint,
@@ -522,6 +523,8 @@ export const getBdcAggregateTrend = () =>
   api.get<BdcAggregateTrendPoint[]>('/bdc/aggregate-trend');
 export const getBdcNonaccruals = (limit = 100) =>
   api.get<BdcNonaccrualHolding[]>('/bdc/nonaccruals', { params: { limit } });
+export const getBdcSectorTrend = () =>
+  api.get<BdcSectorTrendPoint[]>('/bdc/sector-trend');
 export const triggerBdcRefresh = () =>
   api.post<{ holdings_stored: number }>('/bdc/refresh');
 

@@ -30,6 +30,7 @@ export const qk = {
   bdcAggregateTrend: ['bdc', 'aggregate-trend'] as const,
   bdcLatestPerBdc: ['bdc', 'latest-per-bdc'] as const,
   bdcNonaccruals: (limit: number) => ['bdc', 'nonaccruals', limit] as const,
+  bdcSectorTrend: ['bdc', 'sector-trend'] as const,
   regulatoryActions: (params: Record<string, unknown>) =>
     ['regulatory', 'actions', params] as const,
   h8Metrics: ['h8', 'metrics'] as const,

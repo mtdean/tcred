@@ -237,9 +237,16 @@ class TestPickPrimaryBreakdown:
 
 
 # ─── _get_latest_bdc_zip_url / _list_all_bdc_zip_urls ────────────────────────
+# Discovery matches any /files/…_bdc.zip href (the SEC has moved the directory
+# before); tests use the current live path.
+TEST_BASE_PATH = (
+    "/files/datastandardsinnovation/data/business-development-company-bdc-data-sets"
+)
+
+
 def _index_html(filenames: list[str]) -> str:
     links = "".join(
-        f'<a href="{bdc.BDC_BASE_PATH}/{f}">{f}</a>' for f in filenames
+        f'<a href="{TEST_BASE_PATH}/{f}">{f}</a>' for f in filenames
     )
     return f"<html><body>{links}</body></html>"
 
@@ -252,7 +259,7 @@ class TestZipUrlDiscovery:
         ])
         mocked_responses.get(bdc.BDC_DATA_INDEX, body=body, status=200)
         url = bdc._get_latest_bdc_zip_url()
-        assert url == f"https://www.sec.gov{bdc.BDC_BASE_PATH}/2026_04_bdc.zip"
+        assert url == f"https://www.sec.gov{TEST_BASE_PATH}/2026_04_bdc.zip"
 
     def test_returns_none_on_http_error(self, mocked_responses):
         mocked_responses.get(bdc.BDC_DATA_INDEX, status=500)
@@ -491,7 +498,7 @@ class TestFetchBdcData:
         self, fresh_db, mocked_responses
     ):
         zip_name = "2026_04_bdc.zip"
-        zip_url = f"https://www.sec.gov{bdc.BDC_BASE_PATH}/{zip_name}"
+        zip_url = f"https://www.sec.gov{TEST_BASE_PATH}/{zip_name}"
         index_html = _index_html([zip_name])
         mocked_responses.get(bdc.BDC_DATA_INDEX, body=index_html, status=200)
 
@@ -520,7 +527,7 @@ class TestFetchBdcData:
         self, fresh_db, mocked_responses
     ):
         zip_name = "2026_04_bdc.zip"
-        zip_url = f"https://www.sec.gov{bdc.BDC_BASE_PATH}/{zip_name}"
+        zip_url = f"https://www.sec.gov{TEST_BASE_PATH}/{zip_name}"
         mocked_responses.get(
             bdc.BDC_DATA_INDEX, body=_index_html([zip_name]), status=200,
         )
@@ -701,3 +708,225 @@ class TestAttachFilingUrl:
         })
         assert out["filing_url"] is not None
         assert "0001287750-25-000026-index.htm" in out["filing_url"]
+
+
+# ─── normalize_sector / is_junk_industry ─────────────────────────────────────
+class TestNormalizeSector:
+    @pytest.mark.parametrize("raw, expected", [
+        ("Software [Member]", "Software & Tech"),
+        ("High Tech Industries", "Software & Tech"),
+        ("SaaS", "Software & Tech"),
+        ("Health Care Technology", "Healthcare"),   # GICS: healthcare wins
+        ("Pharmaceuticals", "Healthcare"),
+        ("Services: Business", "Business Services"),
+        ("Environmental Industries", "Business Services"),
+        ("Diversified Financial Services", "Financials & Insurance"),
+        ("Insurance Sector", "Financials & Insurance"),
+        ("Structured Note", "Funds & Structured"),
+        ("Credit Opportunities Joint Venture", "Funds & Structured"),
+        ("Machinery", "Industrials"),
+        ("Aerospace & Defense", "Industrials"),
+        ("Hotel Gaming And Leisure", "Consumer & Retail"),
+        ("Distribution Sector", "Consumer & Retail"),
+        ("Containers and Packaging", "Chemicals & Materials"),
+        ("Oil, Gas And Consumable Fuels", "Energy & Power"),
+        ("Media", "Media & Telecom"),
+        ("Air Freight and Logistics", "Transportation"),
+        ("Real Estate Operating Companies", "Real Estate"),
+        ("All Other Industry Sectors", "Other"),
+        ("", "Other"),
+    ])
+    def test_value_table(self, raw, expected):
+        assert bdc.normalize_sector(raw) == expected
+
+
+class TestIsJunkIndustry:
+    @pytest.mark.parametrize("raw", [
+        "Total Investments", "Senior Lien", "Secured Debt", "Senior Loans",
+        "First Lien Term Loan", "Geographic Region", "Industry",
+        "Whatabrands LLC", "Zenith AcquisitionCo, LLC",
+        "Wind Point Partners VIII-A, L.P.",
+    ])
+    def test_junk(self, raw):
+        assert bdc.is_junk_industry(raw) is True
+
+    @pytest.mark.parametrize("raw", [
+        "Software", "Health Care", "All Other Industry Sectors", "Other",
+        "Diversified Financial Services",
+    ])
+    def test_not_junk(self, raw):
+        assert bdc.is_junk_industry(raw) is False
+
+
+# ─── _extract_industry_breakdown (via _ingest_dataframe) ─────────────────────
+class TestIndustryBreakdown:
+    def _industry_rows(self):
+        # BDC 1: single-axis industry rows (classic concentration table).
+        # BDC 2: industry only on multi-axis rows (industry × investment type)
+        #        which the holdings pipeline drops but sector extraction keeps.
+        return [
+            {
+                "adsh": "a", "cik": "1", "name": "ALPHA", "filed": "2026-05-01",
+                "ddate": "2026-03-31", "period": "2026-03-31",
+                "Industry Sector Axis": "Software [Member]",
+                "Investment Owned, Cost": "100",
+                "Investment Owned, Fair Value": "95",
+            },
+            {
+                "adsh": "a", "cik": "1", "name": "ALPHA", "filed": "2026-05-01",
+                "ddate": "2026-03-31", "period": "2026-03-31",
+                "Industry Sector Axis": "Insurance [Member]",
+                "Investment Owned, Cost": "50",
+                "Investment Owned, Fair Value": "55",
+            },
+            {
+                "adsh": "b", "cik": "2", "name": "BETA", "filed": "2026-05-02",
+                "ddate": "2026-03-31", "period": "2026-03-31",
+                "Industry Sector Axis": "Software [Member]",
+                "Investment Type Axis": "First Lien [Member]",
+                "Investment Owned, Cost": "200",
+                "Investment Owned, Fair Value": "190",
+            },
+            {
+                "adsh": "b", "cik": "2", "name": "BETA", "filed": "2026-05-02",
+                "ddate": "2026-03-31", "period": "2026-03-31",
+                "Industry Sector Axis": "Software [Member]",
+                "Investment Type Axis": "Second Lien [Member]",
+                "Investment Owned, Cost": "100",
+                "Investment Owned, Fair Value": "90",
+            },
+        ]
+
+    def test_single_and_multi_axis_rows_stored(self, fresh_db):
+        bdc._ingest_dataframe(_make_soi_df(self._industry_rows()))
+        with db.get_conn() as conn:
+            rows = conn.execute(
+                "SELECT cik, sector, cost_basis, fair_value FROM bdc_industry "
+                "ORDER BY cik, sector"
+            ).fetchall()
+        by_key = {(r["cik"], r["sector"]): r for r in rows}
+        assert by_key[("1", "Software & Tech")]["fair_value"] == 95
+        assert by_key[("1", "Financials & Insurance")]["fair_value"] == 55
+        # BETA's two type-split software rows aggregate into one sector row.
+        assert by_key[("2", "Software & Tech")]["cost_basis"] == 300
+        assert by_key[("2", "Software & Tech")]["fair_value"] == 280
+
+    def test_junk_members_skipped(self, fresh_db):
+        rows = self._industry_rows()
+        rows.append({
+            "adsh": "a", "cik": "1", "name": "ALPHA", "filed": "2026-05-01",
+            "ddate": "2026-03-31", "period": "2026-03-31",
+            "Industry Sector Axis": "Total Investments [Member]",
+            "Investment Owned, Cost": "9999",
+            "Investment Owned, Fair Value": "9999",
+        })
+        bdc._ingest_dataframe(_make_soi_df(rows))
+        with db.get_conn() as conn:
+            raws = [r[0] for r in conn.execute(
+                "SELECT industry_raw FROM bdc_industry"
+            )]
+        assert "Total Investments" not in raws
+
+    def test_implausible_portfolio_mark_skips_bdc_period(self, fresh_db):
+        # Wrong-scale filer: cost 1000x fair value → whole BDC-period skipped.
+        rows = [{
+            "adsh": "c", "cik": "3", "name": "GAMMA", "filed": "2026-05-01",
+            "ddate": "2026-03-31", "period": "2026-03-31",
+            "Industry Sector Axis": "Software [Member]",
+            "Investment Owned, Cost": "100000",
+            "Investment Owned, Fair Value": "100",
+        }]
+        bdc._ingest_dataframe(_make_soi_df(rows))
+        with db.get_conn() as conn:
+            n = conn.execute("SELECT COUNT(*) FROM bdc_industry").fetchone()[0]
+        assert n == 0
+
+    def test_largest_fv_combo_wins(self, fresh_db):
+        # Sparse industry×type combo (partial disclosure) vs a fuller
+        # affiliation×industry combo — the larger FV total must win.
+        rows = [
+            {
+                "adsh": "d", "cik": "4", "name": "DELTA", "filed": "2026-05-01",
+                "ddate": "2026-03-31", "period": "2026-03-31",
+                "Industry Sector Axis": "Software [Member]",
+                "Investment Type Axis": "First Lien [Member]",
+                "Investment Owned, Cost": "10",
+                "Investment Owned, Fair Value": "10",
+            },
+            {
+                "adsh": "d", "cik": "4", "name": "DELTA", "filed": "2026-05-01",
+                "ddate": "2026-03-31", "period": "2026-03-31",
+                "Industry Sector Axis": "Software [Member]",
+                "Investment, Issuer Affiliation Axis": "Non-Affiliated [Member]",
+                "Investment Owned, Cost": "500",
+                "Investment Owned, Fair Value": "480",
+            },
+        ]
+        bdc._ingest_dataframe(_make_soi_df(rows))
+        with db.get_conn() as conn:
+            row = conn.execute(
+                "SELECT cost_basis, fair_value FROM bdc_industry"
+            ).fetchone()
+        assert row["cost_basis"] == 500
+        assert row["fair_value"] == 480
+
+
+# ─── get_bdc_sector_trend ─────────────────────────────────────────────────────
+def _seed_industry(conn, cik, name, period, sector, cost, fv):
+    import hashlib as _h
+    conn.execute(
+        "INSERT OR REPLACE INTO bdc_industry "
+        "(id, cik, bdc_name, period, industry_raw, sector, cost_basis, "
+        " fair_value, fetched_at) VALUES (?,?,?,?,?,?,?,?,?)",
+        (_h.sha256(f"{cik}|{period}|{sector}".encode()).hexdigest()[:16],
+         cik, name, period, sector, sector, cost, fv, NOW),
+    )
+
+
+class TestSectorTrend:
+    def test_aggregates_and_share(self, fresh_db):
+        with db.get_conn() as conn:
+            # 6 BDCs so the >=5-BDC period filter passes.
+            for i in range(1, 7):
+                _seed_industry(conn, str(i), f"BDC{i}", "2026-03-31",
+                               "Software & Tech", 100, 95)
+            for i in range(1, 4):
+                _seed_industry(conn, str(i), f"BDC{i}", "2026-03-31",
+                               "Healthcare", 100, 102)
+        rows = bdc.get_bdc_sector_trend(min_bdcs=3)
+        by_sector = {r["sector"]: r for r in rows}
+        sw = by_sector["Software & Tech"]
+        assert sw["n_bdcs"] == 6
+        assert sw["mark_to_cost"] == pytest.approx(0.95)
+        assert sw["fv_share"] == pytest.approx(570 / (570 + 306))
+        hc = by_sector["Healthcare"]
+        assert hc["mark_to_cost"] == pytest.approx(1.02)
+
+    def test_thin_sectors_and_periods_dropped(self, fresh_db):
+        with db.get_conn() as conn:
+            # Good period: 5 BDCs in Software, 2 in Healthcare (thin).
+            for i in range(1, 6):
+                _seed_industry(conn, str(i), f"BDC{i}", "2026-03-31",
+                               "Software & Tech", 100, 95)
+            for i in range(1, 3):
+                _seed_industry(conn, str(i), f"BDC{i}", "2026-03-31",
+                               "Healthcare", 100, 100)
+            # Off-cycle period with a single BDC → dropped entirely.
+            _seed_industry(conn, "9", "BDC9", "2026-02-28",
+                           "Software & Tech", 100, 100)
+        rows = bdc.get_bdc_sector_trend(min_bdcs=3)
+        assert {r["period"] for r in rows} == {"2026-03-31"}
+        assert {r["sector"] for r in rows} == {"Software & Tech"}
+
+    def test_mark_ignores_one_sided_rows(self, fresh_db):
+        with db.get_conn() as conn:
+            for i in range(1, 6):
+                _seed_industry(conn, str(i), f"BDC{i}", "2026-03-31",
+                               "Software & Tech", 100, 90)
+            # FV-only row (no cost) must not enter the mark ratio.
+            _seed_industry(conn, "7", "BDC7", "2026-03-31",
+                           "Software & Tech", None, 1000)
+        rows = bdc.get_bdc_sector_trend(min_bdcs=3)
+        sw = [r for r in rows if r["sector"] == "Software & Tech"][0]
+        assert sw["mark_to_cost"] == pytest.approx(0.90)
+        assert sw["total_fv"] == 1450  # FV-only row still counts toward FV
