@@ -79,7 +79,7 @@ class TestComputeH8Metrics:
         assert r["yoy_pct"] is None
 
     def test_history_field_contains_all_rows_in_chronological_order(self, fresh_db):
-        _seed_weekly("CONSUMER", [10.0, 11.0, 12.0], label="Consumer")
+        _seed_weekly("CLSACBW027SBOG", [10.0, 11.0, 12.0], label="Consumer")
         out = h8.compute_h8_metrics()
         history = out[0]["history"]
         assert len(history) == 3
@@ -96,12 +96,13 @@ class TestComputeH8Metrics:
         assert r["yoy_pct"] == pytest.approx(52.0, abs=1e-3)
 
     def test_multiple_series_returned_in_h8_series_order(self, fresh_db):
-        _seed_weekly("REALLN", [50.0, 51.0])
+        _seed_weekly("RELACBW027SBOG", [50.0, 51.0])
         _seed_weekly("TOTLL", [100.0, 102.0])
         out = h8.compute_h8_metrics()
-        # h8._H8_SERIES order: TOTLL first, then CONSUMER, ..., then REALLN.
+        # h8._H8_SERIES order: TOTLL first, then consumer loans, ..., then
+        # real estate loans.
         ids = [r["series_id"] for r in out]
-        assert ids == ["TOTLL", "REALLN"]
+        assert ids == ["TOTLL", "RELACBW027SBOG"]
 
     def test_skips_series_with_no_data(self, fresh_db):
         _seed_weekly("DPSACBW027SBOG", [800.0, 810.0])

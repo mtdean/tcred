@@ -254,18 +254,20 @@ fred_series:
   # 2024-Q2: the Board switched to a credit-bureau-based measure — treat pre/post
   # vintages as not directly comparable. Watch CDSP (consumer ex-mortgage); the
   # mortgage DSR (MDSP) is distorted by the locked-in sub-3% mortgage stock.
+  # DSRs publish ~2 quarters after period close (Q1 lands late June), so the
+  # observation date runs up to ~270 days behind — hence quarterly_lagged.
   - id: "TDSP"
     label: "Household Debt Service Ratio (Total)"
     category: consumer_credit
-    frequency: quarterly
+    frequency: quarterly_lagged
   - id: "CDSP"
     label: "Consumer Debt Service Ratio (ex-Mortgage)"
     category: consumer_credit
-    frequency: quarterly
+    frequency: quarterly_lagged
   - id: "MDSP"
     label: "Mortgage Debt Service Ratio"
     category: consumer_credit
-    frequency: quarterly
+    frequency: quarterly_lagged
 
   # ── Recession / leading indicators ───────────────────────────────
   # Sahm Rule: triggers at +0.50pp. SAHMREALTIME uses real-time unemployment
@@ -383,7 +385,9 @@ fred_series:
     label: "Total Bank Loans & Leases"
     category: h8_bank_credit
     frequency: weekly
-  - id: "CONSUMER"
+  # NB: the friendly FRED ids CONSUMER/REALLN are the MONTHLY H.8 aggregates —
+  # the weekly SA counterparts are the *W027SBOG ids (and TOTCI for C&I).
+  - id: "CLSACBW027SBOG"
     label: "Consumer Loans (All Banks)"
     category: h8_bank_credit
     frequency: weekly
@@ -391,11 +395,11 @@ fred_series:
     label: "Credit Card Loans (All Banks)"
     category: h8_bank_credit
     frequency: weekly
-  - id: "CILACBW027SBOG"
+  - id: "TOTCI"
     label: "C&I Loans (All Banks)"
     category: h8_bank_credit
     frequency: weekly
-  - id: "REALLN"
+  - id: "RELACBW027SBOG"
     label: "Real Estate Loans (All Banks)"
     category: h8_bank_credit
     frequency: weekly

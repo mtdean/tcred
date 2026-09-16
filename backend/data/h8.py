@@ -1,9 +1,9 @@
 """
 backend/data/h8.py — Fed H.8 Bank Credit Monitor (computed analytics).
 
-The raw H.8 weekly series (TOTLL, CONSUMER, CCLACBW027SBOG, CILACBW027SBOG,
-REALLN, DPSACBW027SBOG) are pulled into the `metrics` table by the existing
-FRED fetcher under the `h8_bank_credit` category. This module is read-only
+The raw H.8 weekly series (TOTLL, CLSACBW027SBOG, CCLACBW027SBOG, TOTCI,
+RELACBW027SBOG, DPSACBW027SBOG) are pulled into the `metrics` table by the
+existing FRED fetcher under the `h8_bank_credit` category. This module is read-only
 analytics over that cache:
 
   - compute_h8_metrics():     per-series WoW change, WoW %, 4-week MA, YoY %,
@@ -27,10 +27,10 @@ logger = logging.getLogger(__name__)
 # the frontend (TOTLL first so its latest_date drives the panel header).
 _H8_SERIES = (
     "TOTLL",
-    "CONSUMER",
+    "CLSACBW027SBOG",
     "CCLACBW027SBOG",
-    "CILACBW027SBOG",
-    "REALLN",
+    "TOTCI",
+    "RELACBW027SBOG",
     "DPSACBW027SBOG",
 )
 

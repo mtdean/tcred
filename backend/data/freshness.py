@@ -5,15 +5,19 @@ For every FRED series we track (cadence is declared in data_sources.yaml), look
 up the latest observation date in `metrics` and compare it to a cadence-aware
 threshold:
 
-    cadence    fresh           stale           dead
-    daily      ≤ 5d            > 5d            > 14d   (weekends + holidays)
-    weekly     ≤ 14d           > 14d           > 30d
-    monthly    ≤ 60d           > 60d           > 90d
-    quarterly  ≤ 130d          > 130d          > 200d
+    cadence            fresh           stale           dead
+    daily              ≤ 5d            > 5d            > 14d   (weekends + holidays)
+    weekly             ≤ 14d           > 14d           > 30d
+    monthly            ≤ 60d           > 60d           > 90d
+    quarterly          ≤ 130d          > 130d          > 200d
+    quarterly_lagged   ≤ 280d          > 280d          > 360d
 
 Quarterly thresholds are generous because the major FRED quarterly series
 (delinquency, charge-offs, GDP) lag ~60-90 days after the period close —
-'fresh' must include that publication delay.
+'fresh' must include that publication delay. quarterly_lagged covers series
+published ~2 quarters after period close (the debt service ratios): just
+before a release the newest observation date is ~270 days old, and a full
+extra missed quarter puts it past 360.
 
 The endpoint also surfaces last-successful run per scheduled job (from
 `job_runs`) so the dashboard can flag jobs that haven't completed lately even
@@ -34,6 +38,7 @@ _THRESHOLDS = {
     "weekly":    {"stale": 14,  "dead": 30},
     "monthly":   {"stale": 60,  "dead": 90},
     "quarterly": {"stale": 130, "dead": 200},
+    "quarterly_lagged": {"stale": 280, "dead": 360},
     "annual":    {"stale": 500, "dead": 750},
 }
 
