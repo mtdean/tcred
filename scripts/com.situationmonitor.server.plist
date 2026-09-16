@@ -37,6 +37,14 @@
     <key>KeepAlive</key>
     <true/>
 
+    <!-- launchd agents default to a 256 soft fd limit; the top-of-hour job
+         burst (per-row sqlite connections + feed sockets) can exceed it. -->
+    <key>SoftResourceLimits</key>
+    <dict>
+        <key>NumberOfFiles</key>
+        <integer>4096</integer>
+    </dict>
+
     <key>StandardOutPath</key>
     <string>/Users/td/situation-monitor/logs/server.out.log</string>
     <key>StandardErrorPath</key>
