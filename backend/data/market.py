@@ -42,6 +42,13 @@ def fetch_market_data() -> int:
             group_by="ticker",
             auto_adjust=True,
             progress=False,
+            # threads=True leaks ~1 fd per ticker per run: each yfinance
+            # worker thread opens the tz-cache sqlite (tkr-tz.db) and dies
+            # without closing it. At 4 runs/hour the process exhausts its
+            # 4096-fd launchd limit in ~1-2 days → "unable to open database
+            # file", refused connections, crash. Single-threaded keeps the
+            # cache handle on pooled threads that get reused.
+            threads=False,
         )
     except Exception as e:
         logger.error(f"yfinance batch download error: {e}")
