@@ -65,6 +65,11 @@ if FRONTEND_DIST.is_dir():
     if assets_dir.is_dir():
         app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
 
+    # index.html must always revalidate: iOS home-screen web apps cache it
+    # heuristically otherwise, and a stale index references hashed bundles
+    # that no longer exist after a rebuild. Hashed /assets stay cacheable.
+    _NO_CACHE = {"Cache-Control": "no-cache"}
+
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
         """Serve a real static file if it exists, else the SPA index (client routing)."""
@@ -72,8 +77,8 @@ if FRONTEND_DIST.is_dir():
             raise HTTPException(status_code=404, detail="Not found")
         candidate = (FRONTEND_DIST / full_path).resolve()
         if full_path and candidate.is_file() and FRONTEND_DIST in candidate.parents:
-            return FileResponse(candidate)
-        return FileResponse(FRONTEND_DIST / "index.html")
+            return FileResponse(candidate, headers=_NO_CACHE)
+        return FileResponse(FRONTEND_DIST / "index.html", headers=_NO_CACHE)
 else:
     logger.warning("Frontend dist/ not found — run `npm run build` in frontend/")
 
