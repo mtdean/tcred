@@ -117,12 +117,8 @@ newsletter_feeds:
     platform: substack
     health_check: true
 
-  - name: "Pari Passu"
-    url: "https://restructuringnewsletter.com/feed"
-    category: credit
-    platform: beehiiv
-    health_check: true
-    notes: "Verify URL — Beehiiv generates unique feed URLs"
+  # Pari Passu: beehiiv site (restructuringnewsletter.com) has RSS disabled —
+  # /feed 404s and no feed token is exposed. Email-only; see the Meco list below.
 
   - name: "Best of Econtwitter"
     url: "https://www.bestofecontwitter.com/feed"
@@ -244,67 +240,30 @@ newsletter_feeds:
     platform: custom
     health_check: true
 
-  # ── KILL THE NEWSLETTER (email → full-text RSS) ─────────
-  # Bloomberg/WSJ have no article API, but their email newsletters carry the
-  # full text you're entitled to as a subscriber. One-time setup per entry:
-  #   1. Go to https://kill-the-newsletter.com and create a feed named after
-  #      the newsletter (e.g. "Money Stuff"). You get a unique @kill-the-newsletter.com
-  #      email address + an Atom feed URL.
-  #   2. Subscribe to the newsletter using that email address:
-  #        Bloomberg: bloomberg.com/account/newsletters
-  #        WSJ:       wsj.com → Account → Newsletters & Alerts
-  #      (Money Stuff is free and doesn't need a Bloomberg subscription.)
-  #   3. Paste the Atom feed URL below and remove needs_url, then restart or
-  #      hit POST /api/articles/refresh.
-  # Full bodies land in articles.content_text and get AI summaries automatically.
-
-  - name: "Bloomberg Money Stuff (Matt Levine)"
-    url: "NEEDS_URL"
-    category: credit
-    platform: kill-the-newsletter
-    needs_url: true
-
-  - name: "Bloomberg Credit Weekly"
-    url: "NEEDS_URL"
-    category: credit
-    platform: kill-the-newsletter
-    needs_url: true
-
-  - name: "Bloomberg Odd Lots"
-    url: "NEEDS_URL"
-    category: macro
-    platform: kill-the-newsletter
-    needs_url: true
-
-  - name: "WSJ Heard on the Street"
-    url: "NEEDS_URL"
-    category: credit
-    platform: kill-the-newsletter
-    needs_url: true
-
-  - name: "WSJ Central Banking (Fed Wire)"
-    url: "NEEDS_URL"
-    category: macro
-    platform: kill-the-newsletter
-    needs_url: true
-
-  # ── BEEHIIV / CUSTOM — URL NEEDS MANUAL LOOKUP ──────────
-  # To find: visit the site, Cmd+F in page source for "rss" or ".xml"
-  # Then replace the placeholder URL below.
+  # ── EMAIL-ONLY NEWSLETTERS → MECO/GMAIL (not RSS) ────────
+  # Bloomberg/WSJ (and several beehiiv publishers with RSS disabled) have no
+  # public feed; their email newsletters are the sanctioned full-text channel.
+  # These flow in through data/gmail_ingest.py (the "Meco" Gmail label), NOT
+  # through entries in this file — so they never appear in feed health.
+  #
+  # Already arriving via Meco: Bloomberg Money Stuff (as "Matt Levine"),
+  # John Authers, Data Elixir.
+  #
+  # To add one, subscribe with the Meco-connected address and it flows in
+  # automatically. Still unsubscribed as of Sep 2026:
+  #   - Bloomberg Credit Weekly        bloomberg.com/account/newsletters
+  #   - Bloomberg Odd Lots newsletter  bloomberg.com/account/newsletters
+  #   - WSJ Heard on the Street        wsj.com → Account → Newsletters & Alerts
+  #   - WSJ Central Banking (Fed Wire) wsj.com → Account → Newsletters & Alerts
+  #   - Pari Passu                     restructuringnewsletter.com (beehiiv, RSS disabled)
+  #   - Setpoint Data Tapes            setpoint.beehiiv.com (beehiiv, RSS disabled)
 
   - name: "Colossus"
-    url: "NEEDS_URL"
+    url: "https://joincolossus.com/feed"
     category: macro
-    platform: beehiiv
-    needs_url: true
-    notes: "joincolossus.com — check for /feed or RSS link in footer"
-
-  - name: "Data Elixir"
-    url: "NEEDS_URL"
-    category: data_science
-    platform: unknown
-    needs_url: true
-    notes: "dataelixir.com — likely has standard RSS"
+    platform: custom
+    health_check: true
+    notes: "Live but dormant since Jul 2024 — Colossus mostly ships via email now"
 
   - name: "Data Science Weekly"
     url: "https://datascienceweekly.substack.com/feed"
@@ -317,12 +276,6 @@ newsletter_feeds:
     category: data_science
     platform: beehiiv
     health_check: true
-
-  - name: "Setpoint Data Tapes"
-    url: "NEEDS_URL"
-    category: structured_finance
-    platform: unknown
-    needs_url: true
 
 # ── CATEGORIES (used for frontend filtering) ────────────────
 categories:
