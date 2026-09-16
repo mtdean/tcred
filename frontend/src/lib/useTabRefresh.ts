@@ -10,10 +10,7 @@
 import { useLocation } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  triggerAbsNewIssuesRefresh,
-  triggerAbsPricingRefresh,
   triggerBdcRefresh,
-  triggerEdgarRefresh,
   triggerFredRefresh,
   triggerMarketRefresh,
   triggerRefresh as triggerNewsRefresh,
@@ -102,31 +99,8 @@ function specFor(pathname: string): TabRefreshSpec | null {
     };
   }
 
-  // ABS/EDGAR is the umbrella for three different upstream pulls; fire them
-  // all so the page is fully refreshed from one tap.
-  if (pathname.startsWith('/abs')) {
-    return {
-      label: 'REFRESH ABS',
-      shortLabel: 'ABS',
-      metaKey: 'last_abs_424b5_refresh',
-      run: () => Promise.all([
-        triggerEdgarRefresh(),
-        triggerAbsPricingRefresh(),
-        triggerAbsNewIssuesRefresh(),
-      ]),
-      invalidateKeys: [['edgar'], ['edgar-feed'], ['abs'], qk.status],
-    };
-  }
-
-  if (pathname.startsWith('/deals')) {
-    return {
-      label: 'REFRESH FILINGS',
-      shortLabel: 'FILINGS',
-      metaKey: 'last_abs_424b5_refresh',
-      run: () => Promise.all([triggerEdgarRefresh()]),
-      invalidateKeys: [qk.issuers, ['edgar'], qk.status],
-    };
-  }
+  // ABS/EDGAR + Deals tabs are parked (Deals to be replaced by the cashflows
+  // UI, ABS/EDGAR to be reworked) — their refresh specs went with them.
 
   // Analyst + Watchlists are views over already-stored state. No upstream
   // pull to drive — the user's REFRESH on those pages is the per-panel

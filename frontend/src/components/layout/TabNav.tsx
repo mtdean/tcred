@@ -8,8 +8,6 @@ const TABS: { to: string; label: string }[] = [
   { to: '/forecasts', label: 'Forecasts' },
   { to: '/private-credit', label: 'Private Credit' },
   { to: '/regulatory', label: 'Regulatory' },
-  { to: '/abs', label: 'ABS/EDGAR' },
-  { to: '/deals', label: 'Deals' },
   { to: '/analyst', label: 'Analyst' },
   { to: '/watchlists', label: 'Watchlists' },
 ];

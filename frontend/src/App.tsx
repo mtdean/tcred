@@ -7,8 +7,6 @@ import NewsPage from './pages/NewsPage';
 import MarketsPage from './pages/MarketsPage';
 import MacroPage from './pages/MacroPage';
 import ForecastsPage from './pages/ForecastsPage';
-import ABSPage from './pages/ABSPage';
-import DealsPage from './pages/DealsPage';
 import PrivateCreditPage from './pages/PrivateCreditPage';
 import RegulatoryPage from './pages/RegulatoryPage';
 import AnalystPage from './pages/AnalystPage';
@@ -27,8 +25,6 @@ export default function App() {
           <Route path="/forecasts" element={<ForecastsPage />} />
           <Route path="/private-credit" element={<PrivateCreditPage />} />
           <Route path="/regulatory" element={<RegulatoryPage />} />
-          <Route path="/abs" element={<ABSPage />} />
-          <Route path="/deals" element={<DealsPage />} />
           <Route path="/analyst" element={<AnalystPage />} />
           <Route path="/watchlists" element={<WatchlistsPage />} />
         </Routes>
