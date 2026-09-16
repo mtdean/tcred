@@ -1,6 +1,7 @@
 import { Route, Routes } from 'react-router-dom';
 import TopBar from './components/layout/TopBar';
 import StatusBar from './components/layout/StatusBar';
+import PullToRefresh from './components/layout/PullToRefresh';
 import HomePage from './pages/HomePage';
 import NewsPage from './pages/NewsPage';
 import MarketsPage from './pages/MarketsPage';
@@ -17,7 +18,7 @@ export default function App() {
   return (
     <div className="app-shell">
       <TopBar />
-      <main className="app-main">
+      <PullToRefresh>
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/news" element={<NewsPage />} />
@@ -31,7 +32,7 @@ export default function App() {
           <Route path="/analyst" element={<AnalystPage />} />
           <Route path="/watchlists" element={<WatchlistsPage />} />
         </Routes>
-      </main>
+      </PullToRefresh>
       <StatusBar />
     </div>
   );
