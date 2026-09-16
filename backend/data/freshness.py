@@ -6,18 +6,30 @@ up the latest observation date in `metrics` and compare it to a cadence-aware
 threshold:
 
     cadence            fresh           stale           dead
-    daily              ≤ 5d            > 5d            > 14d   (weekends + holidays)
-    weekly             ≤ 14d           > 14d           > 30d
-    monthly            ≤ 60d           > 60d           > 90d
-    quarterly          ≤ 130d          > 130d          > 200d
+    daily              ≤ 5d            > 5d            > 14d
+    weekly             ≤ 21d           > 21d           > 35d
+    monthly            ≤ 100d          > 100d          > 150d
+    quarterly          ≤ 250d          > 250d          > 340d
     quarterly_lagged   ≤ 280d          > 280d          > 360d
 
-Quarterly thresholds are generous because the major FRED quarterly series
-(delinquency, charge-offs, GDP) lag ~60-90 days after the period close —
-'fresh' must include that publication delay. quarterly_lagged covers series
-published ~2 quarters after period close (the debt service ratios): just
-before a release the newest observation date is ~270 days old, and a full
-extra missed quarter puts it past 360.
+days_since counts from the observation period START, so each threshold must
+cover (period length + publication lag) for the slowest series in its class,
+measured just before the next release:
+
+    daily      weekends + holidays.
+    weekly     continuing claims (CCSA) lag two weeks by construction → ~19d.
+    monthly    G.19 consumer credit ~5wk lag (~95d worst), smoothed recession
+               probability ~3mo lag (~120d... flagged stale only if unusually
+               late — acceptable for one outlier series).
+    quarterly  FDIC delinquency/charge-offs ~60d lag (~243d worst),
+               Z.1 flows ~70d (~253d worst), GDP advance ~30d (~212d).
+    quarterly_lagged   published ~2 quarters after period close (the debt
+               service ratios): ~270d worst; a fully missed extra quarter
+               puts it past 360.
+
+'stale' therefore means "the next release looks overdue", and 'dead' means
+"roughly a full extra cycle has been missed" — not merely "the data is old",
+which is normal for lagged publications.
 
 The endpoint also surfaces last-successful run per scheduled job (from
 `job_runs`) so the dashboard can flag jobs that haven't completed lately even
@@ -35,9 +47,9 @@ from config import load_data_sources
 
 _THRESHOLDS = {
     "daily":     {"stale": 5,   "dead": 14},
-    "weekly":    {"stale": 14,  "dead": 30},
-    "monthly":   {"stale": 60,  "dead": 90},
-    "quarterly": {"stale": 130, "dead": 200},
+    "weekly":    {"stale": 21,  "dead": 35},
+    "monthly":   {"stale": 100, "dead": 150},
+    "quarterly": {"stale": 250, "dead": 340},
     "quarterly_lagged": {"stale": 280, "dead": 360},
     "annual":    {"stale": 500, "dead": 750},
 }
