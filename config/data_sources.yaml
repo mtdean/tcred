@@ -673,9 +673,24 @@ abs_pricing:
 # consumer-credit performance ~2 quarters ahead of the quarterly FRED series.
 # Token-free regex parse (data/trust_performance.py).
 trust_performance:
-  discovery_queries:
-    - "credit card"
-    - "card issuance"
+  # Queries are grouped by segment; every hit found via a segment's queries is
+  # stored with that segment tag. Auto deal trusts are discrete vintages
+  # (Trust 2024-A ≈ 2024 originations), so their cumulative_net_loss_rate +
+  # pool_factor rows accrue into true vintage curves.
+  segments:
+    credit_card:
+      - "credit card"
+      - "card issuance"
+    auto:
+      - "auto receivables trust"
+      - "auto owner trust"
+      - "drive auto receivables"          # Santander subprime (SDART/DRIVE)
+      - "exeter automobile receivables"   # deep subprime
+      - "westlake automobile receivables" # subprime
+      - "carmax auto owner trust"
+      - "world omni auto receivables"
+      - "gm financial consumer automobile"
+      - "americredit automobile receivables"  # GMF subprime (AMCAR)
 
 # ── Phase 7 — BDC Portfolio Monitor ──────────────────────────
 # SEC publishes a free monthly bulk dataset of BDC XBRL Schedule of Investments

@@ -65,7 +65,20 @@ _METRIC_PATTERNS: dict[str, list[re.Pattern]] = {
     "portfolio_yield": [re.compile(r"portfolio yield", re.I)],
     "excess_spread_rate": [re.compile(r"excess spread (?:percentage|rate)", re.I)],
     "base_rate": [re.compile(r"\bbase rate\b", re.I)],
+    # Auto deal trusts: cumulative net loss since cut-off — each trust is an
+    # origination vintage, so CNL by deal age IS the vintage curve.
+    "cumulative_net_loss_rate": [
+        re.compile(r"cumulative net loss ratio", re.I),
+    ],
 }
+
+# Pool factor is the one non-percentage metric worth keeping: remaining pool /
+# original pool (0-1), i.e. how far into its life an auto deal is — the x-axis
+# proxy for vintage-curve views. Matched separately since it carries no '%'.
+# The label-to-value gap may contain footnote markers with digits ("Pool
+# Factor ({8}/ Original Pool Balance) {9} 0.247251"), so only '%' is barred
+# in between; the 0.xxx+ shape keeps footnote integers from matching.
+_POOL_FACTOR = re.compile(r"pool factor[^%]{0,80}?\b(0\.\d{3,7})\b", re.I)
 
 # A label occurrence preceded by this within 40 chars is a trailing average,
 # not the spot monthly value; used only as a fallback when no spot value parses.
@@ -182,6 +195,12 @@ def parse_trust_metrics(raw_html: str) -> dict[str, float]:
         if value is not None:
             out[metric] = value
 
+    pf = _POOL_FACTOR.search(text)
+    if pf:
+        val = float(pf.group(1))
+        if 0 < val <= 1:
+            out["pool_factor"] = val
+
     # Bucket-table fallback: fill any delinquency threshold the headline
     # labels didn't provide (direct labels win on conflict).
     derived = [k for k in _parse_delinq_buckets(text).items() if k[0] not in out]
@@ -197,24 +216,38 @@ def parse_trust_metrics(raw_html: str) -> dict[str, float]:
     return out
 
 
-def _search_10d(query: str, days_back: int) -> list[dict]:
-    params = {
-        "q": f'"{query}"',
-        "forms": "10-D",
-        "startdt": utc_days_ago_str(days_back),
-        "enddt": utc_today_str(),
-    }
-    for attempt in range(3):
-        try:
-            resp = requests.get(BASE_EFTS, params=params, headers=HEADERS, timeout=15)
-            resp.raise_for_status()
-            return resp.json().get("hits", {}).get("hits", [])
-        except Exception as e:
-            if attempt == 2:
-                logger.error("trust_performance search error (q=%s): %s", query, e)
-            else:
-                time.sleep(0.5 * (attempt + 1))
-    return []
+def _search_10d(query: str, days_back: int, max_pages: int = 10) -> list[dict]:
+    """EFTS full-text search, paged. EFTS serves 10 hits per page; card master
+    trusts fit on one page but auto shelves file dozens of deal-trust 10-Ds a
+    month, so we walk `from=` until a short page or the cap."""
+    hits: list[dict] = []
+    for page in range(max_pages):
+        params = {
+            "q": f'"{query}"',
+            "forms": "10-D",
+            "startdt": utc_days_ago_str(days_back),
+            "enddt": utc_today_str(),
+            "from": page * 10,
+        }
+        page_hits: list[dict] | None = None
+        for attempt in range(3):
+            try:
+                resp = requests.get(BASE_EFTS, params=params, headers=HEADERS, timeout=15)
+                resp.raise_for_status()
+                page_hits = resp.json().get("hits", {}).get("hits", [])
+                break
+            except Exception as e:
+                if attempt == 2:
+                    logger.error("trust_performance search error (q=%s): %s", query, e)
+                else:
+                    time.sleep(0.5 * (attempt + 1))
+        if not page_hits:
+            break
+        hits.extend(page_hits)
+        if len(page_hits) < 10:
+            break
+        time.sleep(0.15)
+    return hits
 
 
 def _trust_name(display_names: list[str]) -> str:
@@ -277,30 +310,36 @@ def _already_parsed(accession: str) -> bool:
 def fetch_trust_performance(days_back: int = 35) -> int:
     """Discover recent 10-Ds, parse distribution-report metrics, store rows."""
     cfg = load_data_sources().get("trust_performance", {})
-    queries = cfg.get("discovery_queries", _DEFAULT_QUERIES)
+    # `segments:` maps segment name -> query list; the legacy flat
+    # `discovery_queries:` list is treated as credit_card.
+    segments: dict[str, list[str]] = cfg.get("segments") or {}
+    if not segments:
+        segments = {"credit_card": cfg.get("discovery_queries", _DEFAULT_QUERIES)}
 
     # Group hits by accession: one filing yields several hits (form + exhibits).
     filings: dict[str, dict] = {}
-    for q in queries:
-        for h in _search_10d(q, days_back):
-            src = h.get("_source", {})
-            acc = src.get("adsh", "")
-            doc = (h.get("_id", "").split(":") + [""])[1]
-            if not acc or not doc:
-                continue
-            f = filings.setdefault(
-                acc,
-                {
-                    "cik": _trust_cik(src.get("display_names", [])),
-                    "trust_name": _trust_name(src.get("display_names", [])),
-                    "period_end": src.get("period_ending", ""),
-                    "filed_at": src.get("file_date", ""),
-                    "docs": [],
-                },
-            )
-            if doc not in f["docs"]:
-                f["docs"].append(doc)
-        time.sleep(0.15)
+    for segment, queries in segments.items():
+        for q in queries:
+            for h in _search_10d(q, days_back):
+                src = h.get("_source", {})
+                acc = src.get("adsh", "")
+                doc = (h.get("_id", "").split(":") + [""])[1]
+                if not acc or not doc:
+                    continue
+                f = filings.setdefault(
+                    acc,
+                    {
+                        "cik": _trust_cik(src.get("display_names", [])),
+                        "trust_name": _trust_name(src.get("display_names", [])),
+                        "period_end": src.get("period_ending", ""),
+                        "filed_at": src.get("file_date", ""),
+                        "segment": segment,
+                        "docs": [],
+                    },
+                )
+                if doc not in f["docs"]:
+                    f["docs"].append(doc)
+            time.sleep(0.15)
 
     now = _now()
     count = 0
@@ -342,7 +381,7 @@ def fetch_trust_performance(days_back: int = 35) -> int:
                     "accession_no": acc,
                     "cik": f["cik"],
                     "trust_name": f["trust_name"],
-                    "segment": "credit_card",
+                    "segment": f.get("segment", "credit_card"),
                     "period_end": f["period_end"],
                     "filed_at": f["filed_at"],
                     "metric": metric,
@@ -364,9 +403,10 @@ def fetch_trust_performance(days_back: int = 35) -> int:
 def get_trust_performance(
     metric: str | None = None,
     trust: str | None = None,
+    segment: str | None = None,
     limit: int = 500,
 ) -> list[dict]:
-    """Time series rows, oldest first, optionally filtered by metric/trust."""
+    """Time series rows, oldest first, optionally filtered by metric/trust/segment."""
     sql = (
         "SELECT cik, trust_name, segment, period_end, filed_at, metric, value, url "
         "FROM trust_performance WHERE period_end != ''"
@@ -378,15 +418,18 @@ def get_trust_performance(
     if trust:
         sql += " AND trust_name LIKE ?"
         params.append(f"%{trust}%")
+    if segment:
+        sql += " AND segment = ?"
+        params.append(segment)
     sql += " ORDER BY period_end, trust_name LIMIT ?"
     params.append(limit)
     with get_conn() as conn:
         return [dict(r) for r in conn.execute(sql, params).fetchall()]
 
 
-def get_trust_performance_latest() -> list[dict]:
+def get_trust_performance_latest(segment: str | None = None) -> list[dict]:
     """Latest period per trust with its metrics pivoted into one row."""
-    rows = get_trust_performance(limit=5000)
+    rows = get_trust_performance(segment=segment, limit=20000)
     by_trust: dict[str, dict] = {}
     for r in rows:  # oldest first, so later periods overwrite earlier ones
         t = by_trust.setdefault(r["trust_name"], {"trust_name": r["trust_name"]})
@@ -394,7 +437,8 @@ def get_trust_performance_latest() -> list[dict]:
             if r["period_end"] != t.get("period_end"):
                 t["metrics"] = {}
             t.update(
-                {"cik": r["cik"], "period_end": r["period_end"], "url": r["url"]}
+                {"cik": r["cik"], "period_end": r["period_end"], "url": r["url"],
+                 "segment": r["segment"]}
             )
             t.setdefault("metrics", {})[r["metric"]] = r["value"]
     return sorted(by_trust.values(), key=lambda t: t["trust_name"])

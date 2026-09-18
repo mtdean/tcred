@@ -91,6 +91,7 @@ export interface TrustPerformanceLatest {
   cik: number;
   period_end: string;
   url: string;
+  segment?: string;
   metrics: Record<string, number>;
 }
 

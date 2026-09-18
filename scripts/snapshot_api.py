@@ -99,6 +99,13 @@ def run(base: str, out_dir: Path) -> int:
     s.snap("/bdc/sector-detail")
     s.snap("/trust-performance")
     s.snap("/trust-performance/latest")
+    for seg in ("credit_card", "auto"):
+        s.snap("/trust-performance/latest", {"segment": seg})
+        s.snap("/trust-performance", {"segment": seg})
+    for m in ("net_charge_off_rate", "delinq_30plus_rate", "delinq_60plus_rate",
+              "delinq_90plus_rate", "payment_rate", "portfolio_yield",
+              "excess_spread_rate"):
+        s.snap("/trust-performance", {"metric": m, "segment": "credit_card"})
     s.snap("/h8/metrics")
     s.snap("/h8/credit-impulse")
     s.snap("/clo/spread-proxy")

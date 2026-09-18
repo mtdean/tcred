@@ -281,3 +281,47 @@ class TestHelpers:
         )
         docs = tp._list_filing_docs(1, "0000000000-12-345678")
         assert docs == ["ex99-1.htm", "form10-d.htm"]
+
+
+# ─── Auto deal-trust metrics (segment extension) ─────────────────────────────
+class TestAutoMetrics:
+    def test_cumulative_net_loss_ratio(self):
+        html = "<p>Cumulative Net Loss Ratio (Net losses since the Cut-off Date / Pool Balance as of the Cut-off Date) 11.12 %</p>"
+        assert tp.parse_trust_metrics(html)["cumulative_net_loss_rate"] == 11.12
+
+    def test_toyota_style_cnl(self):
+        html = "<p>Cumulative Net Loss Ratio 0.41985% 0.42452%</p>"
+        assert tp.parse_trust_metrics(html)["cumulative_net_loss_rate"] == 0.41985
+
+    def test_pool_factor_without_percent(self):
+        html = "<p>Pool Factor (Ending Pool Balance / Original Pool Balance) 0.247251</p>"
+        assert tp.parse_trust_metrics(html)["pool_factor"] == 0.247251
+
+    def test_pool_factor_above_one_rejected(self):
+        # A stray number > 1 near the label must not be stored.
+        html = "<p>Pool Factor as defined in section 5.1</p>"
+        assert "pool_factor" not in tp.parse_trust_metrics(html)
+
+
+class TestSegmentFilter:
+    def _seed(self, segment, trust, period="2026-08-31"):
+        from cache.db import upsert_trust_performance
+        upsert_trust_performance({
+            "accession_no": f"acc-{trust}-{period}", "cik": 1,
+            "trust_name": trust, "segment": segment, "period_end": period,
+            "filed_at": period, "metric": "delinq_30plus_rate", "value": 1.0,
+            "url": "http://x", "fetched_at": "2026-09-18T00:00:00Z",
+        })
+
+    def test_segment_filters_rows(self, fresh_db):
+        self._seed("credit_card", "CHASE ISSUANCE TRUST")
+        self._seed("auto", "SANTANDER DRIVE AUTO RECEIVABLES TRUST 2024-1")
+        card = tp.get_trust_performance(segment="credit_card")
+        auto = tp.get_trust_performance(segment="auto")
+        assert {r["trust_name"] for r in card} == {"CHASE ISSUANCE TRUST"}
+        assert {r["trust_name"] for r in auto} == {"SANTANDER DRIVE AUTO RECEIVABLES TRUST 2024-1"}
+
+    def test_latest_carries_segment(self, fresh_db):
+        self._seed("auto", "EXETER AUTOMOBILE RECEIVABLES TRUST 2025-2")
+        latest = tp.get_trust_performance_latest(segment="auto")
+        assert latest[0]["segment"] == "auto"

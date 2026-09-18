@@ -10,6 +10,8 @@ import {
   Line,
   LineChart,
   ResponsiveContainer,
+  Scatter,
+  ScatterChart,
   Tooltip,
   XAxis,
   YAxis,
@@ -31,7 +33,7 @@ import Panel from '../shared/Panel';
 import LoadingCursor from '../shared/LoadingCursor';
 import EmptyState from '../shared/EmptyState';
 
-const METRICS: { value: string; label: string }[] = [
+const CARD_METRICS: { value: string; label: string }[] = [
   { value: 'net_charge_off_rate', label: 'NET CHARGE-OFF %' },
   { value: 'delinq_30plus_rate', label: '30+ DELINQ %' },
   { value: 'delinq_60plus_rate', label: '60+ DELINQ %' },
@@ -40,6 +42,43 @@ const METRICS: { value: string; label: string }[] = [
   { value: 'portfolio_yield', label: 'PORTFOLIO YIELD %' },
   { value: 'excess_spread_rate', label: 'EXCESS SPREAD %' },
 ];
+
+// Auto shelf classification for scatter coloring: subprime vs prime issuers.
+const SUBPRIME_SHELVES = /santander|drive auto|exeter|westlake|americredit|dt auto|first investors|flagship|prestige|cps|consumer portfolio|acm auto/i;
+
+// "SANTANDER DRIVE AUTO RECEIVABLES TRUST 2023-C" → "SDART 2023-C" style tags.
+function shortAutoName(trust: string): string {
+  const t = trust.toUpperCase();
+  const vintage = (t.match(/(\d{4}-[A-Z0-9]+)\s*$/) || [])[1] ?? '';
+  const shelf = t
+    .replace(/(\d{4}-[A-Z0-9]+)\s*$/, '')
+    .replace(/\b(AUTO|AUTOMOBILE|CONSUMER)?\s*(RECEIVABLES|OWNER|LOAN)?\s*TRUST\b.*/i, '')
+    .trim();
+  const initials: Record<string, string> = {
+    'SANTANDER DRIVE': 'SDART',
+    'DRIVE AUTO': 'DRIVE',
+    'EXETER AUTOMOBILE': 'EART',
+    'WESTLAKE AUTOMOBILE': 'WLAKE',
+    'CARMAX AUTO OWNER': 'CARMX',
+    'CARMAX': 'CARMX',
+    'AMERICREDIT AUTOMOBILE': 'AMCAR',
+    'GM FINANCIAL CONSUMER AUTOMOBILE': 'GMCAR',
+    'TOYOTA AUTO': 'TAOT',
+    'TOYOTA': 'TAOT',
+    'WORLD OMNI AUTO': 'WOART',
+    'WORLD OMNI': 'WOART',
+    'ALLY AUTO': 'ALLYA',
+    'HONDA AUTO': 'HAROT',
+    'HYUNDAI AUTO': 'HART',
+    'NISSAN AUTO': 'NAROT',
+    'FORD CREDIT AUTO OWNER': 'FORDO',
+    'FORD CREDIT AUTO': 'FORDO',
+  };
+  for (const [k, v] of Object.entries(initials)) {
+    if (shelf.startsWith(k)) return `${v} ${vintage}`.trim();
+  }
+  return `${shelf} ${vintage}`.trim() || trust;
+}
 
 const TRUST_COLORS = [
   COLORS.chartPrimary,
@@ -83,6 +122,92 @@ function ChartTooltip({
         </div>
       ))}
     </TooltipShell>
+  );
+}
+
+// Auto vintage scatter: each deal trust is one dot — x = pool factor
+// (remaining/original pool, REVERSED so deals age left→right), y = cumulative
+// net loss %. The dot cloud IS the vintage curve; subprime shelves in red.
+function VintageScatter({ latest }: { latest: TrustPerformanceLatest[] }) {
+  const pts = useMemo(
+    () =>
+      latest
+        .filter(
+          (t) =>
+            t.metrics.pool_factor != null &&
+            t.metrics.cumulative_net_loss_rate != null,
+        )
+        .map((t) => ({
+          x: t.metrics.pool_factor,
+          y: t.metrics.cumulative_net_loss_rate,
+          name: shortAutoName(t.trust_name),
+          subprime: SUBPRIME_SHELVES.test(t.trust_name),
+        })),
+    [latest],
+  );
+  if (pts.length === 0)
+    return <EmptyState message="NO CNL + POOL FACTOR PAIRS YET — MORE FILINGS NEEDED" />;
+
+  const prime = pts.filter((p) => !p.subprime);
+  const subprime = pts.filter((p) => p.subprime);
+  return (
+    <div>
+      <div
+        className="mono"
+        style={{ fontSize: 10, color: 'var(--text-secondary)', letterSpacing: 0.5, marginBottom: 2 }}
+      >
+        VINTAGE CURVE · EACH DOT = ONE DEAL TRUST · SEASONING INCREASES LEFT → RIGHT
+      </div>
+      <ResponsiveContainer width="100%" height={240}>
+        <ScatterChart margin={{ top: 8, right: 12, bottom: 4, left: -8 }}>
+          <CartesianGrid stroke={COLORS.border} strokeDasharray="2 4" />
+          <XAxis
+            type="number"
+            dataKey="x"
+            domain={[0, 1]}
+            reversed
+            tick={{ fontSize: 10, fill: COLORS.textSecondary }}
+            tickFormatter={(v: number) => v.toFixed(1)}
+            label={{
+              value: 'POOL FACTOR',
+              position: 'insideBottom',
+              offset: -2,
+              fill: COLORS.textSecondary,
+              fontSize: 9,
+            }}
+          />
+          <YAxis
+            type="number"
+            dataKey="y"
+            tick={{ fontSize: 10, fill: COLORS.textSecondary }}
+            tickFormatter={(v: number) => `${v}%`}
+            width={48}
+          />
+          <Tooltip
+            cursor={{ strokeDasharray: '3 3' }}
+            content={({ active, payload }) => {
+              if (!active || !payload?.length) return null;
+              const p = payload[0].payload as { name: string; x: number; y: number };
+              return (
+                <TooltipShell title={p.name}>
+                  <div>CNL: {p.y.toFixed(2)}%</div>
+                  <div>pool factor: {p.x.toFixed(3)}</div>
+                </TooltipShell>
+              );
+            }}
+          />
+          <Scatter data={prime} fill={COLORS.chartSecondary} isAnimationActive={false} />
+          <Scatter data={subprime} fill={COLORS.negative} isAnimationActive={false} />
+        </ScatterChart>
+      </ResponsiveContainer>
+      <div
+        className="mono"
+        style={{ fontSize: 10, color: 'var(--text-secondary)', letterSpacing: 0.5, display: 'flex', gap: 14 }}
+      >
+        <span><span style={{ color: COLORS.chartSecondary }}>●</span> PRIME</span>
+        <span><span style={{ color: COLORS.negative }}>●</span> SUBPRIME</span>
+      </div>
+    </div>
   );
 }
 
@@ -138,18 +263,20 @@ function SeriesChart({ rows }: { rows: TrustPerformanceRow[] }) {
 }
 
 export default function TrustPerformancePanel() {
+  const [segment, setSegment] = useState<'credit_card' | 'auto'>('credit_card');
   const [metric, setMetric] = useState('net_charge_off_rate');
   const queryClient = useQueryClient();
 
   const latestQ = useQuery({
-    queryKey: qk.trustPerformanceLatest,
-    queryFn: () => getTrustPerformanceLatest().then((r) => r.data),
+    queryKey: qk.trustPerformanceLatest(segment),
+    queryFn: () => getTrustPerformanceLatest(segment).then((r) => r.data),
     staleTime: 30 * 60_000,
   });
   const seriesQ = useQuery({
-    queryKey: qk.trustPerformance(metric),
-    queryFn: () => getTrustPerformance(metric).then((r) => r.data),
+    queryKey: qk.trustPerformance(metric, segment),
+    queryFn: () => getTrustPerformance(metric, segment).then((r) => r.data),
     staleTime: 30 * 60_000,
+    enabled: segment === 'credit_card', // auto uses the vintage scatter instead
   });
 
   const refresh = useMutation({
@@ -161,8 +288,30 @@ export default function TrustPerformancePanel() {
 
   const latest: TrustPerformanceLatest[] = latestQ.data ?? [];
 
+  const segChip = (value: 'credit_card' | 'auto', label: string) => (
+    <button
+      className="mono"
+      onClick={() => setSegment(value)}
+      style={{
+        fontSize: 10,
+        letterSpacing: 0.5,
+        padding: '3px 8px',
+        borderRadius: 2,
+        cursor: 'pointer',
+        background: 'transparent',
+        border: `1px solid ${segment === value ? 'var(--accent)' : 'var(--border)'}`,
+        color: segment === value ? 'var(--accent)' : 'var(--text-secondary)',
+      }}
+    >
+      {label}
+    </button>
+  );
+
   const actions = (
     <div style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+      {segChip('credit_card', 'CARD')}
+      {segChip('auto', 'AUTO')}
+      {segment === 'credit_card' && (
       <select
         value={metric}
         onChange={(e) => setMetric(e.target.value)}
@@ -176,12 +325,13 @@ export default function TrustPerformancePanel() {
           borderRadius: 2,
         }}
       >
-        {METRICS.map((m) => (
+        {CARD_METRICS.map((m) => (
           <option key={m.value} value={m.value} style={{ background: 'var(--bg-panel)' }}>
             {m.label}
           </option>
         ))}
       </select>
+      )}
       <button
         className="btn"
         onClick={() => refresh.mutate()}
@@ -199,17 +349,32 @@ export default function TrustPerformancePanel() {
     </div>
   );
 
+  // Auto: sort worst-first by CNL so the stressed vintages surface.
+  const autoSorted = useMemo(
+    () =>
+      [...latest].sort(
+        (a, b) =>
+          (b.metrics.cumulative_net_loss_rate ?? -1) -
+          (a.metrics.cumulative_net_loss_rate ?? -1),
+      ),
+    [latest],
+  );
+
   return (
     <Panel
       title="Master-Trust Performance (10-D)"
-      subtitle="MONTHLY CARD-TRUST DISTRIBUTION REPORTS — LEADS QUARTERLY FRED BY ~2Q"
+      subtitle={
+        segment === 'credit_card'
+          ? 'MONTHLY CARD-TRUST DISTRIBUTION REPORTS — LEADS QUARTERLY FRED BY ~2Q'
+          : 'AUTO DEAL TRUSTS — EACH TRUST IS AN ORIGINATION VINTAGE'
+      }
       actions={actions}
     >
       {latestQ.isLoading ? (
         <LoadingCursor />
       ) : latestQ.isError || latest.length === 0 ? (
         <EmptyState message="NO 10-D DATA — HIT REFRESH" />
-      ) : (
+      ) : segment === 'credit_card' ? (
         <div className="stack" style={{ gap: 12 }}>
           <table className="data-table">
             <thead>
@@ -264,6 +429,64 @@ export default function TrustPerformancePanel() {
             <LoadingCursor />
           ) : (
             <SeriesChart rows={seriesQ.data ?? []} />
+          )}
+        </div>
+      ) : (
+        <div className="stack" style={{ gap: 12 }}>
+          <VintageScatter latest={latest} />
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>DEAL</th>
+                <th>PERIOD</th>
+                <th style={{ textAlign: 'right' }}>30+ DLQ</th>
+                <th style={{ textAlign: 'right' }}>60+ DLQ</th>
+                <th style={{ textAlign: 'right' }}>CNL</th>
+                <th style={{ textAlign: 'right' }}>POOL FACTOR</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {autoSorted.slice(0, 25).map((t) => (
+                <tr key={t.trust_name}>
+                  <td className="mono" title={t.trust_name}>{shortAutoName(t.trust_name)}</td>
+                  <td className="mono muted">{fmtDate(t.period_end)}</td>
+                  <td className="mono" style={{ textAlign: 'right' }}>
+                    {fmtPct(t.metrics.delinq_30plus_rate)}
+                  </td>
+                  <td className="mono" style={{ textAlign: 'right' }}>
+                    {fmtPct(t.metrics.delinq_60plus_rate)}
+                  </td>
+                  <td
+                    className="mono"
+                    style={{
+                      textAlign: 'right',
+                      color:
+                        (t.metrics.cumulative_net_loss_rate ?? 0) > 8
+                          ? 'var(--negative)'
+                          : 'var(--text-primary)',
+                    }}
+                  >
+                    {fmtPct(t.metrics.cumulative_net_loss_rate)}
+                  </td>
+                  <td className="mono" style={{ textAlign: 'right' }}>
+                    {t.metrics.pool_factor != null ? t.metrics.pool_factor.toFixed(3) : '—'}
+                  </td>
+                  <td>
+                    {t.url && (
+                      <a href={t.url} target="_blank" rel="noreferrer" title="Open filing">
+                        <ExternalLink size={12} />
+                      </a>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {autoSorted.length > 25 && (
+            <div className="mono muted" style={{ fontSize: 10 }}>
+              + {autoSorted.length - 25} more deals (sorted by CNL, worst first)
+            </div>
           )}
         </div>
       )}

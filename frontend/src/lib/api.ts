@@ -492,13 +492,15 @@ export const triggerAbsPricingRefresh = (days_back = 30) =>
   });
 
 // ── Master-trust monthly performance (10-D) ────────────────
-export const getTrustPerformance = (metric?: string) =>
+export const getTrustPerformance = (metric?: string, segment?: string) =>
   api.get<TrustPerformanceRow[]>('/trust-performance', {
-    params: { metric: metric || undefined },
+    params: { metric: metric || undefined, segment: segment || undefined, limit: 20000 },
   });
 
-export const getTrustPerformanceLatest = () =>
-  api.get<TrustPerformanceLatest[]>('/trust-performance/latest');
+export const getTrustPerformanceLatest = (segment?: string) =>
+  api.get<TrustPerformanceLatest[]>('/trust-performance/latest', {
+    params: { segment: segment || undefined },
+  });
 
 export const triggerTrustPerformanceRefresh = (days_back = 35) =>
   api.post<{ rows: number }>('/trust-performance/refresh', null, {

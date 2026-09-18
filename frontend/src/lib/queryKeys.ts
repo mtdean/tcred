@@ -20,8 +20,10 @@ export const qk = {
   absSpreadSeries: (params: Record<string, unknown>) =>
     ['abs', 'spread-series', params] as const,
   absDealSummary: (daysBack: number) => ['abs', 'deal-summary', daysBack] as const,
-  trustPerformance: (metric: string) => ['trust-performance', metric] as const,
-  trustPerformanceLatest: ['trust-performance', 'latest'] as const,
+  trustPerformance: (metric: string, segment: string) =>
+    ['trust-performance', metric, segment] as const,
+  trustPerformanceLatest: (segment: string) =>
+    ['trust-performance', 'latest', segment] as const,
   deals: ['deals'] as const,
 
   // Phase 7

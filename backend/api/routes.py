@@ -431,19 +431,20 @@ def trigger_abs_pricing_refresh(days_back: int = Query(default=30, le=180)):
 def get_trust_performance_endpoint(
     metric: Optional[str] = None,
     trust: Optional[str] = None,
-    limit: int = Query(default=500, le=5000),
+    segment: Optional[str] = None,
+    limit: int = Query(default=500, le=20000),
 ):
     """Monthly master-trust metrics (delinquency / charge-off / payment rate),
     oldest first — one row per (trust, period, metric)."""
     from data.trust_performance import get_trust_performance
-    return get_trust_performance(metric=metric, trust=trust, limit=limit)
+    return get_trust_performance(metric=metric, trust=trust, segment=segment, limit=limit)
 
 
 @router.get("/trust-performance/latest")
-def get_trust_performance_latest_endpoint():
+def get_trust_performance_latest_endpoint(segment: Optional[str] = None):
     """Latest reported period per trust, metrics pivoted into one row."""
     from data.trust_performance import get_trust_performance_latest
-    return get_trust_performance_latest()
+    return get_trust_performance_latest(segment=segment)
 
 
 @router.post("/trust-performance/refresh")
