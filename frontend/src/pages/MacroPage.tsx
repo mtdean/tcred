@@ -5,7 +5,10 @@ import MacroIndicators from '../components/macro/MacroIndicators';
 import H8CreditPanel from '../components/macro/H8CreditPanel';
 import CloStressPanel from '../components/macro/CloStressPanel';
 import TrustPerformancePanel from '../components/abs/TrustPerformancePanel';
-import ConsumerScorecardPanel from '../components/macro/ConsumerScorecardPanel';
+import ConsumerScorecardPanel, {
+  LeveragedScorecardPanel,
+  SmbScorecardPanel,
+} from '../components/macro/ConsumerScorecardPanel';
 import {
   NationalActivityPanel,
   RecessionEnsemblePanel,
@@ -78,10 +81,11 @@ export default function MacroPage() {
 
       <SectionLabel>Consumer Health</SectionLabel>
       <ConsumerScorecardPanel />
-      <div className="grid-2">
-        <ConsumerExpectationsPanel />
-        <SbaLendingPanel />
-      </div>
+      <ConsumerExpectationsPanel />
+
+      <SectionLabel>Business & SMB Credit</SectionLabel>
+      <SmbScorecardPanel />
+      <SbaLendingPanel />
 
       <SectionLabel>Credit & Delinquency</SectionLabel>
       <div className="grid-2">
@@ -105,6 +109,7 @@ export default function MacroPage() {
       <H8CreditPanel />
 
       <SectionLabel>CLO & Leveraged Credit Stress</SectionLabel>
+      <LeveragedScorecardPanel />
       <div className="grid-2">
         <CloStressPanel />
         <DecompressionPanel />

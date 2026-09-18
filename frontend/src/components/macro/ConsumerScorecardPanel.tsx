@@ -3,8 +3,13 @@
 // stress), plus a composite headline. Backed by GET /api/scorecard/consumer.
 
 import { useQuery } from '@tanstack/react-query';
-import { getConsumerScorecard } from '../../lib/api';
-import type { ScorecardIndicator } from '../../lib/types';
+import type { AxiosResponse } from 'axios';
+import {
+  getConsumerScorecard,
+  getLeveragedScorecard,
+  getSmbScorecard,
+} from '../../lib/api';
+import type { ConsumerScorecard, ScorecardIndicator } from '../../lib/types';
 import Panel from '../shared/Panel';
 import LoadingCursor from '../shared/LoadingCursor';
 import EmptyState from '../shared/EmptyState';
@@ -51,10 +56,18 @@ function StressBar({ pctl }: { pctl: number | null }) {
   );
 }
 
-export default function ConsumerScorecardPanel() {
+function ScorecardPanel({
+  title,
+  slug,
+  fetcher,
+}: {
+  title: string;
+  slug: string;
+  fetcher: () => Promise<AxiosResponse<ConsumerScorecard>>;
+}) {
   const q = useQuery({
-    queryKey: ['scorecard', 'consumer'],
-    queryFn: () => getConsumerScorecard().then((r) => r.data),
+    queryKey: ['scorecard', slug],
+    queryFn: () => fetcher().then((r) => r.data),
     staleTime: 60 * 60_000,
   });
 
@@ -71,7 +84,7 @@ export default function ConsumerScorecardPanel() {
 
   return (
     <Panel
-      title="Consumer Health Scorecard"
+      title={title}
       subtitle={
         d
           ? `${d.n_worsening}/${d.n_indicators} WORSENING · STRESS PCTL = WHERE TODAY SITS IN 5Y (100 = MAX STRESS)`
@@ -127,5 +140,35 @@ export default function ConsumerScorecardPanel() {
         </table>
       )}
     </Panel>
+  );
+}
+
+export default function ConsumerScorecardPanel() {
+  return (
+    <ScorecardPanel
+      title="Consumer Health Scorecard"
+      slug="consumer"
+      fetcher={getConsumerScorecard}
+    />
+  );
+}
+
+export function SmbScorecardPanel() {
+  return (
+    <ScorecardPanel
+      title="SMB Credit Scorecard"
+      slug="smb"
+      fetcher={getSmbScorecard}
+    />
+  );
+}
+
+export function LeveragedScorecardPanel() {
+  return (
+    <ScorecardPanel
+      title="Leveraged Credit Scorecard"
+      slug="leveraged"
+      fetcher={getLeveragedScorecard}
+    />
   );
 }

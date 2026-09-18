@@ -40,3 +40,4 @@ anthropic==0.104.1
 # Utils
 numpy==2.4.6
 pandas==3.0.3
+pypdf

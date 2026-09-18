@@ -111,3 +111,79 @@ class TestSba:
     def test_network_failure_is_zero(self, fresh_db, mocked_responses):
         mocked_responses.get(sba.XLSX_URL, status=500)
         assert sba.fetch_sba_activity() == 0
+
+
+# ─── NFIB SBET PDF-text parsing ──────────────────────────────────────────────
+class TestNfibParse:
+    SAMPLE = """OPTIMISM INDEX
+Based on Ten Survey Indicators
+(Seasonally Adjusted 1986=100)
+Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec
+2025 95.0 95.8 98.2 99.8 99.6 102.5 99.7 100.1 99.1 98.2 98.4 98.9
+2026 97.1 95.7 93.2 93.2 93.1 89.5 89.9 98.7
+other text
+AVAILABILITY OF LOANS
+Percent Borrowing at Least Once Every Three Months
+Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec
+2025 23 26 23 24 23 21 21 20 20 23 21 23
+2026 25 25 24 22 27 22 27 25
+Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec
+2025 -1 -2 -1 -3 -2 -2 -2 -3 -4 -2 -1 -4
+2026 -3 -5 -5 -3 -4 -3 -5 -3
+"""
+
+    def test_optimism_parsed(self):
+        from data.nfib import parse_sbet_text
+        s = parse_sbet_text(self.SAMPLE)
+        pts = s["NFIB_OPTIMISM"]
+        assert pts[0] == ("2025-01-01", 95.0)
+        assert pts[-1] == ("2026-08-01", 98.7)
+
+    def test_availability_takes_second_table(self):
+        from data.nfib import parse_sbet_text
+        s = parse_sbet_text(self.SAMPLE)
+        pts = s["NFIB_LOAN_AVAILABILITY"]
+        # Must be the NET table (negatives), not the borrower-share table (20s).
+        assert pts[0] == ("2025-01-01", -1.0)
+        assert pts[-1] == ("2026-08-01", -3.0)
+
+    def test_missing_anchors_empty(self):
+        from data.nfib import parse_sbet_text
+        assert parse_sbet_text("nothing here") == {}
+
+
+# ─── Scorecard derived series (spread / ratio) ───────────────────────────────
+class TestScorecardDerived:
+    def _seed(self, conn, sid, pairs):
+        for d, v in pairs:
+            conn.execute(
+                "INSERT OR REPLACE INTO metrics (series_id, date, value, label, category, fetched_at) "
+                "VALUES (?, ?, ?, ?, 'x', '2026-09-18')", (sid, d, v, sid),
+            )
+        conn.commit()
+
+    def test_spread_of(self, db_conn):
+        from data import scorecard
+        self._seed(db_conn, "CCC", [("2026-09-01", 10.0), ("2026-09-02", 11.0)])
+        self._seed(db_conn, "B", [("2026-09-01", 4.0), ("2026-09-02", 4.5)])
+        spec = {"id": "X", "label": "x", "unit": "bp", "orient": +1,
+                "trend_obs": 1, "scale": 100, "spread_of": ["CCC", "B"]}
+        with db.get_conn() as conn:
+            vals = scorecard._spec_values(conn, spec)
+        assert vals == [("2026-09-01", 600.0), ("2026-09-02", 650.0)]
+
+    def test_ratio_of(self, db_conn):
+        from data import scorecard
+        self._seed(db_conn, "JBBB", [("2026-09-01", 47.0)])
+        self._seed(db_conn, "JAAA", [("2026-09-01", 50.0)])
+        spec = {"id": "R", "label": "r", "unit": "", "orient": -1,
+                "trend_obs": 1, "ratio_of": ["JBBB", "JAAA"]}
+        with db.get_conn() as conn:
+            vals = scorecard._spec_values(conn, spec)
+        assert vals == [("2026-09-01", 0.94)]
+
+    def test_smb_and_leveraged_compute(self, fresh_db):
+        from data import scorecard
+        # empty DB → empty scorecards, no crash
+        assert scorecard.compute_smb_scorecard()["indicators"] == []
+        assert scorecard.compute_leveraged_scorecard()["indicators"] == []

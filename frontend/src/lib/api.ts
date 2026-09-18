@@ -536,6 +536,10 @@ export const lookupEntity = (name: string) =>
   api.get<EntityLookupResult>('/entities/lookup', { params: { name } });
 export const getConsumerScorecard = () =>
   api.get<ConsumerScorecard>('/scorecard/consumer');
+export const getSmbScorecard = () =>
+  api.get<ConsumerScorecard>('/scorecard/smb');
+export const getLeveragedScorecard = () =>
+  api.get<ConsumerScorecard>('/scorecard/leveraged');
 
 // ── Background refresh jobs ────────────────────────────────────────────────
 export interface JobStartResponse {

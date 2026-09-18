@@ -648,6 +648,20 @@ def consumer_scorecard():
     return compute_consumer_scorecard()
 
 
+@router.get("/scorecard/smb")
+def smb_scorecard():
+    """Small-business credit scorecard (SLOOS small firms, SBA, NFIB, H.8...)."""
+    from data.scorecard import compute_smb_scorecard
+    return compute_smb_scorecard()
+
+
+@router.get("/scorecard/leveraged")
+def leveraged_scorecard():
+    """Leveraged credit / CLO scorecard (tier bases, CLO proxy, EBP, BDC marks)."""
+    from data.scorecard import compute_leveraged_scorecard
+    return compute_leveraged_scorecard()
+
+
 @router.get("/entities/lookup")
 def entities_lookup(name: str = Query(min_length=3, max_length=120)):
     """Cross-source entity lookup: BDC holdings + EDGAR filings + news."""

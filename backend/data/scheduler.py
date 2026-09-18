@@ -228,6 +228,14 @@ def _sba_inner() -> int:
     return n
 
 
+def _nfib_inner() -> int:
+    """NFIB SBET monthly PDF — optimism + loan availability. Token-free."""
+    from data.nfib import fetch_nfib
+    n = fetch_nfib()
+    logger.info(f"Scheduler: NFIB — {n} rows")
+    return n
+
+
 def _daily_brief_inner() -> int:
     """Morning digest + ntfy push (config: data_sources.yaml daily_brief)."""
     from data.daily_brief import run_morning_brief
@@ -286,6 +294,7 @@ _job_alerts = _instrument("alerts", _alerts_inner)
 _job_daily_brief = _instrument("daily_brief", _daily_brief_inner)
 _job_sce = _instrument("sce", _sce_inner)
 _job_sba = _instrument("sba", _sba_inner)
+_job_nfib = _instrument("nfib", _nfib_inner)
 
 
 async def start_scheduler():
@@ -445,6 +454,10 @@ async def start_scheduler():
         _job_sba, IntervalTrigger(hours=168), id="sba",
         max_instances=1, replace_existing=True,
     )
+    _scheduler.add_job(
+        _job_nfib, IntervalTrigger(hours=168), id="nfib",
+        max_instances=1, replace_existing=True,
+    )
 
     # Morning brief: cron-scheduled digest generation + ntfy push. One small
     # Claude call per day; disable via data_sources.yaml daily_brief.enabled.
@@ -524,6 +537,7 @@ async def _initial_fetch(auto_news: bool) -> None:
         asyncio.to_thread(_job_trace),        # blocking → thread
         asyncio.to_thread(_job_sce),          # blocking → thread
         asyncio.to_thread(_job_sba),          # blocking → thread
+        asyncio.to_thread(_job_nfib),         # blocking → thread
     ]
     if auto_news:
         tasks.append(_job_feeds())       # async
