@@ -22,6 +22,7 @@ from functools import wraps
 from typing import Callable
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from cache.db import finish_job_run, reap_stale_job_runs, start_job_run
@@ -211,6 +212,12 @@ def _alerts_inner() -> int:
     return n
 
 
+def _daily_brief_inner() -> int:
+    """Morning digest + ntfy push (config: data_sources.yaml daily_brief)."""
+    from data.daily_brief import run_morning_brief
+    return run_morning_brief()
+
+
 def _article_dedup_inner() -> int:
     """Cluster + tag recent articles by title similarity (token-set Jaccard)."""
     from data.article_dedup import dedup_recent_articles
@@ -260,6 +267,7 @@ _job_cfpb = _instrument("cfpb", _cfpb_inner)
 _job_trace = _instrument("trace", _trace_inner)
 _job_macro_forecasts = _instrument("macro_forecasts", _macro_forecasts_inner)
 _job_alerts = _instrument("alerts", _alerts_inner)
+_job_daily_brief = _instrument("daily_brief", _daily_brief_inner)
 
 
 async def start_scheduler():
@@ -408,6 +416,21 @@ async def start_scheduler():
         max_instances=1,
         replace_existing=True,
     )
+
+    # Morning brief: cron-scheduled digest generation + ntfy push. One small
+    # Claude call per day; disable via data_sources.yaml daily_brief.enabled.
+    brief_cfg = cfg.get("daily_brief") or {}
+    if brief_cfg.get("enabled", False):
+        _scheduler.add_job(
+            _job_daily_brief,
+            CronTrigger(
+                hour=int(brief_cfg.get("hour", 7)),
+                minute=int(brief_cfg.get("minute", 5)),
+            ),
+            id="daily_brief",
+            max_instances=1,
+            replace_existing=True,
+        )
 
     # Hourly alert-rule evaluation → ntfy pushes. Silent no-op without
     # NTFY_TOPIC in .env; noise gates live in config/alerts.yaml.

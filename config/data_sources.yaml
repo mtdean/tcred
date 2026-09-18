@@ -775,3 +775,13 @@ refresh_intervals:
                                 # 60 = auto-refresh hourly. Set 0 to disable and go
                                 # back to on-demand-only via the REFRESH button.
   edgar_filings_hours: 4        # EDGAR new filings (token-free)
+
+# Scheduled morning brief: generates the AM digest (same one as the Home
+# DIGEST panel) and pushes it to your phone via ntfy (needs NTFY_TOPIC in
+# .env; without it the digest still generates, just no push). Time is
+# server-local. Uses one small Claude call per morning.
+daily_brief:
+  enabled: true
+  hour: 7
+  minute: 5
+  push: true

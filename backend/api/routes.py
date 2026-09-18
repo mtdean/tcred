@@ -1130,6 +1130,13 @@ def jobs_history(
     return {"runs": get_job_run_history(job_id=job_id, limit=limit)}
 
 
+@router.post("/brief/run")
+def run_brief_now():
+    """Generate + persist the digest and push it (same as the 7:05am job)."""
+    from data.daily_brief import run_morning_brief
+    return {"article_count": run_morning_brief()}
+
+
 @router.get("/alerts/status")
 def alerts_status():
     """Alert rules + delivery config + recent fired alerts."""
