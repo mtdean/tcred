@@ -4,6 +4,7 @@ import RatesPanel from '../components/macro/RatesPanel';
 import MacroIndicators from '../components/macro/MacroIndicators';
 import H8CreditPanel from '../components/macro/H8CreditPanel';
 import CloStressPanel from '../components/macro/CloStressPanel';
+import TrustPerformancePanel from '../components/abs/TrustPerformancePanel';
 import {
   NationalActivityPanel,
   RecessionEnsemblePanel,
@@ -78,6 +79,12 @@ export default function MacroPage() {
         <UsedVehicleValuesPanel />
         <ConsumerComplaintsPanel />
       </div>
+
+      {/* Monthly card master-trust actuals from 10-Ds — the high-frequency
+          complement to the quarterly FRED bank data above. (Rescued from the
+          parked ABS tab.) */}
+      <SectionLabel>Card Trust Performance (10-D Monthly)</SectionLabel>
+      <TrustPerformancePanel />
 
       <SectionLabel>Bank Credit Supply (Fed H.8)</SectionLabel>
       <H8CreditPanel />
