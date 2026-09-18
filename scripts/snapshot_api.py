@@ -97,6 +97,7 @@ def run(base: str, out_dir: Path) -> int:
     s.snap("/bdc/nonaccruals", {"limit": 100})
     s.snap("/bdc/sector-trend")
     s.snap("/bdc/sector-detail")
+    s.snap("/scorecard/consumer")
     s.snap("/trust-performance")
     s.snap("/trust-performance/latest")
     for seg in ("credit_card", "auto"):

@@ -641,6 +641,13 @@ def get_bdc_sector_trend(min_bdcs: int = Query(default=3, ge=1, le=50)):
     return _sectors(min_bdcs=min_bdcs)
 
 
+@router.get("/scorecard/consumer")
+def consumer_scorecard():
+    """Consumer Health Scorecard: latest / trend / 5y stress percentile per indicator."""
+    from data.scorecard import compute_consumer_scorecard
+    return compute_consumer_scorecard()
+
+
 @router.get("/entities/lookup")
 def entities_lookup(name: str = Query(min_length=3, max_length=120)):
     """Cross-source entity lookup: BDC holdings + EDGAR filings + news."""

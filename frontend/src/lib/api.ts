@@ -24,6 +24,7 @@ import type {
   BdcSectorTrendPoint,
   BdcSummaryRow,
   BdcWatchEntry,
+  ConsumerScorecard,
   EntityLookupResult,
   CloSpreadProxyPoint,
   CreditImpulsePoint,
@@ -533,6 +534,8 @@ export const getBdcSectorDetail = () =>
   api.get<BdcSectorDetail>('/bdc/sector-detail');
 export const lookupEntity = (name: string) =>
   api.get<EntityLookupResult>('/entities/lookup', { params: { name } });
+export const getConsumerScorecard = () =>
+  api.get<ConsumerScorecard>('/scorecard/consumer');
 
 // ── Background refresh jobs ────────────────────────────────────────────────
 export interface JobStartResponse {

@@ -516,6 +516,25 @@ export interface BdcSectorDetail {
   sectors: Record<string, BdcSectorDetailRow[]>;
 }
 
+export interface ScorecardIndicator {
+  id: string;
+  label: string;
+  unit: string;
+  value: number | null;
+  date: string;
+  trend: 'worsening' | 'improving' | 'flat' | null;
+  stress_percentile: number | null;
+  source: string;
+}
+
+export interface ConsumerScorecard {
+  composite_stress: number | null;
+  n_indicators: number;
+  n_scored: number;
+  n_worsening: number;
+  indicators: ScorecardIndicator[];
+}
+
 export interface EntityPeriodRow {
   period: string;
   n_tranches: number;
