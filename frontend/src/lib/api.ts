@@ -24,6 +24,7 @@ import type {
   BdcSectorTrendPoint,
   BdcSummaryRow,
   BdcWatchEntry,
+  EntityLookupResult,
   CloSpreadProxyPoint,
   CreditImpulsePoint,
   FeedHealth,
@@ -528,6 +529,8 @@ export const getBdcSectorTrend = () =>
   api.get<BdcSectorTrendPoint[]>('/bdc/sector-trend');
 export const getBdcSectorDetail = () =>
   api.get<BdcSectorDetail>('/bdc/sector-detail');
+export const lookupEntity = (name: string) =>
+  api.get<EntityLookupResult>('/entities/lookup', { params: { name } });
 
 // ── Background refresh jobs ────────────────────────────────────────────────
 export interface JobStartResponse {

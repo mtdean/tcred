@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom';
+import { STATIC_MODE_ENABLED } from '../../lib/staticMode';
 
 const TABS: { to: string; label: string }[] = [
   { to: '/', label: 'Home' },
@@ -10,6 +11,8 @@ const TABS: { to: string; label: string }[] = [
   { to: '/regulatory', label: 'Regulatory' },
   { to: '/analyst', label: 'Analyst' },
   { to: '/watchlists', label: 'Watchlists' },
+  // Lookup needs a live backend to search — hide it on static snapshots.
+  ...(STATIC_MODE_ENABLED ? [] : [{ to: '/lookup', label: 'Lookup' }]),
 ];
 
 export default function TabNav() {

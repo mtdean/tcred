@@ -640,6 +640,13 @@ def get_bdc_sector_trend(min_bdcs: int = Query(default=3, ge=1, le=50)):
     return _sectors(min_bdcs=min_bdcs)
 
 
+@router.get("/entities/lookup")
+def entities_lookup(name: str = Query(min_length=3, max_length=120)):
+    """Cross-source entity lookup: BDC holdings + EDGAR filings + news."""
+    from data.entities import lookup_entity
+    return lookup_entity(name)
+
+
 @router.get("/bdc/sector-detail")
 def get_bdc_sector_detail():
     """Per-BDC drill-down behind each sector's mark, all sectors in one payload."""

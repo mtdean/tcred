@@ -12,6 +12,7 @@ import PrivateCreditPage from './pages/PrivateCreditPage';
 import RegulatoryPage from './pages/RegulatoryPage';
 import AnalystPage from './pages/AnalystPage';
 import WatchlistsPage from './pages/WatchlistsPage';
+import EntityLookupPage from './pages/EntityLookupPage';
 
 export default function App() {
   return (
@@ -28,6 +29,7 @@ export default function App() {
           <Route path="/regulatory" element={<RegulatoryPage />} />
           <Route path="/analyst" element={<AnalystPage />} />
           <Route path="/watchlists" element={<WatchlistsPage />} />
+          <Route path="/lookup" element={<EntityLookupPage />} />
         </Routes>
       </PullToRefresh>
       <StatusBar />

@@ -515,6 +515,58 @@ export interface BdcSectorDetail {
   sectors: Record<string, BdcSectorDetailRow[]>;
 }
 
+export interface EntityPeriodRow {
+  period: string;
+  n_tranches: number;
+  n_bdcs: number;
+  cost_basis: number | null;
+  fair_value: number | null;
+  mark_to_cost: number | null;
+  any_nonaccrual: boolean;
+}
+
+export interface EntityHolder {
+  bdc_name: string;
+  investment_type: string | null;
+  industry: string | null;
+  interest_rate: number | null;
+  cost_basis: number | null;
+  fair_value: number | null;
+  mark_to_cost: number | null;
+  is_nonaccrual: number;
+}
+
+export interface EntityFiling {
+  accession_no: string;
+  company_name: string | null;
+  form_type: string | null;
+  filed_at: string | null;
+  description: string | null;
+  url: string | null;
+  asset_class: string | null;
+}
+
+export interface EntityArticle {
+  id: string;
+  feed_name: string;
+  title: string;
+  url: string;
+  published_at: string | null;
+  fetched_at: string | null;
+  relevance_score: number | null;
+}
+
+export interface EntityLookupResult {
+  query: string;
+  error?: string;
+  holdings_by_period: EntityPeriodRow[];
+  latest_period: string | null;
+  current_holders: EntityHolder[];
+  filings: EntityFiling[];
+  articles: EntityArticle[];
+  truncated_holdings: boolean;
+}
+
 export interface BdcNonaccrualHolding {
   bdc_name: string;
   company_name: string | null;
