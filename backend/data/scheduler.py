@@ -212,6 +212,22 @@ def _alerts_inner() -> int:
     return n
 
 
+def _sce_inner() -> int:
+    """NY Fed Survey of Consumer Expectations (monthly XLSX). Token-free."""
+    from data.sce import fetch_sce
+    n = fetch_sce()
+    logger.info(f"Scheduler: SCE — {n} rows")
+    return n
+
+
+def _sba_inner() -> int:
+    """SBA 7(a)/504 monthly lending activity (open-data XLSX). Token-free."""
+    from data.sba import fetch_sba_activity
+    n = fetch_sba_activity()
+    logger.info(f"Scheduler: SBA — {n} rows")
+    return n
+
+
 def _daily_brief_inner() -> int:
     """Morning digest + ntfy push (config: data_sources.yaml daily_brief)."""
     from data.daily_brief import run_morning_brief
@@ -268,6 +284,8 @@ _job_trace = _instrument("trace", _trace_inner)
 _job_macro_forecasts = _instrument("macro_forecasts", _macro_forecasts_inner)
 _job_alerts = _instrument("alerts", _alerts_inner)
 _job_daily_brief = _instrument("daily_brief", _daily_brief_inner)
+_job_sce = _instrument("sce", _sce_inner)
+_job_sba = _instrument("sba", _sba_inner)
 
 
 async def start_scheduler():
@@ -417,6 +435,17 @@ async def start_scheduler():
         replace_existing=True,
     )
 
+    # SCE is monthly and SBA activity monthly — a weekly check picks up each
+    # release within days at negligible cost.
+    _scheduler.add_job(
+        _job_sce, IntervalTrigger(hours=168), id="sce",
+        max_instances=1, replace_existing=True,
+    )
+    _scheduler.add_job(
+        _job_sba, IntervalTrigger(hours=168), id="sba",
+        max_instances=1, replace_existing=True,
+    )
+
     # Morning brief: cron-scheduled digest generation + ntfy push. One small
     # Claude call per day; disable via data_sources.yaml daily_brief.enabled.
     brief_cfg = cfg.get("daily_brief") or {}
@@ -493,6 +522,8 @@ async def _initial_fetch(auto_news: bool) -> None:
         asyncio.to_thread(_job_manheim),      # blocking → thread
         asyncio.to_thread(_job_cfpb),         # blocking → thread
         asyncio.to_thread(_job_trace),        # blocking → thread
+        asyncio.to_thread(_job_sce),          # blocking → thread
+        asyncio.to_thread(_job_sba),          # blocking → thread
     ]
     if auto_news:
         tasks.append(_job_feeds())       # async

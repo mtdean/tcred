@@ -38,6 +38,13 @@ _METRIC_INDICATORS: list[dict] = [
      "orient": +1, "trend_obs": 2},
     {"id": "CORCCACBS", "label": "Card Charge-offs (banks)", "unit": "%",
      "orient": +1, "trend_obs": 2},
+    # Forward-looking: what households themselves expect (NY Fed SCE).
+    {"id": "SCE_MISS_PAYMENT_PROB", "label": "Expect to Miss Payment (SCE)",
+     "unit": "%", "orient": +1, "trend_obs": 3},
+    {"id": "SCE_JOB_LOSS_PROB", "label": "Expect to Lose Job (SCE)",
+     "unit": "%", "orient": +1, "trend_obs": 3},
+    {"id": "SCE_REJECTION_RATE", "label": "Credit Rejection Rate (SCE)",
+     "unit": "%", "orient": +1, "trend_obs": 1},
 ]
 
 _SUBPRIME_AUTO = re.compile(

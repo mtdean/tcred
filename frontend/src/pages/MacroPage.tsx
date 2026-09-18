@@ -29,6 +29,8 @@ import {
   DecompressionPanel,
   ConsumerCashflowPanel,
   LaborSlackPanel,
+  ConsumerExpectationsPanel,
+  SbaLendingPanel,
 } from '../components/macro/DashboardPanels';
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -76,6 +78,10 @@ export default function MacroPage() {
 
       <SectionLabel>Consumer Health</SectionLabel>
       <ConsumerScorecardPanel />
+      <div className="grid-2">
+        <ConsumerExpectationsPanel />
+        <SbaLendingPanel />
+      </div>
 
       <SectionLabel>Credit & Delinquency</SectionLabel>
       <div className="grid-2">

@@ -593,3 +593,49 @@ export function LaborSlackPanel() {
     />
   );
 }
+
+// ── Consumer expectations (NY Fed SCE) ────────────────────────────
+// Households' own forward view: probability they miss a debt payment,
+// probability they lose their job, and realized credit-application
+// rejection rates. Leads realized delinquency by months.
+export function ConsumerExpectationsPanel() {
+  const series: FredSeriesDef[] = [
+    { seriesId: 'SCE_MISS_PAYMENT_PROB', key: 'miss', name: 'PROB. MISS DEBT PAYMENT', color: COLORS.negative },
+    { seriesId: 'SCE_JOB_LOSS_PROB', key: 'job', name: 'PROB. LOSE JOB', color: COLORS.chartPrimary },
+    { seriesId: 'SCE_REJECTION_RATE', key: 'rej', name: 'CREDIT REJECTION RATE', color: COLORS.chartSecondary },
+  ];
+  return (
+    <FredSeriesPanel
+      title="Consumer Expectations (NY Fed SCE)"
+      subtitle="WHAT HOUSEHOLDS THEMSELVES EXPECT, %"
+      series={series}
+      ranges={RANGES_MONTHLY}
+      defaultRange="5Y"
+      unit="pct"
+      decimals={1}
+      limit={200}
+    />
+  );
+}
+
+// ── SMB credit formation (SBA) ────────────────────────────────────
+// Monthly 7(a)/504 approval dollars YoY — real-time small-business loan
+// demand, the flow-side complement to SLOOS small-firm tightening.
+export function SbaLendingPanel() {
+  const series: FredSeriesDef[] = [
+    { seriesId: 'SBA_7A_DOLLARS', key: 'a7', name: '7(A) APPROVALS YOY', color: COLORS.chartPrimary, yoyPeriods: 12 },
+    { seriesId: 'SBA_504_DOLLARS', key: 'p504', name: '504 APPROVALS YOY', color: COLORS.chartTertiary, yoyPeriods: 12 },
+  ];
+  return (
+    <FredSeriesPanel
+      title="SMB Credit Formation (SBA)"
+      subtitle="MONTHLY APPROVAL DOLLARS, YOY % · NOISY SERIES — READ THE TREND"
+      series={series}
+      ranges={RANGES_MONTHLY}
+      defaultRange="5Y"
+      unit="pct"
+      decimals={0}
+      limit={480}
+    />
+  );
+}
