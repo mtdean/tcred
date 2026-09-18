@@ -98,6 +98,11 @@ def run(base: str, out_dir: Path) -> int:
     s.snap("/bdc/sector-trend")
     s.snap("/bdc/sector-detail")
     s.snap("/scorecard/consumer")
+    # Analyst briefings: read-only on the static site (chat is hidden there).
+    briefs = s.snap("/briefings", {"limit": 30}) or {}
+    s.snap("/briefings/latest")
+    for b in (briefs.get("items") or []):
+        s.snap(f"/briefings/{b['id']}")
     s.snap("/scorecard/smb")
     s.snap("/scorecard/leveraged")
     s.snap("/trust-performance")

@@ -17,7 +17,7 @@ import {
   type BriefingChatMessage,
 } from '../lib/api';
 import { qk } from '../lib/queryKeys';
-import { staticDisabledProps } from '../lib/staticMode';
+import { STATIC_MODE_ENABLED, staticDisabledProps } from '../lib/staticMode';
 import { fmtDateTime } from '../lib/utils';
 import Panel from '../components/shared/Panel';
 import LoadingCursor from '../components/shared/LoadingCursor';
@@ -116,7 +116,9 @@ export default function AnalystPage() {
         </Panel>
       </div>
 
-      {briefing && <ChatPanel briefingId={briefing.id} />}
+      {/* Chat needs a live backend + tokens — briefings stay readable on the
+          static gh-pages build, but the ask-the-analyst box is hidden. */}
+      {briefing && !STATIC_MODE_ENABLED && <ChatPanel briefingId={briefing.id} />}
     </div>
   );
 }
