@@ -930,3 +930,33 @@ class TestSectorTrend:
         sw = [r for r in rows if r["sector"] == "Software & Tech"][0]
         assert sw["mark_to_cost"] == pytest.approx(0.90)
         assert sw["total_fv"] == 1450  # FV-only row still counts toward FV
+
+
+# ─── get_bdc_sector_details ──────────────────────────────────────────────────
+class TestSectorDetails:
+    def test_per_bdc_rows_with_deltas(self, fresh_db):
+        with db.get_conn() as conn:
+            for period, fv in (("2026-03-31", 99.0), ("2026-06-30", 96.0)):
+                for i in range(1, 7):
+                    _seed_industry(conn, str(i), f"BDC{i}", period,
+                                   "Software & Tech", 100, fv)
+        out = bdc.get_bdc_sector_details()
+        assert out["latest_period"] == "2026-06-30"
+        assert out["prior_period"] == "2026-03-31"
+        rows = out["sectors"]["Software & Tech"]
+        assert len(rows) == 6
+        assert rows[0]["mark_to_cost"] == pytest.approx(0.96)
+        assert rows[0]["delta_bps"] == pytest.approx(-300, abs=1)
+
+    def test_single_period_has_null_deltas(self, fresh_db):
+        with db.get_conn() as conn:
+            for i in range(1, 7):
+                _seed_industry(conn, str(i), f"BDC{i}", "2026-06-30",
+                               "Healthcare", 100, 101)
+        out = bdc.get_bdc_sector_details()
+        assert out["prior_period"] is None
+        assert out["sectors"]["Healthcare"][0]["delta_bps"] is None
+
+    def test_empty_db(self, fresh_db):
+        out = bdc.get_bdc_sector_details()
+        assert out == {"latest_period": None, "prior_period": None, "sectors": {}}

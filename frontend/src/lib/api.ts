@@ -20,6 +20,7 @@ import type {
   BdcAggregateTrendPoint,
   BdcNonaccrualHolding,
   BdcNonaccrualTrendPoint,
+  BdcSectorDetail,
   BdcSectorTrendPoint,
   BdcSummaryRow,
   BdcWatchEntry,
@@ -525,6 +526,8 @@ export const getBdcNonaccruals = (limit = 100) =>
   api.get<BdcNonaccrualHolding[]>('/bdc/nonaccruals', { params: { limit } });
 export const getBdcSectorTrend = () =>
   api.get<BdcSectorTrendPoint[]>('/bdc/sector-trend');
+export const getBdcSectorDetail = () =>
+  api.get<BdcSectorDetail>('/bdc/sector-detail');
 
 // ── Background refresh jobs ────────────────────────────────────────────────
 export interface JobStartResponse {

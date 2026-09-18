@@ -640,6 +640,13 @@ def get_bdc_sector_trend(min_bdcs: int = Query(default=3, ge=1, le=50)):
     return _sectors(min_bdcs=min_bdcs)
 
 
+@router.get("/bdc/sector-detail")
+def get_bdc_sector_detail():
+    """Per-BDC drill-down behind each sector's mark, all sectors in one payload."""
+    from data.bdc import get_bdc_sector_details
+    return get_bdc_sector_details()
+
+
 @router.get("/bdc/nonaccruals")
 def get_bdc_nonaccruals(limit: int = Query(default=100, le=500)):
     """Individual non-accrual holdings across all BDCs, latest period."""

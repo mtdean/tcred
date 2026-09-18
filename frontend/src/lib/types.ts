@@ -499,6 +499,22 @@ export interface BdcSectorTrendPoint {
   fv_share: number | null;
 }
 
+export interface BdcSectorDetailRow {
+  cik: string;
+  bdc_name: string;
+  fair_value: number | null;
+  cost_basis: number | null;
+  mark_to_cost: number | null;
+  prior_mark: number | null;
+  delta_bps: number | null;
+}
+
+export interface BdcSectorDetail {
+  latest_period: string | null;
+  prior_period: string | null;
+  sectors: Record<string, BdcSectorDetailRow[]>;
+}
+
 export interface BdcNonaccrualHolding {
   bdc_name: string;
   company_name: string | null;

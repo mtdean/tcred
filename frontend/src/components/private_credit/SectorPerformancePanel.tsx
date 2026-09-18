@@ -6,7 +6,7 @@
 //      toggleable legend chips). 1.00 = portfolio held at cost.
 //   2. Latest-quarter table across ALL sectors: FV, share, mark, QoQ change.
 
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   CartesianGrid,
@@ -19,7 +19,7 @@ import {
   YAxis,
 } from 'recharts';
 
-import { getBdcSectorTrend } from '../../lib/api';
+import { getBdcSectorDetail, getBdcSectorTrend } from '../../lib/api';
 import { qk } from '../../lib/queryKeys';
 import type { BdcSectorTrendPoint } from '../../lib/types';
 import { COLORS } from '../../lib/colors';
@@ -106,6 +106,15 @@ export default function SectorPerformancePanel() {
       else next.add(sector);
       return next;
     });
+
+  // Per-BDC drill-down: one payload for all sectors, expanded rows render
+  // from it instantly (also snapshot-friendly for the gh-pages build).
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const detailQ = useQuery({
+    queryKey: qk.bdcSectorDetail,
+    queryFn: () => getBdcSectorDetail().then((r) => r.data),
+    staleTime: 60 * 60_000,
+  });
 
   const rows = useMemo(() => trendQ.data ?? [], [trendQ.data]);
 
@@ -262,9 +271,22 @@ export default function SectorPerformancePanel() {
                     ? (r.mark_to_cost - prev.mark_to_cost) * 10_000
                     : null;
                 const hue = SECTOR_COLORS[r.sector];
+                const isOpen = expanded === r.sector;
+                const detail = detailQ.data?.sectors?.[r.sector] ?? [];
                 return (
-                  <tr key={r.sector}>
+                  <Fragment key={r.sector}>
+                  <tr
+                    onClick={() => setExpanded(isOpen ? null : r.sector)}
+                    style={{ cursor: 'pointer' }}
+                    title={isOpen ? 'collapse' : 'show per-BDC detail'}
+                  >
                     <td>
+                      <span
+                        className="mono"
+                        style={{ color: 'var(--text-dim)', marginRight: 5, fontSize: 9 }}
+                      >
+                        {isOpen ? '▼' : '▶'}
+                      </span>
                       {hue && (
                         <span style={{ color: hue, marginRight: 6 }}>■</span>
                       )}
@@ -300,6 +322,103 @@ export default function SectorPerformancePanel() {
                       {r.n_bdcs}
                     </td>
                   </tr>
+                  {isOpen && (
+                    <tr>
+                      <td colSpan={6} style={{ padding: '4px 8px 10px 22px' }}>
+                        {detailQ.isLoading ? (
+                          <LoadingCursor />
+                        ) : detail.length === 0 ? (
+                          <span className="mono dim" style={{ fontSize: 10 }}>
+                            NO PER-BDC DETAIL FOR THIS SECTOR
+                          </span>
+                        ) : (
+                          <>
+                            <div
+                              className="mono"
+                              style={{
+                                fontSize: 10,
+                                color: 'var(--text-secondary)',
+                                letterSpacing: 0.5,
+                                margin: '2px 0 4px',
+                              }}
+                            >
+                              PER-BDC MARKS · {detail.length} BDCS ·{' '}
+                              {fmtPeriod(detailQ.data?.prior_period, true).toUpperCase()} →{' '}
+                              {fmtPeriod(detailQ.data?.latest_period, true).toUpperCase()}
+                            </div>
+                            <table className="data-table" style={{ fontSize: 11 }}>
+                              <thead>
+                                <tr>
+                                  <th>BDC</th>
+                                  <th style={{ textAlign: 'right' }}>FV ($mm)</th>
+                                  <th style={{ textAlign: 'right' }}>Mark</th>
+                                  <th style={{ textAlign: 'right' }}>Δ QoQ (bps)</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {detail.slice(0, 12).map((d) => (
+                                  <tr key={d.cik}>
+                                    <td
+                                      title={d.bdc_name}
+                                      style={{
+                                        maxWidth: 320,
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                        whiteSpace: 'nowrap',
+                                      }}
+                                    >
+                                      {d.bdc_name}
+                                    </td>
+                                    <td className="mono" style={{ textAlign: 'right' }}>
+                                      {d.fair_value != null
+                                        ? currency(d.fair_value / 1e6, 0)
+                                        : '—'}
+                                    </td>
+                                    <td
+                                      className="mono"
+                                      style={{
+                                        textAlign: 'right',
+                                        color: markColor(d.mark_to_cost),
+                                      }}
+                                    >
+                                      {d.mark_to_cost != null
+                                        ? d.mark_to_cost.toFixed(3)
+                                        : '—'}
+                                    </td>
+                                    <td
+                                      className="mono"
+                                      style={{
+                                        textAlign: 'right',
+                                        color:
+                                          d.delta_bps == null
+                                            ? 'var(--text-secondary)'
+                                            : d.delta_bps < 0
+                                              ? 'var(--negative)'
+                                              : 'var(--positive)',
+                                      }}
+                                    >
+                                      {d.delta_bps != null
+                                        ? `${d.delta_bps > 0 ? '+' : ''}${d.delta_bps.toFixed(0)}`
+                                        : '—'}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                            {detail.length > 12 && (
+                              <div
+                                className="mono dim"
+                                style={{ fontSize: 10, marginTop: 3 }}
+                              >
+                                + {detail.length - 12} smaller BDCs
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 );
               })}
             </tbody>

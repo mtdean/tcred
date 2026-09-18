@@ -994,6 +994,71 @@ def get_bdc_sector_trend(min_bdcs: int = 3) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def get_bdc_sector_details() -> dict:
+    """Per-BDC drill-down behind each sector's aggregate mark.
+
+    For the two most recent well-covered periods (≥5 reporting BDCs), returns
+    {sector: [{cik, bdc_name, fair_value, cost_basis, mark_to_cost,
+    prior_mark, delta_bps}, ...]} sorted by fair value desc — who drove the
+    sector's move, and how dispersed the marks are across managers.
+
+    One payload for all sectors (no params) so the static-snapshot build can
+    bake it as a single file.
+    """
+    with get_conn() as conn:
+        periods = [r["period"] for r in conn.execute(
+            """
+            SELECT period FROM bdc_industry
+            GROUP BY period HAVING COUNT(DISTINCT cik) >= 5
+            ORDER BY period DESC LIMIT 2
+            """
+        )]
+        if not periods:
+            return {"latest_period": None, "prior_period": None, "sectors": {}}
+        latest_p = periods[0]
+        prior_p = periods[1] if len(periods) > 1 else None
+
+        rows = conn.execute(
+            """
+            SELECT period, sector, cik, bdc_name,
+                   SUM(cost_basis) AS cost, SUM(fair_value) AS fv
+            FROM bdc_industry
+            WHERE period IN (?, ?)
+            GROUP BY period, sector, cik
+            """,
+            (latest_p, prior_p or ""),
+        ).fetchall()
+
+    def _mark(fv, cost):
+        return fv / cost if fv and cost and cost > 0 else None
+
+    prior_marks: dict[tuple[str, str], Optional[float]] = {}
+    for r in rows:
+        if r["period"] == prior_p:
+            prior_marks[(r["sector"], r["cik"])] = _mark(r["fv"], r["cost"])
+
+    sectors: dict[str, list[dict]] = {}
+    for r in rows:
+        if r["period"] != latest_p:
+            continue
+        mark = _mark(r["fv"], r["cost"])
+        prior = prior_marks.get((r["sector"], r["cik"]))
+        sectors.setdefault(r["sector"], []).append({
+            "cik": r["cik"],
+            "bdc_name": r["bdc_name"],
+            "fair_value": r["fv"],
+            "cost_basis": r["cost"],
+            "mark_to_cost": mark,
+            "prior_mark": prior,
+            "delta_bps": (mark - prior) * 10_000
+                         if mark is not None and prior is not None else None,
+        })
+    for entries in sectors.values():
+        entries.sort(key=lambda d: -(d["fair_value"] or 0))
+
+    return {"latest_period": latest_p, "prior_period": prior_p, "sectors": sectors}
+
+
 def get_bdc_nonaccruals(limit: int = 100) -> list[dict]:
     """Individual non-accrual holdings across all BDCs for the latest period."""
     with get_conn() as conn:
