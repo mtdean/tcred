@@ -77,6 +77,37 @@ def _tool_get_bdc_summary(period: Optional[str] = None) -> dict:
     return {"period": period or "latest", "n_bdcs": len(rows), "bdcs": rows}
 
 
+def _tool_get_sector_trend(sector: Optional[str] = None) -> dict:
+    """Cross-BDC private-credit sector performance time series (bdc_industry)."""
+    from data.bdc import get_bdc_sector_trend
+
+    try:
+        rows = get_bdc_sector_trend()
+    except Exception as e:
+        return {"error": str(e)}
+    if sector:
+        want = sector.lower()
+        rows = [r for r in rows if want in r["sector"].lower()]
+        if not rows:
+            all_sectors = sorted({r["sector"] for r in get_bdc_sector_trend()})
+            return {"error": f"No sector matching '{sector}'. Available: {all_sectors}"}
+    return {
+        "n": len(rows),
+        "periods": sorted({r["period"] for r in rows}),
+        "series": [
+            {
+                "period": r["period"],
+                "sector": r["sector"],
+                "mark_to_cost": r["mark_to_cost"],
+                "total_fv": r["total_fv"],
+                "fv_share": r["fv_share"],
+                "n_bdcs": r["n_bdcs"],
+            }
+            for r in rows
+        ],
+    }
+
+
 def _tool_get_recent_filings(
     asset_class: Optional[str] = None,
     form_type: Optional[str] = None,
@@ -236,6 +267,31 @@ TOOL_SCHEMAS: list[dict] = [
         },
     },
     {
+        "name": "get_sector_trend",
+        "description": (
+            "Private credit performance by industry sector over time, aggregated "
+            "across ~125 BDC portfolios (~$470B) from SEC XBRL. Per (quarter, "
+            "sector): mark-to-cost (fair value / cost; 1.00 = held at cost — the "
+            "key credit-performance proxy), total fair value, share of the "
+            "market, and contributing BDC count. Quarterly, 2021-present. "
+            "Sectors: Software & Tech, Healthcare, Business Services, Consumer "
+            "& Retail, Financials & Insurance, Industrials, Media & Telecom, "
+            "Energy & Power, Transportation, Chemicals & Materials, Real "
+            "Estate, Funds & Structured, Other. Use for questions like 'how "
+            "are software credits performing' or 'which sectors are marked "
+            "weakest'."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "sector": {
+                    "type": "string",
+                    "description": "Optional substring filter, e.g. 'software'. Omit for all sectors.",
+                },
+            },
+        },
+    },
+    {
         "name": "get_recent_filings",
         "description": (
             "Recent SEC EDGAR ABS filings. Optionally filter by asset_class (e.g. "
@@ -295,6 +351,7 @@ TOOL_DISPATCH = {
     "get_indicator_history": _tool_get_indicator_history,
     "get_abs_spread_series": _tool_get_abs_spread_series,
     "get_bdc_summary": _tool_get_bdc_summary,
+    "get_sector_trend": _tool_get_sector_trend,
     "get_recent_filings": _tool_get_recent_filings,
     "search_articles": _tool_search_articles,
     "get_market_history": _tool_get_market_history,
