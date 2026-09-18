@@ -1,0 +1,92 @@
+# ============================================================
+# SITUATION MONITOR — PUSH ALERT RULES (ntfy)
+# ============================================================
+# Pushes go to the ntfy topic named by NTFY_TOPIC in .env (install the ntfy
+# app on your phone and subscribe to the same topic). No topic set = alerts
+# silently disabled. Treat the topic name like a password — anyone who knows
+# it can read your alerts.
+#
+# THIS FILE IS THE CONTROL SURFACE. To quiet a rule set `enabled: false`;
+# to tune sensitivity edit its threshold; cooldown_hours stops repeats.
+# The engine re-reads this file on every evaluation — no restart needed.
+#
+# Rule types:
+#   metric_threshold  — latest value of `series_id` crosses `value` (`op`: gt|lt)
+#   metric_delta      — change in `series_id` over `days` exceeds `change`
+#   job_failures      — any scheduled job with `consecutive` straight errors
+#   feed_health       — number of dead feeds reaches `min_dead`
+#   bdc_sector_mark_drop — any charted private-credit sector marks down
+#                          more than `drop_bps` QoQ
+#
+# Per-rule fields: enabled, cooldown_hours (default 24), priority
+# (min|low|default|high|urgent — ntfy priority), title.
+
+delivery:
+  max_per_day: 5        # hard cap on pushes per rolling 24h, across all rules
+  quiet_hours: [22, 7]  # local time: no pushes 22:00-06:59 (re-checked hourly,
+                        # so a still-true condition fires after quiet ends)
+
+rules:
+  - id: hy_oas_above_400
+    enabled: true
+    type: metric_threshold
+    series_id: BAMLH0A0HYM2
+    op: gt
+    value: 4.0
+    title: "HY OAS above 400bps"
+    cooldown_hours: 48
+    priority: high
+
+  - id: hy_oas_widening_5d
+    enabled: true
+    type: metric_delta
+    series_id: BAMLH0A0HYM2
+    days: 5
+    change: 0.5           # +50bps in a week
+    title: "HY OAS widening fast"
+    cooldown_hours: 48
+    priority: high
+
+  - id: vix_above_30
+    enabled: true
+    type: metric_threshold
+    series_id: mkt_^VIX
+    op: gt
+    value: 30
+    title: "VIX above 30"
+    cooldown_hours: 24
+    priority: default
+
+  - id: recession_ensemble_elevated
+    enabled: true
+    type: metric_threshold
+    series_id: RECESSION_RISK_ENSEMBLE
+    op: gt
+    value: 40             # percent
+    title: "Recession ensemble above 40%"
+    cooldown_hours: 168   # weekly at most — this moves slowly
+    priority: default
+
+  - id: scheduled_job_failing
+    enabled: true
+    type: job_failures
+    consecutive: 3
+    title: "Dashboard job failing"
+    cooldown_hours: 12
+    priority: high
+
+  - id: bdc_sector_mark_drop
+    enabled: true
+    type: bdc_sector_mark_drop
+    drop_bps: 150
+    title: "Private credit sector marks dropping"
+    cooldown_hours: 168   # quarterly data; a week of cooldown stops repeats
+    priority: default
+
+  - id: feeds_dying
+    enabled: false        # noisy while feeds churn; enable if you want it
+    type: feed_health
+    min_dead: 5
+    title: "News feeds down"
+    cooldown_hours: 24
+    priority: low

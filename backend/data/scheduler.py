@@ -202,6 +202,15 @@ def _backup_inner() -> int:
     return result["kept"]
 
 
+def _alerts_inner() -> int:
+    """Evaluate push-alert rules (config/alerts.yaml) → ntfy. Token-free."""
+    from data.alerts import evaluate_alerts
+    n = evaluate_alerts()
+    if n:
+        logger.info(f"Scheduler: alerts — {n} push(es) sent")
+    return n
+
+
 def _article_dedup_inner() -> int:
     """Cluster + tag recent articles by title similarity (token-set Jaccard)."""
     from data.article_dedup import dedup_recent_articles
@@ -250,6 +259,7 @@ _job_manheim = _instrument("manheim", _manheim_inner)
 _job_cfpb = _instrument("cfpb", _cfpb_inner)
 _job_trace = _instrument("trace", _trace_inner)
 _job_macro_forecasts = _instrument("macro_forecasts", _macro_forecasts_inner)
+_job_alerts = _instrument("alerts", _alerts_inner)
 
 
 async def start_scheduler():
@@ -395,6 +405,16 @@ async def start_scheduler():
         _job_backup,
         IntervalTrigger(hours=24),
         id="backup",
+        max_instances=1,
+        replace_existing=True,
+    )
+
+    # Hourly alert-rule evaluation → ntfy pushes. Silent no-op without
+    # NTFY_TOPIC in .env; noise gates live in config/alerts.yaml.
+    _scheduler.add_job(
+        _job_alerts,
+        IntervalTrigger(hours=1),
+        id="alerts",
         max_instances=1,
         replace_existing=True,
     )

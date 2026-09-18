@@ -70,6 +70,11 @@ class Settings:
     GMAIL_APP_PASSWORD: str = os.getenv("GMAIL_APP_PASSWORD", "").replace(" ", "")
     GMAIL_MECO_LABEL: str = os.getenv("GMAIL_MECO_LABEL", "Meco")
 
+    # ntfy push alerts (data/alerts.py). Optional: no topic = alerts disabled.
+    # The topic name is effectively a password — keep it unguessable.
+    NTFY_TOPIC: str = os.getenv("NTFY_TOPIC", "")
+    NTFY_SERVER: str = os.getenv("NTFY_SERVER", "https://ntfy.sh")
+
     CACHE_DIR: Path = Path(__file__).parent / "cache" / "store"
     # MONITOR_DB_PATH lets tests (and one-off scripts) redirect persistence to a
     # throwaway file without monkey-patching the real cache.

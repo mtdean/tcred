@@ -240,6 +240,17 @@ CREATE TABLE IF NOT EXISTS bdc_industry (
 CREATE INDEX IF NOT EXISTS idx_bdc_industry_period ON bdc_industry(period DESC);
 CREATE INDEX IF NOT EXISTS idx_bdc_industry_sector ON bdc_industry(sector);
 
+-- Delivered push alerts (data/alerts.py). Cooldowns key off this table, so
+-- only alerts that were actually SENT are recorded.
+CREATE TABLE IF NOT EXISTS alert_events (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    rule_id   TEXT NOT NULL,
+    fired_at  TEXT NOT NULL,   -- ISO UTC
+    title     TEXT NOT NULL,
+    body      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_alert_events_rule ON alert_events(rule_id, fired_at DESC);
+
 -- ── Phase 7: Regulatory Flow Monitor ──
 -- Federal Register API documents + agency RSS press releases.
 -- relevance_score is Claude-set and ONLY filled when the manual SCORE button fires.
