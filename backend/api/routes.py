@@ -1128,3 +1128,64 @@ def jobs_history(
     """Recent job-run history, optionally filtered to one job_id."""
     from cache.db import get_job_run_history
     return {"runs": get_job_run_history(job_id=job_id, limit=limit)}
+
+
+@router.get("/alerts/status")
+def alerts_status():
+    """Alert rules + delivery config + recent fired alerts."""
+    from data.alerts import get_alerts_status
+    return get_alerts_status()
+
+
+@router.post("/alerts/test")
+def alerts_test():
+    """Send a test push to the configured ntfy topic."""
+    from data.alerts import send_push
+    from config import settings
+    if not settings.NTFY_TOPIC:
+        raise HTTPException(
+            status_code=400,
+            detail="NTFY_TOPIC not set in .env — see config/alerts.yaml header",
+        )
+    ok = send_push(
+        "TCRED test alert",
+        "If you can read this on your phone, alerts are wired up.",
+        priority="default",
+    )
+    if not ok:
+        raise HTTPException(status_code=502, detail="ntfy push failed — check server logs")
+    return {"sent": True, "server": settings.NTFY_SERVER}
+
+
+@router.post("/alerts/evaluate")
+def alerts_evaluate():
+    """Run one alert evaluation pass now (same as the hourly job)."""
+    from data.alerts import evaluate_alerts
+    return {"pushes_sent": evaluate_alerts()}
+
+
+@router.post("/jobs/run/{job_id}")
+def start_manual_job(job_id: str):
+    """Kick off a data-pull job in the background; returns its run_id at once.
+
+    Backs the REFRESH buttons / pull-to-refresh: the client polls
+    GET /api/jobs/run/{run_id} until status != 'running'. Starting a job
+    that is already running attaches to the in-flight run instead.
+    """
+    from data.manual_jobs import MANUAL_JOBS, start_background_job
+    if job_id not in MANUAL_JOBS:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown job '{job_id}'. Available: {sorted(MANUAL_JOBS)}",
+        )
+    return start_background_job(job_id)
+
+
+@router.get("/jobs/run/{run_id}")
+def get_manual_job_run(run_id: int):
+    """One job run by id — status, duration, rows ingested, error."""
+    from data.manual_jobs import get_job_run
+    run = get_job_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"No job run {run_id}")
+    return run

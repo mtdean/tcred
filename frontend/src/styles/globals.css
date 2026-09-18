@@ -119,6 +119,38 @@ a:hover { text-decoration: underline; }
   overscroll-behavior-y: contain;
 }
 
+/* ── Toasts (ToastHost.tsx) ────────────────────────────── */
+.toast-stack {
+  position: fixed;
+  bottom: calc(34px + env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  z-index: 300;
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  background: var(--bg-panel, #111);
+  border: 1px solid var(--positive);
+  color: var(--text-primary);
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  padding: 7px 14px;
+  border-radius: 3px;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  animation: toast-in 0.18s ease-out;
+}
+.toast-error { border-color: var(--negative); }
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 /* ── Pull-to-refresh indicator (PullToRefresh.tsx) ─────── */
 .ptr-indicator {
   display: flex;

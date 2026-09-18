@@ -1,22 +1,22 @@
 // Route-aware refresh: maps the current pathname to (a) a label for the
-// TopBar button, (b) a list of POST endpoints to fire in parallel,
-// (c) the meta key on /api/status that records the last successful run for
-// this scope, and (d) the React Query keys to invalidate so the UI repaints.
+// TopBar button, (b) the background job to run, (c) the meta key on
+// /api/status that records the last successful run for this scope, and
+// (d) the React Query keys to invalidate so the UI repaints.
+//
+// Refresh is NON-BLOCKING server-side: POST /api/jobs/run/{job_id} returns a
+// run_id immediately and the pull continues in a backend thread (recorded in
+// job_runs). We poll the run until it finishes, so the button/pull spinner
+// still reflects real progress — but the server stays responsive and the job
+// survives the user navigating away or closing the app.
 //
 // Pages that are pure views over the existing DB (no upstream pull) — Analyst
-// briefings, Watchlists, the Issuer pivot — return `null` so the TopBar can
-// hide the button.
+// briefings, Watchlists — return `null` so the TopBar can hide the button.
 
 import { useLocation } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  triggerBdcRefresh,
-  triggerFredRefresh,
-  triggerMarketRefresh,
-  triggerRefresh as triggerNewsRefresh,
-  triggerRegulatoryRefresh,
-} from './api';
+import { getJobRun, startJob } from './api';
 import { qk } from './queryKeys';
+import { showToast } from './toast';
 import { apiErrorMessage } from './utils';
 import type { StatusResponse } from './types';
 
@@ -35,10 +35,34 @@ export interface TabRefreshSpec {
   label: string;
   shortLabel: string;
   metaKey: LastRefreshKey;
-  // Returns a list of axios promises so we can fire several pulls in parallel
-  // (e.g. ABS = EDGAR + pricing + 424B5). The mutation resolves once all do.
-  run: () => Promise<unknown[]>;
+  jobId: string;
   invalidateKeys: readonly (readonly unknown[])[];
+}
+
+const POLL_MS = 2500;
+const TIMEOUT_MS = 10 * 60_000;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Start the job, then poll its run until it completes. Resolves to the rows
+// ingested (for the completion toast); throws on job error or timeout.
+async function runJobToCompletion(jobId: string): Promise<number> {
+  const { data: start } = await startJob(jobId);
+  if (start.run_id < 0) return 0;
+  const t0 = Date.now();
+  for (;;) {
+    await sleep(POLL_MS);
+    const { data: run } = await getJobRun(start.run_id);
+    if (run.status !== 'running') {
+      if (run.status === 'error') {
+        throw new Error(run.error?.split('\n')[0] ?? 'refresh failed');
+      }
+      return run.rows_ingested ?? 0;
+    }
+    if (Date.now() - t0 > TIMEOUT_MS) {
+      throw new Error('refresh still running server-side — check back shortly');
+    }
+  }
 }
 
 // Map pathname → spec. Keep this co-located with the routes so the next time
@@ -50,7 +74,7 @@ function specFor(pathname: string): TabRefreshSpec | null {
       label: 'REFRESH NEWS',
       shortLabel: 'NEWS',
       metaKey: 'last_news_refresh',
-      run: () => Promise.all([triggerNewsRefresh()]),
+      jobId: 'feeds',
       // ['articles'] / ['articles-feed'] are prefixes covering every
       // parameterized query in those families.
       invalidateKeys: [['articles'], ['articles-feed'], qk.status, qk.feedHealth],
@@ -62,7 +86,7 @@ function specFor(pathname: string): TabRefreshSpec | null {
       label: 'REFRESH MARKETS',
       shortLabel: 'MARKETS',
       metaKey: 'last_market_refresh',
-      run: () => Promise.all([triggerMarketRefresh()]),
+      jobId: 'market',
       // ['percentiles'] prefix covers qk.percentilesBatch(ids, window).
       invalidateKeys: [['market'], ['percentiles'], qk.status],
     };
@@ -73,7 +97,7 @@ function specFor(pathname: string): TabRefreshSpec | null {
       label: 'REFRESH MACRO',
       shortLabel: 'MACRO',
       metaKey: 'last_fred_refresh',
-      run: () => Promise.all([triggerFredRefresh()]),
+      jobId: 'fred',
       // ['fred'] prefix covers latest, history, forward-curve and sofr.
       invalidateKeys: [['fred'], ['percentiles'], qk.freshness, qk.status],
     };
@@ -84,7 +108,7 @@ function specFor(pathname: string): TabRefreshSpec | null {
       label: 'REFRESH BDC',
       shortLabel: 'BDC',
       metaKey: 'last_bdc_refresh',
-      run: () => Promise.all([triggerBdcRefresh()]),
+      jobId: 'bdc',
       invalidateKeys: [['bdc'], qk.status],
     };
   }
@@ -94,7 +118,7 @@ function specFor(pathname: string): TabRefreshSpec | null {
       label: 'REFRESH REG',
       shortLabel: 'REG',
       metaKey: 'last_regulatory_refresh',
-      run: () => Promise.all([triggerRegulatoryRefresh()]),
+      jobId: 'regulatory',
       invalidateKeys: [['regulatory'], qk.status],
     };
   }
@@ -116,13 +140,21 @@ export function useTabRefresh() {
   const mutation = useMutation({
     mutationFn: async () => {
       if (!spec) throw new Error('No refresh wired for this route');
-      return spec.run();
+      return runJobToCompletion(spec.jobId);
     },
-    onSuccess: () => {
+    onSuccess: (rows) => {
       if (!spec) return;
       for (const key of spec.invalidateKeys) {
         queryClient.invalidateQueries({ queryKey: [...key] });
       }
+      showToast(`${spec.shortLabel} REFRESH DONE · ${rows} ROWS`);
+    },
+    onError: (err) => {
+      if (!spec) return;
+      showToast(
+        `${spec.shortLabel} REFRESH: ${apiErrorMessage(err, 'failed')}`,
+        'error',
+      );
     },
   });
 

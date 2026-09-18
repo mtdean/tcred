@@ -525,6 +525,28 @@ export const getBdcNonaccruals = (limit = 100) =>
   api.get<BdcNonaccrualHolding[]>('/bdc/nonaccruals', { params: { limit } });
 export const getBdcSectorTrend = () =>
   api.get<BdcSectorTrendPoint[]>('/bdc/sector-trend');
+
+// ── Background refresh jobs ────────────────────────────────────────────────
+export interface JobStartResponse {
+  run_id: number;
+  job_id: string;
+  already_running: boolean;
+}
+export interface JobRun {
+  id: number;
+  job_id: string;
+  started_at: string;
+  ended_at: string | null;
+  status: 'running' | 'success' | 'error';
+  duration_ms: number | null;
+  rows_ingested: number | null;
+  error: string | null;
+  triggered_by: string;
+}
+export const startJob = (jobId: string) =>
+  api.post<JobStartResponse>(`/jobs/run/${jobId}`);
+export const getJobRun = (runId: number) =>
+  api.get<JobRun>(`/jobs/run/${runId}`);
 export const triggerBdcRefresh = () =>
   api.post<{ holdings_stored: number }>('/bdc/refresh');
 

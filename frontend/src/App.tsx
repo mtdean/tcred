@@ -2,6 +2,7 @@ import { Route, Routes } from 'react-router-dom';
 import TopBar from './components/layout/TopBar';
 import StatusBar from './components/layout/StatusBar';
 import PullToRefresh from './components/layout/PullToRefresh';
+import ToastHost from './components/shared/ToastHost';
 import HomePage from './pages/HomePage';
 import NewsPage from './pages/NewsPage';
 import MarketsPage from './pages/MarketsPage';
@@ -30,6 +31,7 @@ export default function App() {
         </Routes>
       </PullToRefresh>
       <StatusBar />
+      <ToastHost />
     </div>
   );
 }
