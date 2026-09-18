@@ -1,10 +1,19 @@
 // Panels adapted from the FRED "Favorite Economic Dashboard" (dashboard 9706).
 // Each is a thin wrapper over the generic FredSeriesPanel.
 
+import { useMemo, useState } from 'react';
 import { COLORS } from '../../lib/colors';
 import FredSeriesPanel from './FredSeriesPanel';
+import { useFredSeries } from '../charts/useFredSeries';
 import type { FredSeriesDef } from '../charts/useFredSeries';
 import { useRecessionIntervals } from '../charts/useRecessionIntervals';
+import { sliceByYears } from '../../lib/utils';
+import Panel from '../shared/Panel';
+import RangeToggle from '../shared/RangeToggle';
+import LoadingCursor from '../shared/LoadingCursor';
+import EmptyState from '../shared/EmptyState';
+import MultiLineChart from '../charts/MultiLineChart';
+import type { SeriesDef } from '../charts/MultiLineChart';
 
 const RANGES_MONTHLY = [
   { label: '2Y', years: 2 },
@@ -374,12 +383,15 @@ export function CreditGapPanel() {
 // ── Lending standards ─────────────────────────────────────────────
 export function LendingStandardsPanel() {
   const series: FredSeriesDef[] = [
-    { seriesId: 'DRTSCILM', key: 'tighten', name: 'NET % TIGHTENING C&I', color: COLORS.chartPrimary },
+    { seriesId: 'DRTSCILM', key: 'tighten', name: 'C&I LARGE/MID', color: COLORS.chartPrimary },
+    // Small-firm C&I: the small-vs-large gap IS the SMB credit-crunch signal.
+    { seriesId: 'DRTSCIS', key: 'small', name: 'C&I SMALL FIRMS', color: COLORS.chartSecondary },
+    { seriesId: 'DRTSCLCC', key: 'card', name: 'CREDIT CARD', color: COLORS.chartTertiary },
   ];
   return (
     <FredSeriesPanel
       title="Bank Lending Standards (SLOOS)"
-      subtitle="NET % OF BANKS TIGHTENING C&I"
+      subtitle="NET % OF BANKS TIGHTENING"
       series={series}
       ranges={RANGES_QUARTERLY}
       defaultRange="10Y"
@@ -470,6 +482,114 @@ export function DollarPanel() {
       unit="plain"
       decimals={1}
       limit={2700}
+    />
+  );
+}
+
+// ── HY ratings-tier decompression ─────────────────────────────────
+// CCC−B and B−BB OAS bases, derived client-side from the three ICE BofA
+// tier indices. Tier decompression = the classic late-cycle leveraged-credit
+// signal; contextualizes the JBBB/JAAA CLO proxy (broad vs idiosyncratic).
+export function DecompressionPanel() {
+  const series: FredSeriesDef[] = [
+    { seriesId: 'BAMLH0A1HYBB', key: 'bb', name: 'BB', color: COLORS.chartTertiary },
+    { seriesId: 'BAMLH0A2HYB', key: 'b', name: 'B', color: COLORS.chartSecondary },
+    { seriesId: 'BAMLH0A3HYC', key: 'ccc', name: 'CCC', color: COLORS.negative },
+  ];
+  const { rows, isLoading, isError } = useFredSeries(series, 2700);
+  const [range, setRange] = useState('5Y');
+
+  const derived = useMemo(() => {
+    const out: { date: string; ccc_b: number | null; b_bb: number | null }[] = [];
+    for (const r of rows) {
+      const bb = r.bb as number | undefined;
+      const b = r.b as number | undefined;
+      const ccc = r.ccc as number | undefined;
+      out.push({
+        date: r.date,
+        ccc_b: ccc != null && b != null ? (ccc - b) * 100 : null,
+        b_bb: b != null && bb != null ? (b - bb) * 100 : null,
+      });
+    }
+    return out;
+  }, [rows]);
+
+  const sliced = useMemo(() => {
+    const years = RANGES_DAILY.find((r) => r.label === range)?.years ?? null;
+    return sliceByYears(derived, years);
+  }, [derived, range]);
+
+  const chartSeries: SeriesDef[] = [
+    { key: 'ccc_b', name: 'CCC − B', color: COLORS.negative },
+    { key: 'b_bb', name: 'B − BB', color: COLORS.chartSecondary },
+  ];
+
+  return (
+    <Panel
+      title="HY Tier Decompression"
+      subtitle="OAS BASES, BPS · WIDENING = LATE-CYCLE RISK SHEDDING"
+      actions={
+        <RangeToggle
+          options={RANGES_DAILY.map((r) => r.label)}
+          value={range}
+          onChange={setRange}
+        />
+      }
+    >
+      {isLoading ? (
+        <LoadingCursor />
+      ) : isError || sliced.length === 0 ? (
+        <EmptyState message="NO TIER OAS DATA YET — REFRESH MACRO" />
+      ) : (
+        <MultiLineChart
+          data={sliced}
+          series={chartSeries}
+          valueFormatter={(v: number) => `${v.toFixed(0)}bp`}
+        />
+      )}
+    </Panel>
+  );
+}
+
+// ── Consumer cashflow ─────────────────────────────────────────────
+// The squeeze side of the delinquency story: what households save and how
+// fast real income grows. Delinquency panels show the consequence.
+export function ConsumerCashflowPanel() {
+  const series: FredSeriesDef[] = [
+    { seriesId: 'PSAVERT', key: 'save', name: 'SAVING RATE', color: COLORS.chartPrimary },
+    { seriesId: 'DSPIC96', key: 'rdi', name: 'REAL DISP. INCOME YOY', color: COLORS.chartTertiary, yoyPeriods: 12 },
+  ];
+  return (
+    <FredSeriesPanel
+      title="Consumer Cashflow"
+      subtitle="SAVING RATE & REAL INCOME GROWTH, %"
+      series={series}
+      ranges={RANGES_MONTHLY}
+      defaultRange="5Y"
+      unit="pct"
+      decimals={1}
+      limit={360}
+    />
+  );
+}
+
+// ── Labor slack ───────────────────────────────────────────────────
+// U-6 minus U-3 (the gap) turns before headline unemployment does.
+export function LaborSlackPanel() {
+  const series: FredSeriesDef[] = [
+    { seriesId: 'UNRATE', key: 'u3', name: 'U-3 UNEMPLOYMENT', color: COLORS.chartPrimary },
+    { seriesId: 'U6RATE', key: 'u6', name: 'U-6 UNDEREMPLOYMENT', color: COLORS.chartSecondary },
+  ];
+  return (
+    <FredSeriesPanel
+      title="Labor Slack (U-3 vs U-6)"
+      subtitle="%, GAP WIDENING = HIDDEN SLACK BUILDING"
+      series={series}
+      ranges={RANGES_MONTHLY}
+      defaultRange="5Y"
+      unit="pct"
+      decimals={1}
+      limit={360}
     />
   );
 }

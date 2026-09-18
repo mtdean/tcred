@@ -25,6 +25,9 @@ import {
   GrowthTrackerPanel,
   StockMomentumPanel,
   DollarPanel,
+  DecompressionPanel,
+  ConsumerCashflowPanel,
+  LaborSlackPanel,
 } from '../components/macro/DashboardPanels';
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -58,6 +61,7 @@ export default function MacroPage() {
         <SahmRulePanel />
         <NationalActivityPanel />
         <JoblessClaimsPanel />
+        <LaborSlackPanel />
       </div>
 
       <SectionLabel>Rates, Curve & Financial Conditions</SectionLabel>
@@ -78,6 +82,7 @@ export default function MacroPage() {
         <CreditGapPanel />
         <UsedVehicleValuesPanel />
         <ConsumerComplaintsPanel />
+        <ConsumerCashflowPanel />
       </div>
 
       {/* Monthly card master-trust actuals from 10-Ds — the high-frequency
@@ -89,8 +94,11 @@ export default function MacroPage() {
       <SectionLabel>Bank Credit Supply (Fed H.8)</SectionLabel>
       <H8CreditPanel />
 
-      <SectionLabel>CLO Stress</SectionLabel>
-      <CloStressPanel />
+      <SectionLabel>CLO & Leveraged Credit Stress</SectionLabel>
+      <div className="grid-2">
+        <CloStressPanel />
+        <DecompressionPanel />
+      </div>
 
       <SectionLabel>Lending Standards & Inflation</SectionLabel>
       <div className="grid-2">

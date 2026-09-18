@@ -146,6 +146,24 @@ fred_series:
     category: spreads
     frequency: daily
 
+  # HY ratings tiers — the BB/B/CCC decomposition behind the master index.
+  # Tier bases (CCC−B, B−BB) are the classic late-cycle decompression signal
+  # and contextualize the JBBB/JAAA CLO proxy (broad vs idiosyncratic widening).
+  - id: "BAMLH0A1HYBB"
+    label: "HY BB OAS (ICE BofA)"
+    category: spreads
+    frequency: daily
+
+  - id: "BAMLH0A2HYB"
+    label: "HY B OAS (ICE BofA)"
+    category: spreads
+    frequency: daily
+
+  - id: "BAMLH0A3HYC"
+    label: "HY CCC & Lower OAS (ICE BofA)"
+    category: spreads
+    frequency: daily
+
   - id: "BAMLC0A0CM"
     label: "IG OAS (ICE BofA)"
     category: spreads
@@ -160,6 +178,22 @@ fred_series:
   - id: "UNRATE"
     label: "Unemployment Rate"
     category: macro
+    frequency: monthly
+
+  - id: "U6RATE"
+    label: "U-6 Underemployment Rate"
+    category: labor
+    frequency: monthly
+
+  # Consumer cashflow: the squeeze side of the delinquency story.
+  - id: "PSAVERT"
+    label: "Personal Saving Rate"
+    category: consumer_credit
+    frequency: monthly
+
+  - id: "DSPIC96"
+    label: "Real Disposable Personal Income"
+    category: consumer_credit
     frequency: monthly
 
   - id: "CPIAUCSL"
@@ -230,7 +264,11 @@ fred_series:
   # quarters (see the Fed's "Predicting Credit Card Delinquency Rates" model).
   # NOTE: credit-card tightening is DRTSCLCC (DRTSCLNC/STDSCREDIT do not exist).
   - id: "DRTSCILM"
-    label: "Banks Tightening C&I Standards (Net %)"
+    label: "Banks Tightening C&I Standards, Large/Mid (Net %)"
+    category: lending
+    frequency: quarterly
+  - id: "DRTSCIS"
+    label: "Banks Tightening C&I Standards, Small Firms (Net %)"
     category: lending
     frequency: quarterly
   - id: "DRTSCLCC"
