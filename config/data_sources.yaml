@@ -543,10 +543,7 @@ market_tickers:
     category: consumer_credit_proxy
 
   # Fintech / BNPL
-  - ticker: "LC"
-    label: "LendingClub"
-    category: consumer_credit_proxy
-
+  # LC (LendingClub) removed Nov 2026 — acquired by Happen Bank, delisted.
   - ticker: "UPST"
     label: "Upstart Holdings"
     category: consumer_credit_proxy
