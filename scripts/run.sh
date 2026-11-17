@@ -15,22 +15,22 @@ echo "Project root: $PROJECT_ROOT"
 if [ -f "$BACKEND_DIR/.venv/bin/activate" ]; then
     source "$BACKEND_DIR/.venv/bin/activate"
 else
-    echo "ERROR: No .venv found. Run:"
-    echo "  cd $BACKEND_DIR && python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt"
+    echo "ERROR: No .venv found. Run scripts/setup.sh first."
     exit 1
 fi
 
 # Check .env
 if [ ! -f "$PROJECT_ROOT/.env" ]; then
-    echo "WARNING: .env not found. Copy .env.example and fill in keys."
+    echo "WARNING: .env not found. Run scripts/setup.sh (or copy .env.example and fill in keys)."
 fi
 
 # Find LAN IP
-LAN_IP=$(ipconfig getifaddr en0 2>/dev/null || echo "unknown")
+LAN_IP=$(ipconfig getifaddr en0 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || true)
+LAN_IP=${LAN_IP:-unknown}
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  Local:  http://localhost:8000"
-echo "  iPad:   http://$LAN_IP:8000"
+echo "  LAN:    http://$LAN_IP:8000"
 echo "  API docs: http://localhost:8000/docs"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""

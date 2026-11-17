@@ -10,23 +10,19 @@
 ## Quickstart
 
 ```bash
-# 1. Keys (see Requirements below)
-cp .env.example .env && $EDITOR .env       # add FRED + Anthropic keys + EDGAR user-agent
-
-# 2. Backend
-cd backend && python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-
-# 3. Frontend (build the static app the backend serves)
-cd ../frontend && npm install && npm run build
-
-# 4. Run (serves API + app on http://localhost:8000)
-cd ../backend && python main.py
+git clone <this repo> && cd <repo>
+scripts/setup.sh          # venv + deps, prompts for keys → .env, builds frontend, creates DB
+scripts/run.sh            # serves API + app on http://localhost:8000
 ```
 
-Then open **http://localhost:8000** on this Mac, or `http://<your-lan-ip>:8000` from
-an iPad on the same Wi-Fi (`ipconfig getifaddr en0` to find the IP). For an always-on
-service, see [Running as a service](#running-as-a-service).
+Then open **http://localhost:8000**, or `http://<your-lan-ip>:8000` from a phone/iPad on
+the same Wi-Fi (`run.sh` prints the address). `scripts/setup.sh --service` instead installs
+an always-on service (launchd on macOS, systemd on Linux) — see
+[Running as a service](#running-as-a-service). Re-running `setup.sh` is safe.
+
+The first launch pulls market, FRED, EDGAR and the other feeds automatically. A few
+EDGAR-derived datasets (ABS prospectuses, ABS pricing, BDC holdings) only fetch a recent
+window on schedule; `scripts/backfill_history.sh` pulls their history (30–90 min, optional).
 
 > **You provide three credentials** (all free): an **Anthropic API key**, a **FRED API key**,
 > and an **EDGAR User-Agent** string. The app runs without them, but news scoring, the AI
@@ -41,7 +37,7 @@ service, see [Running as a service](#running-as-a-service).
 | ------- | ------- | ---------------------------------------------- |
 | Python  | 3.11+   | built & run on 3.14                            |
 | Node.js | 18+     | built on 26; only needed to build the frontend |
-| OS      | macOS   | uses `launchd` for the auto-start service      |
+| OS      | macOS / Linux | auto-start via `launchd` (macOS) or a systemd user unit (Linux); Windows: use WSL |
 
 
 ### Credentials (`.env`)
@@ -60,7 +56,11 @@ Market data (yfinance) and EDGAR filings need no credentials beyond the User-Age
 
 ## Installation
 
+`scripts/setup.sh` does all of this; the manual equivalent is:
+
 ```bash
+cp .env.example .env && $EDITOR .env     # FRED + Anthropic keys, EDGAR user-agent
+
 # Backend (Python)
 cd backend
 python3 -m venv .venv
@@ -69,7 +69,7 @@ pip install -r requirements.txt          # all deps pinned to exact versions
 
 # Frontend (build static assets the backend will serve)
 cd ../frontend
-npm install
+npm ci
 npm run build                            # → frontend/dist/
 ```
 
@@ -108,6 +108,16 @@ beehiiv feeds use `https://rss.beehiiv.com/feeds/<id>.xml` (find the id in page 
 - `edgar` — form types + asset-class keywords
 - `refresh_intervals` — job cadences. `**news_feeds_minutes: 0**` disables automatic
 (token-spending) news classification — see [Token usage](#token-usage).
+- `sources` — turn pluggable sources off or change their cadence, e.g.
+  `cfpb: {enabled: false}` or `trace: {every_hours: 24}`.
+
+### Adding a data source — `plugins/`
+
+Drop a Python file into `plugins/` that fetches data and declares a `SOURCE`; on the next
+restart it is scheduled, refreshable via `POST /api/jobs/run/{id}`, listed at
+`GET /api/sources`, and (if it declares a `panel`) charted on the Macro tab under
+**Custom Sources** — no scheduler, route, or frontend changes. Start from
+`plugins/_example_treasury_rates.py`; the guide is [`plugins/README.md`](plugins/README.md).
 
 ---
 
@@ -119,12 +129,18 @@ CORS or `localhost` issues.
 
 ### Running as a service
 
-A `launchd` agent starts the server on login and restarts it on crash:
+`scripts/install_service.sh` installs a per-user service that starts the server on login
+and restarts it on crash — a `launchd` agent on macOS, a systemd user unit on Linux. It
+fills this checkout's paths into the template, so it works from any clone location.
 
 ```bash
-cp scripts/com.situationmonitor.server.plist ~/Library/LaunchAgents/
-launchctl load   ~/Library/LaunchAgents/com.situationmonitor.server.plist   # start
-launchctl unload ~/Library/LaunchAgents/com.situationmonitor.server.plist   # stop
+scripts/install_service.sh               # install (or reinstall) + start
+scripts/install_service.sh --uninstall   # stop + remove
+PORT=8080 scripts/install_service.sh     # non-default port
+
+# Restart after backend changes
+launchctl kickstart -k gui/$(id -u)/com.situationmonitor.server   # macOS
+systemctl --user restart situation-monitor                          # Linux
 ```
 
 ### Running manually
@@ -137,7 +153,8 @@ The port opens in ~1s; market/FRED/EDGAR data loads in the background just after
 
 ### Accessing from an iPad
 
-On the same Wi-Fi, open `http://<lan-ip>:8000` (`ipconfig getifaddr en0`). Add to Home
+On the same Wi-Fi, open `http://<lan-ip>:8000` (`ipconfig getifaddr en0` on macOS,
+`hostname -I` on Linux). Add to Home
 Screen for an app-like launcher. A DHCP reservation or your Mac's `.local` name gives a
 stable URL.
 
@@ -331,7 +348,9 @@ backend/
                       indicators (computed series) · hhdc (NY Fed flows)
                       abs_pricing · abs_parser · abs_reparse (424B5 + FWP)
                       trust_performance (10-D master-trust metrics)
+                      sources (pluggable-source registry; built-ins below declare SOURCE)
                       manheim (UVVI) · cfpb (complaints) · finra_trace (STAR volume)
+                      sce · sba · nfib
                       bdc · clo · h8 · kbra · regulatory · sifma
                       analyst · analyst_tools (briefing + tool-use chat, Opus 4.7)
                       article_dedup (semantic clustering)
@@ -345,12 +364,18 @@ frontend/
                       private_credit · regulatory · charts · shared
     lib/ styles/      API client, hooks, design tokens
   .env(.production)   VITE_API_URL (dev: localhost:8000/api · prod: /api)
+plugins/
+  README.md           how to write a data-source plugin
+  _example_*.py       template plugin (underscore = not loaded; copy to enable)
 config/
   feeds.yaml          RSS/newsletter feeds (incl. regulatory agency feeds)
   data_sources.yaml   FRED series, tickers, EDGAR config, ABS pricing, refresh intervals
 scripts/
+  setup.sh                               one-shot install on a fresh clone
   run.sh                                 manual launcher
-  com.situationmonitor.server.plist      launchd auto-start service
+  install_service.sh                     auto-start service (launchd / systemd)
+  com.situationmonitor.server.plist.template   launchd template (filled by install_service.sh)
+  backfill_history.sh                    optional deep-history pull for a new install
   backfill_*.py / reparse_*.py           one-shot maintenance scripts
   publish_gh_pages.sh / snapshot_api.py  static-mode (gh-pages) snapshot pipeline
 docs/
@@ -368,6 +393,8 @@ docs/
 GET  /api/status                      health, row counts, last_news_refresh, jobs summary
 GET  /api/jobs/status                 latest scheduled-job run per job_id
 GET  /api/jobs/history                recent job-run history
+GET  /api/sources                     pluggable data sources (built-ins + plugins/) + last run
+POST /api/jobs/run/{job_id}           run a job/source now in the background; poll GET /api/jobs/run/{run_id}
 
 # News + digest
 GET  /api/articles                    scored articles (min_score, category=CSV, source_type, limit, offset)
@@ -468,9 +495,8 @@ Interactive docs: `http://localhost:8000/docs`.
 # Rebuild the frontend after UI changes (served fresh, no restart)
 cd frontend && npm run build
 
-# Restart after backend changes (launchd)
-launchctl unload ~/Library/LaunchAgents/com.situationmonitor.server.plist
-launchctl load   ~/Library/LaunchAgents/com.situationmonitor.server.plist
+# Restart after backend changes (macOS launchd; Linux: systemctl --user restart situation-monitor)
+launchctl kickstart -k gui/$(id -u)/com.situationmonitor.server
 
 # Logs
 tail -f logs/server.out.log logs/server.err.log

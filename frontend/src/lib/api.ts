@@ -28,6 +28,7 @@ import type {
   EntityLookupResult,
   CloSpreadProxyPoint,
   CreditImpulsePoint,
+  DataSource,
   FeedHealth,
   ForwardCurveData,
   H8SeriesMetrics,
@@ -447,6 +448,7 @@ export const getMarketHistory = (ticker: string, limit = 252) =>
 
 // ── FRED ───────────────────────────────────────────────
 export const getFredLatest = () => api.get('/fred/latest');
+export const getSources = () => api.get<{ sources: DataSource[] }>('/sources');
 export const getFredHistory = (seriesId: string, limit = 260) =>
   api.get<MetricPoint[]>(`/fred/history/${seriesId}`, { params: { limit } });
 export const getForwardCurve = () => api.get<ForwardCurveData>('/fred/forward-curve');

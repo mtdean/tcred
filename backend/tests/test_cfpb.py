@@ -11,6 +11,13 @@ from cache import db
 from data import cfpb
 
 
+@pytest.fixture(autouse=True)
+def no_pacing(monkeypatch):
+    sleeps: list[float] = []
+    monkeypatch.setattr(cfpb.time, "sleep", sleeps.append)
+    return sleeps
+
+
 @pytest.fixture
 def frozen_now(monkeypatch):
     import datetime as dt
@@ -161,3 +168,22 @@ class TestFetch:
         _seed_all("2026-05-01")
         mocked_responses.get(cfpb.SEARCH_URL, body="<!DOCTYPE html>", status=200)
         assert cfpb.fetch_cfpb_complaints() == 0
+
+    def test_429_is_retried_with_backoff(
+        self, fresh_db, mocked_responses, frozen_now, no_pacing
+    ):
+        _seed_all("2026-05-01")
+        hits = json.dumps({"hits": {"total": {"value": 5, "relation": "eq"}}})
+        calls = {"n": 0}
+
+        def cb(request):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return (429, {"Retry-After": "7"}, "")
+            return (200, {}, hits)
+
+        mocked_responses.add_callback("GET", cfpb.SEARCH_URL, callback=cb)
+        n = cfpb.fetch_cfpb_complaints()
+
+        assert n == 3 * len(cfpb.SERIES)  # nothing lost to the 429
+        assert 7.0 in no_pacing          # honoured Retry-After

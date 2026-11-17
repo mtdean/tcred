@@ -20,6 +20,7 @@ import pandas as pd
 import requests
 
 from cache.db import upsert_metric
+from data.sources import Source
 
 logger = logging.getLogger(__name__)
 
@@ -81,3 +82,14 @@ def fetch_sba_activity() -> int:
 
     logger.info("SBA activity ingest complete — %d rows", stored)
     return stored
+
+
+# Registered with the scheduler via data/sources.py (BUILTIN_MODULES).
+# SBA activity is monthly — a weekly check picks up each release within days.
+SOURCE = Source(
+    id="sba",
+    label="SBA 7(a)/504 lending",
+    fetch=fetch_sba_activity,
+    every_hours=168,
+    description="Monthly SBA loan approvals by program (open-data XLSX).",
+)

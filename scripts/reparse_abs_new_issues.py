@@ -16,7 +16,7 @@ Idempotent: re-running only touches rows that still have NULL fields. Cached
 HTML on disk means re-runs don't re-download from EDGAR.
 
 Usage:
-    cd /Users/td/situation-monitor/backend
+    cd backend   # from the repo root
     source .venv/bin/activate
     python ../scripts/reparse_abs_new_issues.py            # full run
     python ../scripts/reparse_abs_new_issues.py --limit 5  # smoke test

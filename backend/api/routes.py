@@ -1149,6 +1149,23 @@ def get_freshness():
     return freshness_report()
 
 
+@router.get("/sources")
+def list_sources():
+    """Pluggable data sources (built-ins + plugins/), with latest run status.
+
+    Sources that declare a `panel` are charted on the Macro tab's
+    "Custom Sources" section; refresh any one via POST /api/jobs/run/{id}.
+    """
+    from cache.db import get_latest_job_runs
+    from data.sources import describe_source, get_sources
+    last = {r["job_id"]: r for r in get_latest_job_runs()}
+    return {
+        "sources": [
+            {**describe_source(s), "last_run": last.get(s.id)} for s in get_sources()
+        ]
+    }
+
+
 @router.get("/jobs/status")
 def jobs_status():
     """Latest run per scheduled job: status, duration, rows ingested, last error."""

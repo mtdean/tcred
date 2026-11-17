@@ -3,13 +3,10 @@
   Situation Monitor — macOS LaunchAgent.
   Auto-starts the server on login and restarts it if it crashes.
 
-  Install:
-    cp scripts/com.situationmonitor.server.plist ~/Library/LaunchAgents/
-    launchctl load ~/Library/LaunchAgents/com.situationmonitor.server.plist
-
-  Stop / uninstall:
-    launchctl unload ~/Library/LaunchAgents/com.situationmonitor.server.plist
-    rm ~/Library/LaunchAgents/com.situationmonitor.server.plist
+  Template — __PROJECT_ROOT__ and __PORT__ are filled in by
+  scripts/install_service.sh, which also loads it:
+    scripts/install_service.sh              # install + start
+    scripts/install_service.sh --uninstall  # stop + remove
 -->
 <plist version="1.0">
 <dict>
@@ -18,18 +15,18 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/td/situation-monitor/backend/.venv/bin/python</string>
+        <string>__PROJECT_ROOT__/backend/.venv/bin/python</string>
         <string>-m</string>
         <string>uvicorn</string>
         <string>main:app</string>
         <string>--host</string>
         <string>0.0.0.0</string>
         <string>--port</string>
-        <string>8000</string>
+        <string>__PORT__</string>
     </array>
 
     <key>WorkingDirectory</key>
-    <string>/Users/td/situation-monitor/backend</string>
+    <string>__PROJECT_ROOT__/backend</string>
 
     <key>RunAtLoad</key>
     <true/>
@@ -46,8 +43,8 @@
     </dict>
 
     <key>StandardOutPath</key>
-    <string>/Users/td/situation-monitor/logs/server.out.log</string>
+    <string>__PROJECT_ROOT__/logs/server.out.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/td/situation-monitor/logs/server.err.log</string>
+    <string>__PROJECT_ROOT__/logs/server.err.log</string>
 </dict>
 </plist>

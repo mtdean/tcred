@@ -13,7 +13,7 @@ issuance_type is a brand-new column — filled here for the first time.
 Idempotent: UPDATE re-runs leave each row at its current classification.
 
 Usage:
-    cd /Users/td/situation-monitor/backend
+    cd backend   # from the repo root
     source .venv/bin/activate
     python ../scripts/retag_edgar_filings.py
 """

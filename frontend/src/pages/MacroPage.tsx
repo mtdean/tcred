@@ -4,6 +4,7 @@ import RatesPanel from '../components/macro/RatesPanel';
 import MacroIndicators from '../components/macro/MacroIndicators';
 import H8CreditPanel from '../components/macro/H8CreditPanel';
 import CloStressPanel from '../components/macro/CloStressPanel';
+import PluginSourcePanels from '../components/macro/PluginSourcePanels';
 import TrustPerformancePanel from '../components/abs/TrustPerformancePanel';
 import ConsumerScorecardPanel, {
   LeveragedScorecardPanel,
@@ -127,6 +128,9 @@ export default function MacroPage() {
         <StockMomentumPanel />
         <DollarPanel />
       </div>
+
+      {/* Data-source plugins (plugins/*.py) that declare a panel. */}
+      <PluginSourcePanels header={<SectionLabel>Custom Sources</SectionLabel>} />
     </div>
   );
 }

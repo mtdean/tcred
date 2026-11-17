@@ -23,6 +23,7 @@ import pandas as pd
 import requests
 
 from cache.db import upsert_metric
+from data.sources import Source
 
 logger = logging.getLogger(__name__)
 
@@ -117,3 +118,16 @@ def fetch_trace_volumes() -> int:
 
     logger.info("TRACE STAR: %d rows stored for %s", count, as_of)
     return count
+
+
+# Registered with the scheduler via data/sources.py (BUILTIN_MODULES).
+# STAR file is re-uploaded daily ~8PM ET with that day's trading; a 12h
+# cadence catches each new day without re-storing duplicates (same date
+# upserts in place).
+SOURCE = Source(
+    id="trace",
+    label="FINRA TRACE securitized volume",
+    fetch=fetch_trace_volumes,
+    every_hours=12,
+    description="Daily secondary trading volume for ABS / CLO / CMBS / CMO (STAR file).",
+)

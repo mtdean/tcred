@@ -6,7 +6,7 @@ pricing term sheets. Idempotent — already-parsed accession numbers are skipped
 so re-running with a wider window only adds new deals.
 
 Usage:
-    cd /Users/td/situation-monitor/backend
+    cd backend   # from the repo root
     source .venv/bin/activate
     python ../scripts/backfill_abs_pricing.py --days 1095
 

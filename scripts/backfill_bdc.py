@@ -7,7 +7,7 @@ bdc_summary. Idempotent — holdings are INSERT OR IGNORE on a hash key and
 summaries are INSERT OR REPLACE per (cik, observation_date).
 
 Usage:
-    cd /Users/td/situation-monitor/backend
+    cd backend   # from the repo root
     source .venv/bin/activate
     python ../scripts/backfill_bdc.py
     python ../scripts/backfill_bdc.py --since-year 2024

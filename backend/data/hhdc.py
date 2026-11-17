@@ -25,6 +25,7 @@ from datetime import date, datetime, timezone
 import requests
 
 from cache.db import upsert_metric
+from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,8 @@ _BASE_URL = (
     "householdcredit/data/xls/hhd_c_report_{year}q{q}.xlsx"
 )
 # The NY Fed CDN 403s bare clients; a browser-ish UA with contact is accepted.
-_HEADERS = {"User-Agent": "Mozilla/5.0 SituationMonitor/0.1 mtuckerdean@gmail.com"}
+# Reuses the operator's EDGAR_USER_AGENT ("AppName/0.1 you@email.com").
+_HEADERS = {"User-Agent": f"Mozilla/5.0 {settings.EDGAR_USER_AGENT}"}
 
 # (workbook tab, delinquency bucket) for the two flow pages.
 _FLOW_PAGES = [("Page 13 Data", 30), ("Page 14 Data", 90)]
@@ -103,8 +105,13 @@ def _fetch_latest_workbook() -> tuple[bytes, str] | None:
         except Exception as e:
             logger.warning("HHDC probe %dQ%d error: %s", year, q, e)
             continue
-        # Real workbooks are ~1MB; a 200 with a tiny body is an error page.
-        if resp.status_code == 200 and len(resp.content) > 100_000:
+        # Real workbooks are ~1MB xlsx (zip, "PK" magic). Unpublished quarters
+        # return a 200 HTML page — ~100KB, so size alone can't tell them apart.
+        if (
+            resp.status_code == 200
+            and len(resp.content) > 100_000
+            and resp.content[:2] == b"PK"
+        ):
             logger.info("HHDC: using %dQ%d (%d bytes)", year, q, len(resp.content))
             return resp.content, f"{year}Q{q}"
     logger.error("HHDC: no workbook found in the last %d quarters", len(_recent_quarters()))

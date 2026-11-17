@@ -680,3 +680,31 @@ export interface KbraPresale {
   parse_confidence: 'high' | 'medium' | 'low' | null;
   parsed_at: string | null;
 }
+
+// GET /api/sources — pluggable data sources (backend/data/sources.py).
+export interface SourcePanel {
+  title: string;
+  subtitle: string;
+  unit: 'pct' | 'plain';
+  decimals: number;
+  frequency: 'daily' | 'monthly' | 'quarterly';
+  series: { series_id: string; name: string }[];
+}
+
+export interface DataSource {
+  id: string;
+  label: string;
+  description: string;
+  origin: string; // 'builtin' or the plugin file name
+  enabled: boolean;
+  every_hours: number;
+  run_on_startup: boolean;
+  manual_refresh: boolean;
+  panel: SourcePanel | null;
+  last_run: {
+    status: string;
+    started_at: string;
+    rows_ingested: number | null;
+    error: string | null;
+  } | null;
+}

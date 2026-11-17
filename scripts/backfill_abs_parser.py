@@ -6,7 +6,7 @@ last N days. Idempotent — already-parsed accession numbers are skipped, so
 re-running widens the window without producing duplicates.
 
 Usage:
-    cd /Users/td/situation-monitor/backend
+    cd backend   # from the repo root
     source .venv/bin/activate
     python ../scripts/backfill_abs_parser.py --days 365
 

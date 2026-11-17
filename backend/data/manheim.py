@@ -22,6 +22,7 @@ import pandas as pd
 import requests
 
 from cache.db import upsert_metric
+from data.sources import Source
 
 logger = logging.getLogger(__name__)
 
@@ -111,3 +112,15 @@ def fetch_manheim_index() -> int:
     last = rows[-1][0] if rows else "—"
     logger.info("Manheim: %d rows stored (latest %s) from %s", count, last, url)
     return count
+
+
+# Registered with the scheduler via data/sources.py (BUILTIN_MODULES).
+# Manheim index is monthly; a daily check picks up the re-dated XLSX link
+# within a day of Cox posting it.
+SOURCE = Source(
+    id="manheim",
+    label="Manheim Used Vehicle Value Index",
+    fetch=fetch_manheim_index,
+    every_hours=24,
+    description="Monthly wholesale used-car values (Cox XLSX) — auto-ABS recovery driver.",
+)

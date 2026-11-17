@@ -8,6 +8,7 @@ export const qk = {
   marketSnapshot: ['market', 'snapshot'] as const,
   marketHistory: (ticker: string) => ['market', 'history', ticker] as const,
   fredLatest: ['fred', 'latest'] as const,
+  sources: ['sources'] as const,
   fredHistory: (seriesId: string) => ['fred', 'history', seriesId] as const,
   forwardCurve: ['fred', 'forward-curve'] as const,
   sofr: ['fred', 'sofr'] as const,

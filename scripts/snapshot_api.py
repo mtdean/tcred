@@ -119,6 +119,9 @@ def run(base: str, out_dir: Path) -> int:
     s.snap("/clo/spread-proxy")
     s.snap("/clo/filings", {"limit": 50})
     s.snap("/kbra/presales")
+    # Pluggable sources — drives the Macro tab's "Custom Sources" panels. Their
+    # series live in metrics, so the FRED-history loop below picks them up.
+    s.snap("/sources")
 
     # ── FRED history per series ────────────────────────────
     fred_latest = s.fetch("/fred/latest")

@@ -15,7 +15,7 @@ rating_kbra independently) finds a match.
 Idempotent: UPDATEs only NULL fields, so re-running is safe.
 
 Usage:
-    cd /Users/td/situation-monitor/backend
+    cd backend   # from the repo root
     source .venv/bin/activate
     python ../scripts/join_abs_pricing_to_new_issues.py
 """

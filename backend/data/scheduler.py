@@ -27,6 +27,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from cache.db import finish_job_run, reap_stale_job_runs, start_job_run
 from config import load_data_sources
+from data.sources import enabled_sources
 
 logger = logging.getLogger(__name__)
 _scheduler: AsyncIOScheduler | None = None
@@ -137,27 +138,6 @@ def _trust_perf_inner() -> int:
     return n
 
 
-def _manheim_inner() -> int:
-    from data.manheim import fetch_manheim_index
-    n = fetch_manheim_index()
-    logger.info(f"Scheduler: Manheim UVVI — {n} rows")
-    return n
-
-
-def _cfpb_inner() -> int:
-    from data.cfpb import fetch_cfpb_complaints
-    n = fetch_cfpb_complaints()
-    logger.info(f"Scheduler: CFPB complaints — {n} rows")
-    return n
-
-
-def _trace_inner() -> int:
-    from data.finra_trace import fetch_trace_volumes
-    n = fetch_trace_volumes()
-    logger.info(f"Scheduler: TRACE volumes — {n} rows")
-    return n
-
-
 def _hhdc_inner() -> int:
     from data.hhdc import fetch_hhdc_transitions
     from data.indicators import compute_cfsi
@@ -212,30 +192,6 @@ def _alerts_inner() -> int:
     return n
 
 
-def _sce_inner() -> int:
-    """NY Fed Survey of Consumer Expectations (monthly XLSX). Token-free."""
-    from data.sce import fetch_sce
-    n = fetch_sce()
-    logger.info(f"Scheduler: SCE — {n} rows")
-    return n
-
-
-def _sba_inner() -> int:
-    """SBA 7(a)/504 monthly lending activity (open-data XLSX). Token-free."""
-    from data.sba import fetch_sba_activity
-    n = fetch_sba_activity()
-    logger.info(f"Scheduler: SBA — {n} rows")
-    return n
-
-
-def _nfib_inner() -> int:
-    """NFIB SBET monthly PDF — optimism + loan availability. Token-free."""
-    from data.nfib import fetch_nfib
-    n = fetch_nfib()
-    logger.info(f"Scheduler: NFIB — {n} rows")
-    return n
-
-
 def _daily_brief_inner() -> int:
     """Morning digest + ntfy push (config: data_sources.yaml daily_brief)."""
     from data.daily_brief import run_morning_brief
@@ -286,15 +242,10 @@ _job_backup = _instrument("backup", _backup_inner)
 _job_article_dedup = _instrument("article_dedup", _article_dedup_inner)
 _job_sifma = _instrument("sifma", _sifma_inner)
 _job_trust_perf = _instrument("trust_perf", _trust_perf_inner)
-_job_manheim = _instrument("manheim", _manheim_inner)
-_job_cfpb = _instrument("cfpb", _cfpb_inner)
-_job_trace = _instrument("trace", _trace_inner)
 _job_macro_forecasts = _instrument("macro_forecasts", _macro_forecasts_inner)
 _job_alerts = _instrument("alerts", _alerts_inner)
 _job_daily_brief = _instrument("daily_brief", _daily_brief_inner)
-_job_sce = _instrument("sce", _sce_inner)
-_job_sba = _instrument("sba", _sba_inner)
-_job_nfib = _instrument("nfib", _nfib_inner)
+
 
 
 async def start_scheduler():
@@ -364,37 +315,6 @@ async def start_scheduler():
         replace_existing=True,
     )
 
-    # Manheim index is monthly; a daily check picks up the re-dated XLSX link
-    # within a day of Cox posting it.
-    _scheduler.add_job(
-        _job_manheim,
-        IntervalTrigger(hours=24),
-        id="manheim",
-        max_instances=1,
-        replace_existing=True,
-    )
-
-    # CFPB complaint counts settle with a lag; a daily pull keeps the trailing
-    # months fresh as late-arriving complaints post.
-    _scheduler.add_job(
-        _job_cfpb,
-        IntervalTrigger(hours=24),
-        id="cfpb",
-        max_instances=1,
-        replace_existing=True,
-    )
-
-    # STAR file is re-uploaded daily ~8PM ET with that day's trading; a 12h
-    # cadence catches each new day without re-storing duplicates (same date
-    # upserts in place).
-    _scheduler.add_job(
-        _job_trace,
-        IntervalTrigger(hours=12),
-        id="trace",
-        max_instances=1,
-        replace_existing=True,
-    )
-
     # Macrobot forecast bundle is rewritten whenever run_synthesis runs; an
     # hourly file read is cheap and keeps the dashboard within an hour of the
     # latest model run (re-ingestion is idempotent).
@@ -444,21 +364,6 @@ async def start_scheduler():
         replace_existing=True,
     )
 
-    # SCE is monthly and SBA activity monthly — a weekly check picks up each
-    # release within days at negligible cost.
-    _scheduler.add_job(
-        _job_sce, IntervalTrigger(hours=168), id="sce",
-        max_instances=1, replace_existing=True,
-    )
-    _scheduler.add_job(
-        _job_sba, IntervalTrigger(hours=168), id="sba",
-        max_instances=1, replace_existing=True,
-    )
-    _scheduler.add_job(
-        _job_nfib, IntervalTrigger(hours=168), id="nfib",
-        max_instances=1, replace_existing=True,
-    )
-
     # Morning brief: cron-scheduled digest generation + ntfy push. One small
     # Claude call per day; disable via data_sources.yaml daily_brief.enabled.
     brief_cfg = cfg.get("daily_brief") or {}
@@ -504,6 +409,17 @@ async def start_scheduler():
         replace_existing=True,
     )
 
+    # Pluggable sources (data/sources.py): built-ins plus anything dropped in
+    # plugins/. Each gets its own interval job under its source id.
+    for src in enabled_sources():
+        _scheduler.add_job(
+            _instrument(src.id, src.fetch),
+            IntervalTrigger(hours=src.every_hours),
+            id=src.id,
+            max_instances=1,
+            replace_existing=True,
+        )
+
     _scheduler.start()
     logger.info(
         "Scheduler started (auto news fetch/classify: %s)",
@@ -523,6 +439,10 @@ async def _initial_fetch(auto_news: bool) -> None:
     threads so they never stall the event loop that's now serving requests.
     """
     logger.info("Initial data fetch started (background)")
+    # Several startup jobs first-import openpyxl (via pandas.read_excel) in
+    # parallel threads; on a cold venv that race hands some of them a
+    # partially-initialized module. Import it once here, before the fan-out.
+    import openpyxl  # noqa: F401
     tasks = [
         _job_health(),                       # async (aiohttp)
         asyncio.to_thread(_job_market),       # blocking → thread
@@ -532,13 +452,13 @@ async def _initial_fetch(auto_news: bool) -> None:
         asyncio.to_thread(_job_regulatory),   # blocking → thread (Phase 7)
         asyncio.to_thread(_job_bdc),          # blocking → thread (Phase 7, ~50MB ZIP)
         asyncio.to_thread(_job_trust_perf),   # blocking → thread
-        asyncio.to_thread(_job_manheim),      # blocking → thread
-        asyncio.to_thread(_job_cfpb),         # blocking → thread
-        asyncio.to_thread(_job_trace),        # blocking → thread
-        asyncio.to_thread(_job_sce),          # blocking → thread
-        asyncio.to_thread(_job_sba),          # blocking → thread
-        asyncio.to_thread(_job_nfib),         # blocking → thread
     ]
+    for src in enabled_sources():
+        if src.run_on_startup:
+            job = _instrument(src.id, src.fetch)
+            # Sources may be sync (→ worker thread) or async (→ the loop).
+            is_async = inspect.iscoroutinefunction(src.fetch)
+            tasks.append(job() if is_async else asyncio.to_thread(job))
     if auto_news:
         tasks.append(_job_feeds())       # async
     try:

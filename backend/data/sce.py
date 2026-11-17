@@ -24,6 +24,7 @@ import pandas as pd
 import requests
 
 from cache.db import upsert_metric
+from data.sources import Source
 
 logger = logging.getLogger(__name__)
 
@@ -145,3 +146,14 @@ def fetch_sce() -> int:
 
     logger.info("SCE ingest complete — %d rows", stored)
     return stored
+
+
+# Registered with the scheduler via data/sources.py (BUILTIN_MODULES).
+# SCE is monthly — a weekly check picks up each release within days.
+SOURCE = Source(
+    id="sce",
+    label="NY Fed Survey of Consumer Expectations",
+    fetch=fetch_sce,
+    every_hours=168,
+    description="Monthly household delinquency / credit-access expectations (XLSX).",
+)

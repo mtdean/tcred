@@ -9,8 +9,8 @@ card" → "Credit card"), so each series ORs all historical names.
 
 CFPB retired the /trends/ histogram endpoint in Aug 2026 (it now serves the
 site's HTML shell with a 200), so each month is one filtered `size=0` search
-reading the exact `hits.total`. That's ~140 calls per series for a backfill,
-so runs are incremental: months after the last stored one, plus a trailing
+reading the exact `hits.total`. That's ~140 calls per series for a backfill
+(paced, so a fresh DB takes ~15 min), so runs are incremental: months after the last stored one, plus a trailing
 REVISE_MONTHS window because late-filed complaints keep landing in recent
 months. date_received_max is inclusive.
 
@@ -20,11 +20,13 @@ never fetched so the chart tail doesn't fake a collapse in complaints.
 """
 
 import logging
+import time
 from datetime import date, datetime, timedelta, timezone
 
 import requests
 
 from cache.db import get_conn, upsert_metric
+from data.sources import Source
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +35,10 @@ SEARCH_URL = (
 )
 START_DATE = "2015-01-01"
 REVISE_MONTHS = 3
+# A fresh-DB backfill is ~700 calls; unpaced, CFPB starts returning 429s
+# within a couple hundred. Pace every call and back off on 429.
+REQUEST_INTERVAL_S = 0.5
+MAX_RETRIES = 4
 
 SERIES: list[dict] = [
     {
@@ -83,7 +89,13 @@ def _month_count(products: list[str], month: date) -> int:
         ("date_received_max", month_end.isoformat()),
     ]
     params += [("product", p) for p in products]
-    resp = requests.get(SEARCH_URL, params=params, timeout=60)
+    for attempt in range(MAX_RETRIES + 1):
+        time.sleep(REQUEST_INTERVAL_S)
+        resp = requests.get(SEARCH_URL, params=params, timeout=60)
+        if resp.status_code != 429 or attempt == MAX_RETRIES:
+            break
+        retry_after = resp.headers.get("Retry-After", "")
+        time.sleep(float(retry_after) if retry_after.isdigit() else 5 * 2**attempt)
     resp.raise_for_status()
     total = resp.json()["hits"]["total"]
     return int(total["value"] if isinstance(total, dict) else total)
@@ -137,3 +149,15 @@ def fetch_cfpb_complaints() -> int:
         count += stored
 
     return count
+
+
+# Registered with the scheduler via data/sources.py (BUILTIN_MODULES).
+# CFPB complaint counts settle with a lag; a daily pull keeps the trailing
+# months fresh as late-arriving complaints post.
+SOURCE = Source(
+    id="cfpb",
+    label="CFPB complaint volume",
+    fetch=fetch_cfpb_complaints,
+    every_hours=24,
+    description="Monthly CFPB complaint counts by product — consumer-stress lead.",
+)

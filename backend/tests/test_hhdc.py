@@ -274,3 +274,18 @@ class TestParseFlowSheet:
             )}
         assert "HHDC_FLOW30_AUTO" not in ids
         assert "HHDC_FLOW30_CC" in ids
+
+    def test_large_html_page_for_unpublished_quarter_is_skipped(
+        self, fresh_db, mocked_responses
+    ):
+        # A future quarter's URL serves a ~100KB HTML shell with a 200 —
+        # big enough to pass the size sniff; only the zip magic rejects it.
+        wb_bytes = _make_minimal_workbook()
+        quarters = hhdc._recent_quarters()
+        (y0, q0), (y1, q1) = quarters[0], quarters[1]
+        html = b"<!DOCTYPE html>" + b" " * 101_000
+        mocked_responses.get(hhdc._BASE_URL.format(year=y0, q=q0), body=html, status=200)
+        mocked_responses.get(hhdc._BASE_URL.format(year=y1, q=q1), body=wb_bytes, status=200)
+        result = hhdc._fetch_latest_workbook()
+        assert result is not None
+        assert result[1] == f"{y1}Q{q1}"

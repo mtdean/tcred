@@ -20,6 +20,7 @@ import time
 
 from cache.db import get_conn, set_meta
 from data import scheduler as sched
+from data.sources import enabled_sources
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,11 @@ MANUAL_JOBS = {
     "bdc": sched._bdc_inner,
     "regulatory": sched._regulatory_inner,
 }
+# Every pluggable source (data/sources.py) is refreshable by its id unless it
+# opts out with manual_refresh=False.
+MANUAL_JOBS.update(
+    {s.id: s.fetch for s in enabled_sources() if s.manual_refresh}
+)
 
 # Successful manual runs stamp the same /api/status meta keys the legacy
 # sync refresh endpoints set, so the TopBar "last refresh" readout keeps working.

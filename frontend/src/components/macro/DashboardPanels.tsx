@@ -14,25 +14,7 @@ import LoadingCursor from '../shared/LoadingCursor';
 import EmptyState from '../shared/EmptyState';
 import MultiLineChart from '../charts/MultiLineChart';
 import type { SeriesDef } from '../charts/MultiLineChart';
-
-const RANGES_MONTHLY = [
-  { label: '2Y', years: 2 },
-  { label: '5Y', years: 5 },
-  { label: '10Y', years: 10 },
-  { label: 'MAX', years: null },
-];
-const RANGES_QUARTERLY = [
-  { label: '5Y', years: 5 },
-  { label: '10Y', years: 10 },
-  { label: 'MAX', years: null },
-];
-const RANGES_DAILY = [
-  { label: '1Y', years: 1 },
-  { label: '3Y', years: 3 },
-  { label: '5Y', years: 5 },
-  { label: '10Y', years: 10 },
-  { label: 'MAX', years: null },
-];
+import { RANGES_DAILY, RANGES_MONTHLY, RANGES_QUARTERLY } from './ranges';
 
 // ── Activity & recession ──────────────────────────────────────────
 export function NationalActivityPanel() {
