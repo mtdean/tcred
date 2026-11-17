@@ -22,6 +22,8 @@ import {
   stressResponse,
   verifyKit,
   type AbfClass,
+  type AbfStructure,
+  type AbfStructureResult,
   type StressInputs,
   type StressKit,
   type StressResult,
@@ -236,6 +238,69 @@ function AbfView({ kit, res }: { kit: StressKit; res: StressResult }) {
   );
 }
 
+const STATUS_COLOR: Record<string, string> = {
+  intact: COLORS.positive, eroding: COLORS.accent, 'at risk': COLORS.negative, loss: COLORS.negative,
+};
+
+function StructureCard({ s, r }: { s: AbfStructure; r: AbfStructureResult }) {
+  const dscr = r.kind === 'dscr';
+  const head = dscr
+    ? `prices ${signed(r.price_pct ?? 0, 0, '%')} → cash flow ${signed(r.cash_flow_pct ?? 0, 0, '%')}`
+    : `pool loss ${s.base_loss_pct.toFixed(1)}% → ${(r.stressed_loss_pct ?? 0).toFixed(1)}%${s.revolving ? ' a year' : ' lifetime'} (×${(r.life_multiple ?? 1).toFixed(2)})`;
+  return (
+    <div style={{ border: `1px solid ${COLORS.border}`, padding: '8px 12px', background: COLORS.bgPanel }}>
+      <div className="muted" style={{ fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase' }}>{s.label}</div>
+      <div style={{ fontSize: 11, margin: '2px 0 8px', color: COLORS.textPrimary }}>{head}</div>
+      {r.tranches.map((t) => {
+        const color = STATUS_COLOR[t.status] ?? COLORS.textSecondary;
+        const used = Math.max(t.used, 0);
+        return (
+          <div key={t.rating} title={`${dscr ? 'DSCR' : 'loss multiple'} ${t.base.toFixed(2)}× → ${t.stressed.toFixed(2)}×`}
+            style={{ display: 'grid', gridTemplateColumns: '34px 1fr 96px', gap: 8, alignItems: 'center', fontSize: 10, marginBottom: 4 }}>
+            <span style={{ color: COLORS.textSecondary }}>{t.rating}</span>
+            <div style={{ height: 7, background: COLORS.border, position: 'relative' }}>
+              <div style={{ height: 7, width: `${Math.min(used, 1) * 100}%`, background: color }} />
+            </div>
+            <span style={{ color: used < 0.005 ? COLORS.textDim : color, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+              {(used * 100).toFixed(0)}% · {t.status}
+            </span>
+          </div>
+        );
+      })}
+      <div className="muted" style={{ fontSize: 9, marginTop: 6, lineHeight: 1.4 }}>
+        {dscr
+          ? `DSCR ${r.tranches.map((t) => `${t.rating} ${t.base.toFixed(2)}→${t.stressed.toFixed(2)}×`).join(' · ')} · cash trap ${s.cash_trap_dscr.toFixed(2)}×`
+          : `cushion ${r.tranches.map((t) => `${t.rating} ${t.base.toFixed(1)}→${t.stressed.toFixed(1)}×`).join(' · ')}`}
+        {s.note && <><br />{s.note}</>}
+      </div>
+    </div>
+  );
+}
+
+function StructuresView({ kit, res }: { kit: StressKit; res: StressResult }) {
+  const sb = kit.abf?.structures;
+  if (!sb || !res.abf_structures.length) {
+    return <div className="muted" style={{ fontSize: 11 }}>No generic structures in this bundle — re-run macrobot&apos;s run_synthesis.</div>;
+  }
+  const spec = Object.fromEntries(sb.structures.map((s) => [s.key, s]));
+  return (
+    <div className="stack">
+      <div className="muted" style={{ fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+        Tranche headroom used by your scenario · 0% = untouched · 100% = first dollar of principal loss
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 10 }}>
+        {res.abf_structures.map((r) => spec[r.key] && <StructureCard key={r.key} s={spec[r.key]} r={r} />)}
+      </div>
+      <div className="muted" style={{ fontSize: 10, border: `1px solid ${COLORS.border}`, padding: '6px 10px', background: COLORS.bgPanel, lineHeight: 1.5 }}>
+        Generic deals, not yours: base losses and tranche loss multiples are illustrative assumptions in the range of recent public deals.
+        The scenario&apos;s change in each asset class&apos;s loss rate (ABF collateral view) scales the pool&apos;s base loss; elevated losses are
+        assumed to last {sb.stress_years.toFixed(0)} years, so short deals take the full hit and long deals part of it.
+        Bars turn amber at {(sb.watch_used * 100).toFixed(0)}% and red at {(sb.at_risk_used * 100).toFixed(0)}%. Not a rating forecast.
+      </div>
+    </div>
+  );
+}
+
 // ── panel ─────────────────────────────────────────────────────
 
 // `initialPreset` lets a link open the lab on a named scenario
@@ -243,7 +308,8 @@ function AbfView({ kit, res }: { kit: StressKit; res: StressResult }) {
 export default function StressLabPanel({ views, initialPreset, initialPanel }: {
   views: MacroViews; initialPreset?: string | null; initialPanel?: string | null;
 }) {
-  const [panel, setPanel] = useState<'markets' | 'abf'>(initialPanel === 'abf' ? 'abf' : 'markets');
+  const [panel, setPanel] = useState<'markets' | 'abf' | 'structures'>(
+    initialPanel === 'abf' || initialPanel === 'structures' ? initialPanel : 'markets');
   const kit: StressKit | undefined = views.stress_kit;
   const start = kit?.presets.find((p) => p.name === initialPreset);
   const [inputs, setInputs] = useState<StressInputs>(
@@ -377,7 +443,7 @@ export default function StressLabPanel({ views, initialPreset, initialPanel }: {
           </div>
 
           <div style={{ display: 'flex', gap: 4 }}>
-            {([['markets', 'Markets & corporate'], ['abf', 'ABF collateral']] as const).map(([k, label]) => (
+            {([['markets', 'Markets & corporate'], ['abf', 'ABF collateral'], ['structures', 'ABF structures']] as const).map(([k, label]) => (
               <button key={k} type="button" onClick={() => setPanel(k)}
                 style={{ fontFamily: 'inherit', fontSize: 10, padding: '4px 12px', cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.1em',
                   background: 'transparent', color: panel === k ? COLORS.accent : COLORS.textSecondary,
@@ -388,6 +454,7 @@ export default function StressLabPanel({ views, initialPreset, initialPanel }: {
           </div>
 
           {panel === 'abf' && <AbfView kit={kit} res={res} />}
+          {panel === 'structures' && <StructuresView kit={kit} res={res} />}
 
           {panel === 'markets' && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 10 }}>
             <PathChart title="HY OAS (bp)" h={P.h} color={COLORS.negative} fmt={(v) => `${Math.round(v * 100)}`}

@@ -63,11 +63,48 @@ export interface StressKit {
   checks: {
     name: string; inputs: StressInputs; expected: Record<string, number | string>;
     expected_abf?: Record<string, number>;
+    expected_structures?: Record<string, number>;
   }[];
   abf?: {
     classes: AbfClass[];
+    structures?: {
+      stress_years: number; min_multiple: number; watch_used: number; at_risk_used: number;
+      structures: AbfStructure[];
+    };
     not_modelled: { label: string; reason: string }[];
   } | null;
+}
+
+export interface AbfStructure {
+  key: string;
+  label: string;
+  asset_class: string;
+  kind: 'loss_multiple' | 'dscr';
+  tranches: { rating: string; multiple: number }[];
+  base_loss_pct: number;
+  wal_years: number;
+  revolving: boolean;
+  stress_beta: number;
+  hedge_ratio: number;
+  oil_weight: number;
+  opex_share: number;
+  cash_trap_dscr: number;
+  note: string;
+}
+
+export interface AbfTrancheResult {
+  rating: string; base: number; stressed: number; used: number; status: string;
+}
+
+export interface AbfStructureResult {
+  key: string;
+  kind: 'loss_multiple' | 'dscr';
+  annual_multiple?: number;
+  life_multiple?: number;
+  stressed_loss_pct?: number;
+  price_pct?: number;
+  cash_flow_pct?: number;
+  tranches: AbfTrancheResult[];
 }
 
 export interface AbfClass {
@@ -84,6 +121,7 @@ export interface AbfClass {
   n: number;
   usable: boolean;
   level: number | null;
+  mean?: number | null;
 }
 
 // input → the ABF driver targets it adds to
@@ -93,6 +131,7 @@ const ABF_OVERLAYS: Record<string, string[]> = {
 
 export interface StressResult {
   abf: Record<string, { delta: number; stressed: number | null }>;
+  abf_structures: AbfStructureResult[];
   deltas: Record<string, number>;
   stance: {
     stance: string; score: number;
@@ -290,8 +329,52 @@ export function stressResponse(
     }
   }
 
+  // 8) generic structures: collateral stress → tranche headroom
+  const abfStructures: AbfStructureResult[] = [];
+  const sb = kit.abf?.structures;
+  if (kit.abf && sb) {
+    const byKey = Object.fromEntries(kit.abf.classes.map((c) => [c.key, c]));
+    const status = (used: number) => (used >= 1 ? 'loss' : used >= sb.at_risk_used ? 'at risk'
+      : used >= sb.watch_used ? 'eroding' : 'intact');
+    for (const s of sb.structures) {
+      const cls = byKey[s.asset_class];
+      const hit = abfOut[s.asset_class];
+      if (!cls || !hit) continue;
+      if (s.kind === 'dscr') {
+        const gas = abfOut.gas?.delta ?? hit.delta;
+        const price = s.oil_weight * hit.delta + (1 - s.oil_weight) * gas;
+        const cash = (1 - s.hedge_ratio) * price / (1 - s.opex_share);
+        abfStructures.push({
+          key: s.key, kind: 'dscr', price_pct: price, cash_flow_pct: cash,
+          tranches: s.tranches.map((t) => {
+            const dscr = Math.max(t.multiple * (1 + cash / 100), 0);
+            const used = t.multiple > 1 ? (t.multiple - dscr) / (t.multiple - 1) : 1;
+            return {
+              rating: t.rating, base: t.multiple, stressed: dscr, used,
+              status: dscr < 1 ? 'loss' : dscr < s.cash_trap_dscr ? 'at risk' : status(used),
+            };
+          }),
+        });
+        continue;
+      }
+      const denom = Math.max(cls.level ?? 0, cls.mean ?? 0);
+      const m = Math.max(denom > 0 ? 1 + s.stress_beta * hit.delta / denom : 1, sb.min_multiple);
+      const frac = s.revolving ? 1 : Math.min(sb.stress_years, s.wal_years) / s.wal_years;
+      const life = 1 + (m - 1) * frac;
+      abfStructures.push({
+        key: s.key, kind: 'loss_multiple', annual_multiple: m, life_multiple: life,
+        stressed_loss_pct: s.base_loss_pct * life,
+        tranches: s.tranches.map((t) => {
+          const used = t.multiple > 1 ? (life - 1) / (t.multiple - 1) : 1;
+          return { rating: t.rating, base: t.multiple, stressed: t.multiple / life, used, status: status(used) };
+        }),
+      });
+    }
+  }
+
   return {
     abf: abfOut,
+    abf_structures: abfStructures,
     deltas: {
       d_policy_bp: dPolicy, d_2y_bp: d2y, d_10y_bp: d10y, d_slope_bp: dSlope, d_unrate_pp: dU,
       d_baa_pp: dBaa, d_hy_oas_pp: dHy, d_ig_oas_pp: dIg, d_corp_loss_pp: dCorp,
@@ -319,6 +402,11 @@ export function verifyKit(kit: StressKit): { passed: number; total: number; fail
     }
     for (const [key, want] of Object.entries(chk.expected_abf ?? {})) {
       const have = got.abf[key]?.delta;
+      if (have == null || Math.abs(have - want) > 1e-6) ok = false;
+    }
+    for (const [id, want] of Object.entries(chk.expected_structures ?? {})) {
+      const [key, rating] = id.split(':');
+      const have = got.abf_structures.find((s) => s.key === key)?.tranches.find((t) => t.rating === rating)?.stressed;
       if (have == null || Math.abs(have - want) > 1e-6) ok = false;
     }
     if (!ok) failed.push(chk.name);
