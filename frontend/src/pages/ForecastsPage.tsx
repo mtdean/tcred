@@ -32,6 +32,7 @@ import DocLink, { type MethodologyEntry } from '../components/macro/DocLink';
 // Stable colors / display names per model across all charts on the page.
 const MODEL_META: Record<string, { name: string; color: string }> = {
   acm_term_structure: { name: 'ACM', color: COLORS.chartSecondary },
+  acm_gsw: { name: 'ACM (NY FED METHOD)', color: COLORS.chartSecondary },
   diebold_li_dns: { name: 'DNS', color: COLORS.chartTertiary },
   ang_piazzesi_macro_finance: { name: 'ANG-PIAZZESI', color: COLORS.chart6mo },
   market_forwards: { name: 'MARKET', color: COLORS.textPrimary },

@@ -35,6 +35,15 @@ import {
   LaborSlackPanel,
   ConsumerExpectationsPanel,
   SbaLendingPanel,
+  AutoLoanRatesPanel,
+  AutoLoanMaturityPanel,
+  LoanDemandPanel,
+  InterestCoveragePanel,
+  CardPaymentBehaviorPanel,
+  SmallBizLoansBySizePanel,
+  CiQualityBySizePanel,
+  SmbLoanRatesPanel,
+  SmbLendingConditionsPanel,
 } from '../components/macro/DashboardPanels';
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -83,10 +92,17 @@ export default function MacroPage() {
       <SectionLabel>Consumer Health</SectionLabel>
       <ConsumerScorecardPanel />
       <ConsumerExpectationsPanel />
+      <CardPaymentBehaviorPanel />
 
       <SectionLabel>Business & SMB Credit</SectionLabel>
       <SmbScorecardPanel />
       <SbaLendingPanel />
+      <div className="grid-2">
+        <SmallBizLoansBySizePanel />
+        <CiQualityBySizePanel />
+        <SmbLoanRatesPanel />
+        <SmbLendingConditionsPanel />
+      </div>
 
       <SectionLabel>Credit & Delinquency</SectionLabel>
       <div className="grid-2">
@@ -96,6 +112,8 @@ export default function MacroPage() {
         <CreditImpulsePanel />
         <CreditGapPanel />
         <UsedVehicleValuesPanel />
+        <AutoLoanRatesPanel />
+        <AutoLoanMaturityPanel />
         <ConsumerComplaintsPanel />
         <ConsumerCashflowPanel />
       </div>
@@ -114,12 +132,13 @@ export default function MacroPage() {
       <div className="grid-2">
         <CloStressPanel />
         <DecompressionPanel />
+        <InterestCoveragePanel />
       </div>
 
-      <SectionLabel>Lending Standards & Inflation</SectionLabel>
+      <SectionLabel>Lending Standards & Demand</SectionLabel>
       <div className="grid-2">
         <LendingStandardsPanel />
-        <InflationExpectationsPanel />
+        <LoanDemandPanel />
       </div>
 
       <SectionLabel>Growth & Markets</SectionLabel>
@@ -127,6 +146,7 @@ export default function MacroPage() {
         <GrowthTrackerPanel />
         <StockMomentumPanel />
         <DollarPanel />
+        <InflationExpectationsPanel />
       </div>
 
       {/* Data-source plugins (plugins/*.py) that declare a panel. */}

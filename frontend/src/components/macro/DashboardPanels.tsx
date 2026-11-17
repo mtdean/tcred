@@ -469,6 +469,95 @@ export function InterestCoveragePanel() {
   );
 }
 
+export function SmallBizLoansBySizePanel() {
+  // FDIC Call Report RC-C Part II: C&I loans with original amount <= $1mm.
+  // Banks < $10bn report it semiannually since 2017 (June-only before 2010),
+  // so those lines step; 2020-21 includes the PPP hump. The $10bn line is
+  // nominal, so banks crossing it shift levels between the two buckets.
+  const series: FredSeriesDef[] = [
+    { seriesId: 'FDIC_SBL_CI_SMALLBANK', key: 'small', name: 'BANKS < $10BN', color: COLORS.chartPrimary },
+    { seriesId: 'FDIC_SBL_CI_LARGEBANK', key: 'large', name: 'BANKS ≥ $10BN', color: COLORS.chartSecondary },
+  ];
+  return (
+    <FredSeriesPanel
+      title="Small-Business C&I Loans by Bank Size (FDIC)"
+      subtitle="$BN, C&I ≤ $1MM ORIGINAL AMOUNT — PPP HUMP 2020-21"
+      series={series}
+      ranges={RANGES_QUARTERLY}
+      defaultRange="MAX"
+      unit="plain"
+      decimals={0}
+      limit={200}
+    />
+  );
+}
+
+export function CiQualityBySizePanel() {
+  // Summed-dollar C&I noncurrent and net charge-off rates, split at $10bn —
+  // community-bank stress shows up here before it reaches the FRED aggregates.
+  const series: FredSeriesDef[] = [
+    { seriesId: 'FDIC_CI_NCR_SMALLBANK', key: 'ncrS', name: 'NONCURRENT < $10BN', color: COLORS.chartPrimary },
+    { seriesId: 'FDIC_CI_NCR_LARGEBANK', key: 'ncrL', name: 'NONCURRENT ≥ $10BN', color: COLORS.chartSecondary },
+    { seriesId: 'FDIC_CI_NCO_SMALLBANK', key: 'ncoS', name: 'NCO < $10BN', color: COLORS.negative },
+    { seriesId: 'FDIC_CI_NCO_LARGEBANK', key: 'ncoL', name: 'NCO ≥ $10BN', color: COLORS.chartTertiary },
+  ];
+  return (
+    <FredSeriesPanel
+      title="C&I Credit Quality by Bank Size (FDIC)"
+      subtitle="% — NONCURRENT RATE, NET CHARGE-OFFS ANNUALIZED"
+      series={series}
+      ranges={RANGES_QUARTERLY}
+      defaultRange="MAX"
+      unit="pct"
+      decimals={2}
+      limit={200}
+    />
+  );
+}
+
+export function SmbLoanRatesPanel() {
+  // KC Fed Small Business Lending Survey (mostly community banks): weighted-
+  // average rates on new small-business C&I loans. 2020-21 is PPP-distorted.
+  const series: FredSeriesDef[] = [
+    { seriesId: 'KCF_SBLS_RATE_FIXED_TERM', key: 'fixT', name: 'FIXED TERM', color: COLORS.chartPrimary },
+    { seriesId: 'KCF_SBLS_RATE_VAR_TERM', key: 'varT', name: 'VARIABLE TERM', color: COLORS.chartSecondary },
+    { seriesId: 'KCF_SBLS_RATE_VAR_LOC', key: 'varL', name: 'VARIABLE LINE', color: COLORS.chartTertiary },
+  ];
+  return (
+    <FredSeriesPanel
+      title="Small-Business Loan Rates (KC Fed SBLS)"
+      subtitle="% — NEW C&I LOANS, COMMUNITY BANKS"
+      series={series}
+      ranges={RANGES_QUARTERLY}
+      defaultRange="MAX"
+      unit="pct"
+      decimals={2}
+      limit={100}
+    />
+  );
+}
+
+export function SmbLendingConditionsPanel() {
+  // Same survey, the conditions side: standards, demand and applicant quality.
+  const series: FredSeriesDef[] = [
+    { seriesId: 'KCF_SBLS_STANDARDS_NET', key: 'std', name: 'TIGHTENING', color: COLORS.negative },
+    { seriesId: 'KCF_SBLS_DEMAND_NET', key: 'dem', name: 'STRONGER DEMAND', color: COLORS.chartPrimary },
+    { seriesId: 'KCF_SBLS_APPLICANT_QUAL_NET', key: 'qual', name: 'BETTER APPLICANTS', color: COLORS.chartSecondary },
+  ];
+  return (
+    <FredSeriesPanel
+      title="Small-Business Lending Conditions (KC Fed SBLS)"
+      subtitle="NET % OF BANKS"
+      series={series}
+      ranges={RANGES_QUARTERLY}
+      defaultRange="MAX"
+      unit="pct"
+      decimals={0}
+      limit={100}
+    />
+  );
+}
+
 export function CardPaymentBehaviorPanel() {
   // Philly Fed large-bank (Y-14M) card data. Min-payment-only share is the
   // earliest read on cardholder strain; full payers show the healthy side.
