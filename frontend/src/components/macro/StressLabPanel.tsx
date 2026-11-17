@@ -44,15 +44,15 @@ const pct = (x: number | undefined, dp = 2) => (x == null ? '—' : `${x.toFixed
 
 // What each input feeds, shown under its slider so none looks dead.
 const MOVES: Record<string, string> = {
-  core_pce_pp: 'Fed funds, 10y, coupon → unemployment → spreads, losses',
-  unrate_pp: 'spreads, corporate and card losses',
+  core_pce_pp: 'Fed funds, 10y, coupon → unemployment → spreads, losses, EBITDA',
+  unrate_pp: 'spreads, corporate and card losses, borrower EBITDA',
   vix: 'spreads, rates vol, funding stress',
   sloos: 'corporate and card losses',
   term_premium_bp: '10y, curve slope → spreads',
-  policy_bp: 'Fed funds, 10y, coupon → unemployment → spreads, losses',
+  policy_bp: 'Fed funds, 10y, coupon → unemployment → spreads, losses, EBITDA',
   vol_mult: 'spreads, 10y range',
   funding_z: 'spreads',
-  ebitda_pct: 'borrower coverage (ICR) only',
+  ebitda_pct: 'borrower coverage (ICR), on top of the unemployment effect',
 };
 
 function Slider({ spec, value, onChange }: {
@@ -193,6 +193,7 @@ export default function StressLabPanel({ views, initialPreset }: {
     ['Card losses', signed(d.d_card_loss_pp, 2, 'pp')],
     ['Rates vol', `×${d.vol_mult.toFixed(2)}`],
     ['Funding stress', signed(d.d_funding_z, 2, 'σ')],
+    ['Borrower EBITDA', signed(d.d_ebitda_pct, 1, '%')],
   ];
 
   return (
@@ -270,7 +271,7 @@ export default function StressLabPanel({ views, initialPreset }: {
             <span className="muted" style={{ fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase', alignSelf: 'center' }}>12m change vs baseline</span>
             {chain.map(([k, v]) => (
               <span key={k}><span className="muted">{k}</span>{' '}
-                <span style={{ color: /^([+-]0(\.0+)?(bp|pp|σ)|×1\.00)$/.test(v) ? COLORS.textDim : COLORS.textPrimary }}>{v}</span></span>
+                <span style={{ color: /^([+-]0(\.0+)?(bp|pp|σ|%)|×1\.00)$/.test(v) ? COLORS.textDim : COLORS.textPrimary }}>{v}</span></span>
             ))}
           </div>
 

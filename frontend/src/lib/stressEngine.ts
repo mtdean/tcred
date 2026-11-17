@@ -132,6 +132,8 @@ export function stressResponse(
     + (sat.corp_loss_sloos_ci ?? 0) * x.sloos;
   const dCard = sat.consumer_loss_d_u * dU + sat.consumer_loss_sloos_card * x.sloos;
 
+  const dEbitda = x.ebitda_pct + (sat.ebitda_d_u ?? 0) * dU;
+
   // 3) fair value moves too — only widening beyond it reads as cheap
   const dFvLog = fv.coef_logvix * Math.log(Math.max(fv.vix_now + x.vix, 1) / fv.vix_now)
     + fv.coef_slope * dSlope / 100 + fv.coef_rate * d10y / 100;
@@ -230,7 +232,7 @@ export function stressResponse(
     paths.share_icr_lt_1 = coupon.map((c, i) => {
       const h = P.h[i];
       const ebitda = (1 + fl.ebitda_growth_pct / 100) ** (h / 12)
-        * (1 + x.ebitda_pct / 100 * market(h));
+        * Math.max(1 + dEbitda / 100 * market(h), 0.05);
       const zc = (Math.log(ebitda / (c / 100)) - Math.log(fl.leverage_median)) / fl.leverage_log_sd;
       return 1 - normCdf(zc);
     });
@@ -241,7 +243,7 @@ export function stressResponse(
       d_policy_bp: dPolicy, d_2y_bp: d2y, d_10y_bp: d10y, d_slope_bp: dSlope, d_unrate_pp: dU,
       d_baa_pp: dBaa, d_hy_oas_pp: dHy, d_ig_oas_pp: dIg, d_corp_loss_pp: dCorp,
       d_card_loss_pp: dCard, d_hy_fair_value_pp: dHyFv,
-      vol_mult: volMult, d_funding_z: dFunding,
+      vol_mult: volMult, d_funding_z: dFunding, d_ebitda_pct: dEbitda,
     },
     stance: { stance, score, ...labels },
     total_return: totalReturn,
