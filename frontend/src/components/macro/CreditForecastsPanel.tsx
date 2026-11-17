@@ -356,7 +356,7 @@ function ScenarioPanel({ scenarios }: { scenarios: NonNullable<MacroViews['scena
   return (
     <Panel
       title="Scenario Analysis"
-      subtitle="arbitrary stresses → credit stance + 12m total return (HY / IG)"
+      subtitle="stresses → credit stance + 12m total return · spread shocks in HY bp, IG moves 0.4× · loss ×3 HY / ×0.1 IG"
     >
       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: '4px 14px',
         fontSize: 11, alignItems: 'center' }}>
@@ -416,7 +416,7 @@ function TotalReturnPanel({ tr }: { tr: NonNullable<MacroViews['credit_total_ret
                 {part('−loss', x.expected_loss == null ? null : -x.expected_loss, COLORS.negative)}
               </div>
               <div className="muted" style={{ fontSize: 9, marginTop: 3 }}>
-                dur {x.duration ?? '—'} · Δrate {sign(x.d_rate_bp)}bp · ΔOAS {sign(x.d_spread_bp)}bp
+                dur {x.duration ?? '—'} · base {x.base_rate == null ? '—' : `${x.base_rate.toFixed(2)}%`}{' '}({tag === 'hy' ? '5y' : '10y'} UST) · Δrate {sign(x.d_rate_bp)}bp · ΔOAS {sign(x.d_spread_bp)}bp
               </div>
               <div style={{ fontSize: 10, marginTop: 3, color: COLORS.textSecondary }}>
                 breakeven: spreads can widen{' '}
