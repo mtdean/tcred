@@ -88,7 +88,7 @@ export default function FloatingRatePanel() {
         <span>
           forward 1M Term SOFR → coupon → borrower interest coverage ·{' '}
           <span style={{ color: fromPensford ? COLORS.positive : COLORS.accent }}>
-            {fromPensford ? 'Pensford forward curve' : 'Treasury forwards @ Pensford spot'}
+            {fromPensford ? 'Pensford forward curve' : 'bias-corrected Treasury forwards @ Pensford spot'}
           </span>
           {meth && <> <DocLink m={meth} /></>}
         </span>

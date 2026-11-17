@@ -305,7 +305,17 @@ export interface MacroViews {
   };  floating_rate?: {
     curve_source: string;
     path: FloatingRatePoint[];
-  };  spread_outlook?: {
+  };  policy_path?: {
+    path: { h: number; point: number; lo: number; hi: number; raw: number | null; rule: number | null }[];
+    rule_prescription: number | null;
+    rule_gap: number | null;
+    market_minus_rule_12m: number | null;
+    core_pce_yoy: number | null;
+    ugap: number | null;
+    lr_inflation: number | null;
+    rho: number | null;
+  };
+  spread_outlook?: {
     valuation_z: number | null;
     indices: Record<string, SpreadOutlookIndex>;
   };

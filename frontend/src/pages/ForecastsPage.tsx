@@ -26,6 +26,7 @@ import LoadingCursor from '../components/shared/LoadingCursor';
 import TooltipShell from '../components/charts/TooltipShell';
 import FredSeriesPanel from '../components/macro/FredSeriesPanel';
 import CreditForecastsPanel from '../components/macro/CreditForecastsPanel';
+import PolicyPathPanel from '../components/macro/PolicyPathPanel';
 import DocLink, { type MethodologyEntry } from '../components/macro/DocLink';
 
 // Stable colors / display names per model across all charts on the page.
@@ -404,6 +405,8 @@ export default function ForecastsPage() {
       {(data.forward_curve?.length ?? 0) > 0 && (
         <ForwardCurvePanel segments={data.forward_curve!} />
       )}
+
+      <PolicyPathPanel views={data} />
 
       <div className="grid-2">
         {fans.map((c) => <FanChart key={c.key} concept={c} />)}
