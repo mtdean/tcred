@@ -21,8 +21,10 @@ import {
   defaultInputs,
   stressResponse,
   verifyKit,
+  type AbfClass,
   type StressInputs,
   type StressKit,
+  type StressResult,
 } from '../../lib/stressEngine';
 import type { MacroViews } from '../../lib/types';
 import Panel from '../shared/Panel';
@@ -53,6 +55,15 @@ const MOVES: Record<string, string> = {
   vol_mult: 'spreads, 10y range',
   funding_z: 'spreads',
   ebitda_pct: 'borrower coverage (ICR), on top of the unemployment effect',
+  hpi_pct: 'home prices → mortgage losses (ABF view)',
+  car_pct: 'used-car prices → auto delinquencies (ABF view)',
+  oil_pct: 'oil and gas prices → PDP cash flow (ABF view)',
+};
+const OVERLAY_KEYS = ['vol_mult', 'funding_z', 'ebitda_pct'];
+const ABF_KEYS = ['hpi_pct', 'car_pct', 'oil_pct'];
+const REGRESSOR_LABEL: Record<string, string> = {
+  d_u: 'unemployment', d_vix: 'VIX', sloos_card: 'bank tightening', sloos_ci: 'bank tightening',
+  p_hpi: 'home prices', p_car: 'used-car prices',
 };
 
 function Slider({ spec, value, onChange }: {
@@ -143,13 +154,96 @@ function PathChart({ title, h, base, stressed, band, stressedBand, color, fmt }:
   );
 }
 
+// ── ABF collateral ────────────────────────────────────────────
+
+function AbfLossTile({ c, r }: { c: AbfClass; r: { delta: number; stressed: number | null } }) {
+  const base = c.level;
+  const stressed = r.stressed;
+  const moved = Math.abs(r.delta) > 1e-9;
+  const color = !moved ? COLORS.textPrimary : r.delta > 0 ? COLORS.negative : COLORS.positive;
+  const scale = Math.max(base ?? 0, stressed ?? 0, 0.01) * 1.05;
+  const mult = base != null && stressed != null && base >= 0.25 ? stressed / base : null;
+  const bar = (v: number | null, fill: string) => (
+    <div style={{ height: 5, background: COLORS.border, marginTop: 3 }}>
+      <div style={{ height: 5, width: `${Math.min(((v ?? 0) / scale) * 100, 100)}%`, background: fill }} />
+    </div>
+  );
+  return (
+    <div style={{ border: `1px solid ${COLORS.border}`, padding: '8px 12px', background: COLORS.bgPanel }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <span className="muted" style={{ fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase' }}>{c.label}</span>
+        {mult != null && moved && <span style={{ fontSize: 11, color }}>×{mult.toFixed(2)}</span>}
+      </div>
+      <div style={{ fontSize: 20, fontWeight: 700, marginTop: 2, color }}>{stressed == null ? '—' : `${stressed.toFixed(2)}%`}</div>
+      <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>
+        baseline {base == null ? '—' : `${base.toFixed(2)}%`} · {signed(r.delta, 2, 'pp')} in 12m
+      </div>
+      {bar(base, COLORS.textSecondary)}
+      {bar(stressed, color === COLORS.textPrimary ? COLORS.textSecondary : color)}
+      <div className="muted" style={{ fontSize: 9, marginTop: 6, lineHeight: 1.4 }}>
+        {c.measure}
+        {c.usable
+          ? <> · moves with {Object.keys(c.coefs).map((k) => REGRESSOR_LABEL[k] ?? k).join(', ')} · R² {c.r2.toFixed(2)}</>
+          : <span style={{ color: COLORS.accent }}> · no measurable link to the macro shock (R² {c.r2.toFixed(2)}) — held at baseline</span>}
+        {c.relevance && <><br />for: {c.relevance}</>}
+      </div>
+    </div>
+  );
+}
+
+function AbfDriverTile({ c, r }: { c: AbfClass; r: { delta: number } }) {
+  const moved = Math.abs(r.delta) > 1e-9;
+  const color = !moved ? COLORS.textPrimary : r.delta < 0 ? COLORS.negative : COLORS.positive;
+  return (
+    <div style={{ border: `1px solid ${COLORS.border}`, padding: '8px 12px', background: COLORS.bgPanel }}>
+      <div className="muted" style={{ fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase' }}>{c.label}</div>
+      <div style={{ fontSize: 20, fontWeight: 700, marginTop: 2, color }}>{signed(r.delta, 1, '%')}</div>
+      <div className="muted" style={{ fontSize: 9, marginTop: 4, lineHeight: 1.4 }}>
+        {c.measure} · R² {c.r2.toFixed(2)}
+        {c.relevance && <><br />for: {c.relevance}</>}
+      </div>
+    </div>
+  );
+}
+
+function AbfView({ kit, res }: { kit: StressKit; res: StressResult }) {
+  const abf = kit.abf;
+  if (!abf) {
+    return <div className="muted" style={{ fontSize: 11 }}>No ABF collateral estimates in this bundle — run macrobot&apos;s abf_collateral model.</div>;
+  }
+  const losses = abf.classes.filter((c) => c.kind === 'loss');
+  const drivers = abf.classes.filter((c) => c.kind === 'driver');
+  const head = (t: string) => (
+    <div className="muted" style={{ fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase' }}>{t}</div>
+  );
+  return (
+    <div className="stack">
+      {head('Loss and delinquency rates by asset class · latest reading → 12 months under your scenario')}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 10 }}>
+        {losses.map((c) => res.abf[c.key] && <AbfLossTile key={c.key} c={c} r={res.abf[c.key]} />)}
+      </div>
+      {head('Collateral values and cash-flow drivers · 12-month change vs baseline')}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10 }}>
+        {drivers.map((c) => res.abf[c.key] && <AbfDriverTile key={c.key} c={c} r={res.abf[c.key]} />)}
+      </div>
+      <div className="muted" style={{ fontSize: 10, border: `1px solid ${COLORS.border}`, padding: '6px 10px', background: COLORS.bgPanel, lineHeight: 1.5 }}>
+        Bank and credit-bureau aggregates, not securitized pools, and no deal structure yet. Not modelled:{' '}
+        {abf.not_modelled.map((m, i) => (
+          <span key={m.label}>{i > 0 && ' · '}<span style={{ color: COLORS.textSecondary }}>{m.label}</span> ({m.reason})</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── panel ─────────────────────────────────────────────────────
 
 // `initialPreset` lets a link open the lab on a named scenario
 // (/forecasts?view=stress&preset=recession).
-export default function StressLabPanel({ views, initialPreset }: {
-  views: MacroViews; initialPreset?: string | null;
+export default function StressLabPanel({ views, initialPreset, initialPanel }: {
+  views: MacroViews; initialPreset?: string | null; initialPanel?: string | null;
 }) {
+  const [panel, setPanel] = useState<'markets' | 'abf'>(initialPanel === 'abf' ? 'abf' : 'markets');
   const kit: StressKit | undefined = views.stress_kit;
   const start = kit?.presets.find((p) => p.name === initialPreset);
   const [inputs, setInputs] = useState<StressInputs>(
@@ -180,8 +274,9 @@ export default function StressLabPanel({ views, initialPreset }: {
   const B = base.paths;
   const last = (a?: number[] | null) => (a ? a[a.length - 1] : undefined);
   const meth = views.methodology?.stress_lab;
-  const macroSpecs = kit.inputs.filter((s) => !['vol_mult', 'funding_z', 'ebitda_pct'].includes(s.key));
-  const overlaySpecs = kit.inputs.filter((s) => ['vol_mult', 'funding_z', 'ebitda_pct'].includes(s.key));
+  const macroSpecs = kit.inputs.filter((s) => !OVERLAY_KEYS.includes(s.key) && !ABF_KEYS.includes(s.key));
+  const overlaySpecs = kit.inputs.filter((s) => OVERLAY_KEYS.includes(s.key));
+  const abfSpecs = kit.inputs.filter((s) => ABF_KEYS.includes(s.key));
   const chain: [string, string][] = [
     ['Fed funds', signed(d.d_policy_bp, 0, 'bp')],
     ['10y', signed(d.d_10y_bp, 0, 'bp')],
@@ -231,6 +326,12 @@ export default function StressLabPanel({ views, initialPreset }: {
           {macroSpecs.map((s) => <Slider key={s.key} spec={s} value={inputs[s.key] ?? s.default} onChange={(v) => set(s.key, v)} />)}
           <div className="muted" style={{ fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase', margin: '4px 0 6px' }}>Market &amp; borrower overlays</div>
           {overlaySpecs.map((s) => <Slider key={s.key} spec={s} value={inputs[s.key] ?? s.default} onChange={(v) => set(s.key, v)} />)}
+          {abfSpecs.length > 0 && (
+            <>
+              <div className="muted" style={{ fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase', margin: '4px 0 6px' }}>ABF collateral prices (on top of unemployment)</div>
+              {abfSpecs.map((s) => <Slider key={s.key} spec={s} value={inputs[s.key] ?? s.default} onChange={(v) => set(s.key, v)} />)}
+            </>
+          )}
           <div className="muted" style={{ fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase', margin: '4px 0 6px' }}>Markets reprice over</div>
           <div style={{ display: 'flex', gap: 4 }}>
             {PHASES.map((p) => (
@@ -275,7 +376,20 @@ export default function StressLabPanel({ views, initialPreset }: {
             ))}
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 10 }}>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {([['markets', 'Markets & corporate'], ['abf', 'ABF collateral']] as const).map(([k, label]) => (
+              <button key={k} type="button" onClick={() => setPanel(k)}
+                style={{ fontFamily: 'inherit', fontSize: 10, padding: '4px 12px', cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.1em',
+                  background: 'transparent', color: panel === k ? COLORS.accent : COLORS.textSecondary,
+                  border: `1px solid ${panel === k ? COLORS.accent : COLORS.borderBright}` }}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {panel === 'abf' && <AbfView kit={kit} res={res} />}
+
+          {panel === 'markets' && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 10 }}>
             <PathChart title="HY OAS (bp)" h={P.h} color={COLORS.negative} fmt={(v) => `${Math.round(v * 100)}`}
               base={B.hy?.median} stressed={P.hy?.median} band={B.hy ? { lo: B.hy.p16, hi: B.hy.p84 } : null}
               stressedBand={P.hy ? { lo: P.hy.p16, hi: P.hy.p84 } : null} />
@@ -294,7 +408,7 @@ export default function StressLabPanel({ views, initialPreset }: {
               base={B.coupon} stressed={P.coupon} />
             <PathChart title="Borrowers with ICR < 1× (%)" h={P.h} color={COLORS.chart6mo} fmt={(v) => (v * 100).toFixed(1)}
               base={B.share_icr_lt_1} stressed={P.share_icr_lt_1} />
-          </div>
+          </div>}
         </div>
       </div>
     </Panel>

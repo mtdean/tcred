@@ -436,7 +436,7 @@ export default function ForecastsPage() {
       </Tabs.Content>
 
       <Tabs.Content value="stress" className="stack">
-        <StressLabPanel views={data} initialPreset={params.get('preset')} />
+        <StressLabPanel views={data} initialPreset={params.get('preset')} initialPanel={params.get('panel')} />
         <CreditForecastsPanel views={data} section="scenarios" />
       </Tabs.Content>
 

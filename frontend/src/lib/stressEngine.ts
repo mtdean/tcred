@@ -60,10 +60,39 @@ export interface StressKit {
     leverage_log_sd: number; ebitda_growth_pct: number;
   } | null;
   presets: { name: string; label: string; inputs: StressInputs }[];
-  checks: { name: string; inputs: StressInputs; expected: Record<string, number | string> }[];
+  checks: {
+    name: string; inputs: StressInputs; expected: Record<string, number | string>;
+    expected_abf?: Record<string, number>;
+  }[];
+  abf?: {
+    classes: AbfClass[];
+    not_modelled: { label: string; reason: string }[];
+  } | null;
 }
 
+export interface AbfClass {
+  key: string;
+  label: string;
+  kind: 'loss' | 'driver';
+  target: string;
+  measure: string;
+  source: string;
+  relevance: string;
+  coefs: Record<string, number>;
+  tstats: Record<string, number>;
+  r2: number;
+  n: number;
+  usable: boolean;
+  level: number | null;
+}
+
+// input → the ABF driver targets it adds to
+const ABF_OVERLAYS: Record<string, string[]> = {
+  hpi_pct: ['p_hpi'], car_pct: ['p_car'], oil_pct: ['p_oil', 'p_gas'],
+};
+
 export interface StressResult {
+  abf: Record<string, { delta: number; stressed: number | null }>;
   deltas: Record<string, number>;
   stance: {
     stance: string; score: number;
@@ -238,7 +267,31 @@ export function stressResponse(
     });
   }
 
+  // 7) ABF collateral: drivers first, then losses on the total driver moves
+  const abfOut: StressResult['abf'] = {};
+  if (kit.abf) {
+    const reg: Record<string, number> = { d_u: dU, d_vix: x.vix, sloos_card: x.sloos, sloos_ci: x.sloos };
+    const extra: Record<string, number> = {};
+    for (const [key, targets] of Object.entries(ABF_OVERLAYS)) {
+      for (const t of targets) extra[t] = (extra[t] ?? 0) + (x[key] ?? 0);
+    }
+    const ordered = [...kit.abf.classes].sort(
+      (a, b) => Number(a.kind !== 'driver') - Number(b.kind !== 'driver'));
+    for (const c of ordered) {
+      let d = c.usable
+        ? Object.entries(c.coefs).reduce((acc, [r, b]) => acc + b * (reg[r] ?? 0), 0) : 0;
+      if (c.kind === 'driver') {
+        d += extra[c.target] ?? 0;
+        reg[c.target] = d;
+        abfOut[c.key] = { delta: d, stressed: null };
+      } else {
+        abfOut[c.key] = { delta: d, stressed: c.level == null ? null : Math.max(c.level + d, 0) };
+      }
+    }
+  }
+
   return {
+    abf: abfOut,
     deltas: {
       d_policy_bp: dPolicy, d_2y_bp: d2y, d_10y_bp: d10y, d_slope_bp: dSlope, d_unrate_pp: dU,
       d_baa_pp: dBaa, d_hy_oas_pp: dHy, d_ig_oas_pp: dIg, d_corp_loss_pp: dCorp,
@@ -263,6 +316,10 @@ export function verifyKit(kit: StressKit): { passed: number; total: number; fail
       if (want == null) continue;
       const have = got.total_return[tag]?.total_return;
       if (have == null || Math.abs(have - Number(want)) > 1e-6) ok = false;
+    }
+    for (const [key, want] of Object.entries(chk.expected_abf ?? {})) {
+      const have = got.abf[key]?.delta;
+      if (have == null || Math.abs(have - want) > 1e-6) ok = false;
     }
     if (!ok) failed.push(chk.name);
   }
