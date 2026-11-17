@@ -121,9 +121,9 @@ function FilingsSection({ rows, views }: { rows: FilingsDistressPoint[]; views: 
   const last = rows[rows.length - 1];
   const yearAgo = rows.length > 4 ? rows[rows.length - 5] : undefined;
   const meth = views.methodology?.filings_distress;
-  const comp = last.composite_z;
-  const chg = comp != null && yearAgo?.composite_z != null ? comp - yearAgo.composite_z : null;
-  const color = comp == null ? undefined : comp > 0.5 ? COLORS.negative : comp < -0.5 ? COLORS.positive : undefined;
+  const gc = last.going_concern_z;
+  const gcChg = gc != null && yearAgo?.going_concern_z != null ? gc - yearAgo.going_concern_z : null;
+  const color = gcChg == null ? undefined : gcChg > 0.5 ? COLORS.negative : gcChg < -0.5 ? COLORS.positive : undefined;
   const lines: { key: keyof FilingsDistressPoint; name: string; color: string; dash?: string }[] = [
     { key: 'composite_z', name: 'Composite', color: COLORS.accent },
     { key: 'going_concern_z', name: 'Going concern (10-K/Q)', color: COLORS.negative, dash: '4 3' },
@@ -137,12 +137,16 @@ function FilingsSection({ rows, views }: { rows: FilingsDistressPoint[]; views: 
         SEC filings distress language — quarterly since 2001 {meth && <DocLink m={meth} />}
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 8 }}>
-        <Tile label={`Filings distress (z) · ${last.date.slice(0, 7)}`} value={z(comp)} color={color}
-          sub={`4q change ${z(chg)}`} />
+        <Tile label={`Going-concern, 4q change · ${last.date.slice(0, 7)}`} value={z(gcChg)} color={color}
+          sub="the validated signal · leads charge-offs (corr +0.50)" />
         <Tile label="Going-concern share" value={last.going_concern_share == null ? '—'
           : `${(last.going_concern_share * 100).toFixed(1)}%`} sub="of 10-K/10-Q filings" />
-        <Tile label="RSA / Ch.11 (z)" value={`${z(last.rsa_z)} / ${z(last.chapter11_z)}`}
-          sub="pre-pack deals / petitions in 8-Ks" />
+        <Tile label="Forbearance (z)" value={z(last.forbearance_z)}
+          sub="8-K lender standstills · recession AUC 0.74" />
+      </div>
+      <div className="muted" style={{ fontSize: 10, marginBottom: 6 }}>
+        Validation 2001–26: going-concern Δ4q leads charge-offs and feeds default_cycle_filings;
+        RSA / Chapter-11 phrase shares and the composite showed no signal (composite recession AUC 0.53) — shown for context only.
       </div>
       <ResponsiveContainer width="100%" height={200}>
         <LineChart data={rows} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
