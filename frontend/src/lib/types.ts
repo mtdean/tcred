@@ -305,8 +305,10 @@ export interface MacroViews {
   };  floating_rate?: {
     curve_source: string;
     pensford_curve_age_days?: number | null;
+    config?: Record<string, number>;
     path: FloatingRatePoint[];
-  };  policy_path?: {
+  };  stress_kit?: import('./stressEngine').StressKit;
+  policy_path?: {
     path: { h: number; point: number; lo: number; hi: number; raw: number | null; rule: number | null }[];
     rule_prescription: number | null;
     rule_gap: number | null;

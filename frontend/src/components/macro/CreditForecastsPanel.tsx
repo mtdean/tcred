@@ -453,7 +453,16 @@ function TotalReturnPanel({ tr }: { tr: NonNullable<MacroViews['credit_total_ret
 
 // ── section ───────────────────────────────────────────────────
 
-export default function CreditForecastsPanel({ views }: { views: MacroViews }) {
+// The Forecasts page shows this in slices, one per sub-tab:
+//   overview  — stance, key tiles, 12m total return (the decision summary)
+//   outlook   — spread fans, loss / vol / funding paths, soft data
+//   scenarios — the preset scenario table
+//   history   — how the credit calls have evolved
+export type CreditSection = 'overview' | 'outlook' | 'scenarios' | 'history';
+
+export default function CreditForecastsPanel({ views, section }: {
+  views: MacroViews; section: CreditSection;
+}) {
   const ev = views.regime?.evidence ?? {};
   const meth = views.methodology;
   const concepts = new Map((views.concepts ?? []).map((c) => [c.key, c]));
@@ -469,73 +478,86 @@ export default function CreditForecastsPanel({ views }: { views: MacroViews }) {
     .some((k) => concepts.has(k)) || num(ev.hy_oas_pct) != null;
   if (!hasAny) return null;
 
-  return (
-    <div className="stack">
-      <div className="muted" style={{ fontSize: 10, letterSpacing: '0.14em', marginTop: 8 }}>
-        CREDIT FORECASTS — SPREADS, DEFAULT CYCLE & VOLATILITY (the desk&apos;s P&amp;L variables)
+  if (section === 'overview') {
+    return (
+      <div className="stack">
+        {views.credit_view && views.credit_view.n_signals > 0 && (
+          <CreditStanceBanner cv={views.credit_view} meth={meth} />
+        )}
+        <CreditTiles ev={ev} carry={views.credit_view?.carry_to_risk} meth={meth} />
+        {views.credit_total_return
+          && Object.keys(views.credit_total_return.indices).length > 0 && (
+          <TotalReturnPanel tr={views.credit_total_return} />
+        )}
       </div>
+    );
+  }
 
-      {views.credit_view && views.credit_view.n_signals > 0 && (
-        <CreditStanceBanner cv={views.credit_view} meth={meth} />
-      )}
+  if (section === 'scenarios') {
+    return (views.scenarios?.length ?? 0) > 0
+      ? <ScenarioPanel scenarios={views.scenarios!} /> : null;
+  }
 
-      <CreditTiles ev={ev} carry={views.credit_view?.carry_to_risk} meth={meth} />
+  if (section === 'outlook') {
+    return (
+      <div className="stack">
+        {views.spread_outlook ? (
+          <SpreadOutlookPanel views={views} />
+        ) : (
+          <div className="grid-2">
+            <CreditPathChart
+              concept={concepts.get('hy_oas')}
+              color={COLORS.negative}
+              decimals={2}
+              fairValue={hyFair}
+              fairLabel="macro fair value"
+              unitLabel="% OAS · dashed = fair value · shaded = forecast band"
+            />
+            <CreditPathChart
+              concept={concepts.get('ig_oas')}
+              color={COLORS.chartSecondary}
+              decimals={2}
+              fairValue={igFair}
+              fairLabel="macro fair value"
+              unitLabel="% OAS · dashed = fair value · shaded = forecast band"
+            />
+          </div>
+        )}
 
-      {views.credit_total_return
-        && Object.keys(views.credit_total_return.indices).length > 0 && (
-        <TotalReturnPanel tr={views.credit_total_return} />
-      )}
-
-      {(views.scenarios?.length ?? 0) > 0 && (
-        <ScenarioPanel scenarios={views.scenarios!} />
-      )}
-
-      {views.spread_outlook ? (
-        <SpreadOutlookPanel views={views} />
-      ) : (
         <div className="grid-2">
           <CreditPathChart
-            concept={concepts.get('hy_oas')}
-            color={COLORS.negative}
+            concept={concepts.get('default_rate')}
+            color={COLORS.accent}
             decimals={2}
-            fairValue={hyFair}
-            fairLabel="macro fair value"
-            unitLabel="% OAS · dashed = fair value · shaded = forecast band"
+            unitLabel="% · charge-off / loss-rate cycle · shaded = forecast band"
           />
           <CreditPathChart
-            concept={concepts.get('ig_oas')}
-            color={COLORS.chartSecondary}
+            concept={concepts.get('consumer_loss_rate')}
+            color={COLORS.negative}
             decimals={2}
-            fairValue={igFair}
-            fairLabel="macro fair value"
-            unitLabel="% OAS · dashed = fair value · shaded = forecast band"
+            unitLabel="% · credit-card charge-off path · shaded = forecast band"
+          />
+          <CreditPathChart
+            concept={concepts.get('rates_vol')}
+            color={COLORS.chart6mo}
+            decimals={0}
+            unitLabel="bp p.a. · GARCH conditional vol (MOVE proxy)"
+          />
+          <CreditPathChart
+            concept={concepts.get('funding_spread')}
+            color={COLORS.chartTertiary}
+            decimals={0}
+            unitLabel="bp · CP–bill funding spread · mean-reverting"
           />
         </div>
-      )}
 
-      <div className="grid-2">
-        <CreditPathChart
-          concept={concepts.get('default_rate')}
-          color={COLORS.accent}
-          decimals={2}
-          unitLabel="% · charge-off / loss-rate cycle · shaded = forecast band"
-        />
-        <CreditPathChart
-          concept={concepts.get('rates_vol')}
-          color={COLORS.chart6mo}
-          decimals={0}
-          unitLabel="bp p.a. · GARCH conditional vol (MOVE proxy)"
-        />
-        <CreditPathChart
-          concept={concepts.get('funding_spread')}
-          color={COLORS.chartTertiary}
-          decimals={0}
-          unitLabel="bp · CP–bill funding spread · mean-reverting"
-        />
+        <SoftDataPanel views={views} />
       </div>
+    );
+  }
 
-      <SoftDataPanel views={views} />
-
+  return (
+    <div className="stack">
       <div className="grid-2">
         <FredSeriesPanel
           title="Credit Spread History"

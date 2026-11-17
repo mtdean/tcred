@@ -3,6 +3,8 @@
 // every model's path against the weighted ensemble, and regime tiles.
 
 import { Fragment } from 'react';
+import * as Tabs from '@radix-ui/react-tabs';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   Area,
@@ -27,6 +29,7 @@ import TooltipShell from '../components/charts/TooltipShell';
 import FredSeriesPanel from '../components/macro/FredSeriesPanel';
 import CreditForecastsPanel from '../components/macro/CreditForecastsPanel';
 import PolicyPathPanel from '../components/macro/PolicyPathPanel';
+import StressLabPanel from '../components/macro/StressLabPanel';
 import DocLink, { type MethodologyEntry } from '../components/macro/DocLink';
 
 // Stable colors / display names per model across all charts on the page.
@@ -358,7 +361,16 @@ function ForecastSkillPanel({ views }: { views: MacroViews }) {
 
 // ── Page ──────────────────────────────────────────────────────
 
+const VIEWS = [
+  { key: 'overview', label: 'Overview' },
+  { key: 'credit', label: 'Credit' },
+  { key: 'rates', label: 'Rates & Macro' },
+  { key: 'stress', label: 'Stress Lab' },
+  { key: 'history', label: 'History' },
+];
+
 export default function ForecastsPage() {
+  const [params, setParams] = useSearchParams();
   const { data, isLoading } = useQuery({
     queryKey: ['macroViews'],
     queryFn: () => getMacroViews().then((r) => r.data),
@@ -386,36 +398,53 @@ export default function ForecastsPage() {
     (c): c is MacroViewConcept => c != null && c.path.length > 1,
   );
 
+  const view = VIEWS.some((v) => v.key === params.get('view')) ? params.get('view')! : 'overview';
+
   return (
-    <div className="stack">
-      <div className="muted" style={{ fontSize: 10, letterSpacing: '0.1em' }}>
-        MACROBOT MODEL ENSEMBLE · AS OF {data.asof?.toUpperCase()}
-        {' '}· dashed = individual models · solid = inverse-MSE-weighted ensemble
+    <Tabs.Root value={view} onValueChange={(v) => setParams({ view: v }, { replace: true })} className="stack">
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <Tabs.List className="subtabs" aria-label="Forecast views" style={{ flex: 1 }}>
+          {VIEWS.map((v) => <Tabs.Trigger key={v.key} value={v.key}>{v.label}</Tabs.Trigger>)}
+        </Tabs.List>
+        <span className="muted" style={{ fontSize: 10, letterSpacing: '0.1em', paddingBottom: 6 }}>
+          MACROBOT · AS OF {data.asof?.toUpperCase()}
+        </span>
       </div>
 
-      <RegimeTiles views={data} />
+      {/* The decision summary: where we are, what to hold, what to trust. */}
+      <Tabs.Content value="overview" className="stack">
+        <RegimeTiles views={data} />
+        <CreditForecastsPanel views={data} section="overview" />
+        <ForecastSkillPanel views={data} />
+      </Tabs.Content>
 
-      <ForecastSkillPanel views={data} />
+      <Tabs.Content value="credit" className="stack">
+        <CreditForecastsPanel views={data} section="outlook" />
+      </Tabs.Content>
 
-      <CreditForecastsPanel views={data} />
+      <Tabs.Content value="rates" className="stack">
+        <div className="muted" style={{ fontSize: 10, letterSpacing: '0.1em' }}>
+          dashed = individual models · solid = inverse-MSE-weighted ensemble
+        </div>
+        <PolicyPathPanel views={data} />
+        {(data.forward_curve?.length ?? 0) > 0 && (
+          <ForwardCurvePanel segments={data.forward_curve!} />
+        )}
+        <div className="grid-2">
+          {fans.map((c) => <FanChart key={c.key} concept={c} />)}
+        </div>
+      </Tabs.Content>
 
-      <div className="muted" style={{ fontSize: 10, letterSpacing: '0.14em', marginTop: 8 }}>
-        RATES &amp; MACRO MODEL FORECASTS — IMPLIED CURVE AND PER-CONCEPT ENSEMBLE FANS
-      </div>
+      <Tabs.Content value="stress" className="stack">
+        <StressLabPanel views={data} initialPreset={params.get('preset')} />
+        <CreditForecastsPanel views={data} section="scenarios" />
+      </Tabs.Content>
 
-      {(data.forward_curve?.length ?? 0) > 0 && (
-        <ForwardCurvePanel segments={data.forward_curve!} />
-      )}
-
-      <PolicyPathPanel views={data} />
-
-      <div className="grid-2">
-        {fans.map((c) => <FanChart key={c.key} concept={c} />)}
-      </div>
-
-      <div className="muted" style={{ fontSize: 10, letterSpacing: '0.14em', marginTop: 8 }}>
-        VIEW HISTORY — HOW THE ENSEMBLE&apos;S CALLS HAVE EVOLVED (one point per run day)
-      </div>
+      <Tabs.Content value="history" className="stack">
+        <div className="muted" style={{ fontSize: 10, letterSpacing: '0.1em' }}>
+          HOW THE CALLS HAVE EVOLVED — one point per run day
+        </div>
+        <CreditForecastsPanel views={data} section="history" />
       <div className="grid-2">
         <FredSeriesPanel
           title="10Y View History"
@@ -464,6 +493,7 @@ export default function ForecastsPage() {
           decimals={2}
         />
       </div>
-    </div>
+      </Tabs.Content>
+    </Tabs.Root>
   );
 }
