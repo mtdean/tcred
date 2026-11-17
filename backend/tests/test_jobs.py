@@ -107,6 +107,20 @@ class TestInstrumentWrapper:
         assert ours["rows_ingested"] == 7
         assert ours["error"] is None
 
+    def test_scheduled_success_stamps_last_refresh_meta(self, fresh_db):
+        # The TopBar "MACRO: …ago" readout reads this key; scheduled runs must
+        # stamp it too, not only manual REFRESH clicks.
+        assert db.get_meta("last_fred_refresh") is None
+        scheduler._instrument("fred", lambda: 3)()
+        assert db.get_meta("last_fred_refresh") is not None
+
+    def test_failed_run_does_not_stamp_last_refresh_meta(self, fresh_db):
+        def boom() -> int:
+            raise ValueError("nope")
+
+        scheduler._instrument("fred", boom)()
+        assert db.get_meta("last_fred_refresh") is None
+
     def test_sync_exception_records_error_and_returns_none(self, fresh_db):
         def boom() -> int:
             raise ValueError("nope")

@@ -18,7 +18,7 @@ import logging
 import threading
 import time
 
-from cache.db import get_conn, set_meta
+from cache.db import get_conn
 from data import scheduler as sched
 from data.sources import enabled_sources
 
@@ -39,16 +39,6 @@ MANUAL_JOBS = {
 MANUAL_JOBS.update(
     {s.id: s.fetch for s in enabled_sources() if s.manual_refresh}
 )
-
-# Successful manual runs stamp the same /api/status meta keys the legacy
-# sync refresh endpoints set, so the TopBar "last refresh" readout keeps working.
-_META_KEYS = {
-    "feeds": "last_news_refresh",
-    "market": "last_market_refresh",
-    "fred": "last_fred_refresh",
-    "bdc": "last_bdc_refresh",
-    "regulatory": "last_regulatory_refresh",
-}
 
 # Consider a 'running' row stale after this long — a crashed process can
 # leave one behind and reap_stale_job_runs only fires at startup.
@@ -86,15 +76,10 @@ def start_background_job(job_id: str) -> dict:
 
     def _runner():
         try:
+            # _instrument records the run and stamps the last-refresh meta key.
             result = wrapper()
             if asyncio.iscoroutine(result):
-                result = asyncio.run(result)
-            # _instrument returns None when the job errored; only stamp the
-            # last-refresh meta key on success.
-            meta_key = _META_KEYS.get(job_id)
-            if meta_key and result is not None:
-                from datetime import datetime, timezone
-                set_meta(meta_key, datetime.now(timezone.utc).isoformat())
+                asyncio.run(result)
         except Exception as e:  # _instrument already records the failure
             logger.error("Manual job %s thread error: %s", job_id, e)
 

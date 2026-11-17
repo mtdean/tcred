@@ -18,6 +18,7 @@ import asyncio
 import inspect
 import logging
 import traceback
+from datetime import datetime, timezone
 from functools import wraps
 from typing import Callable
 
@@ -25,7 +26,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
-from cache.db import finish_job_run, reap_stale_job_runs, start_job_run
+from cache.db import finish_job_run, reap_stale_job_runs, set_meta, start_job_run
 from config import load_data_sources
 from data.sources import enabled_sources
 
@@ -34,6 +35,17 @@ _scheduler: AsyncIOScheduler | None = None
 
 
 # ── Job-run recording wrapper ────────────────────────────────────────────────
+# Successful runs (scheduled or manual) stamp these /api/status meta keys,
+# which drive the TopBar "MACRO: …ago" style last-refresh readout.
+REFRESH_META_KEYS = {
+    "feeds": "last_news_refresh",
+    "market": "last_market_refresh",
+    "fred": "last_fred_refresh",
+    "bdc": "last_bdc_refresh",
+    "regulatory": "last_regulatory_refresh",
+}
+
+
 def _instrument(job_id: str, fn: Callable, triggered_by: str = "scheduler"):
     """Wrap a job function so each invocation is captured in `job_runs`.
 
@@ -46,6 +58,9 @@ def _instrument(job_id: str, fn: Callable, triggered_by: str = "scheduler"):
     def _success(run_id: int, result):
         rows = result if isinstance(result, int) else None
         finish_job_run(run_id, "success", rows_ingested=rows)
+        meta_key = REFRESH_META_KEYS.get(job_id)
+        if meta_key:
+            set_meta(meta_key, datetime.now(timezone.utc).isoformat())
         return result
 
     def _failure(run_id: int, e: Exception):  # record-and-continue

@@ -9,6 +9,7 @@ threshold:
     daily              ≤ 5d            > 5d            > 14d
     weekly             ≤ 21d           > 21d           > 35d
     monthly            ≤ 100d          > 100d          > 150d
+    monthly_lagged     ≤ 200d          > 200d          > 290d
     quarterly          ≤ 250d          > 250d          > 340d
     quarterly_lagged   ≤ 280d          > 280d          > 360d
 
@@ -21,6 +22,9 @@ measured just before the next release:
     monthly    G.19 consumer credit ~5wk lag (~95d worst), smoothed recession
                probability ~3mo lag (~120d... flagged stale only if unusually
                late — acceptable for one outlier series).
+    monthly_lagged  G.19 terms of credit: finance-company auto terms run
+               ~5 months behind (~180d worst); bank auto rates are sampled
+               only in the middle month of each quarter (~140d worst).
     quarterly  FDIC delinquency/charge-offs ~60d lag (~243d worst),
                Z.1 flows ~70d (~253d worst), GDP advance ~30d (~212d).
     quarterly_lagged   published ~2 quarters after period close (the debt
@@ -49,6 +53,7 @@ _THRESHOLDS = {
     "daily":     {"stale": 5,   "dead": 14},
     "weekly":    {"stale": 21,  "dead": 35},
     "monthly":   {"stale": 100, "dead": 150},
+    "monthly_lagged": {"stale": 200, "dead": 290},
     "quarterly": {"stale": 250, "dead": 340},
     "quarterly_lagged": {"stale": 280, "dead": 360},
     "annual":    {"stale": 500, "dead": 750},
