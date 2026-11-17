@@ -122,6 +122,9 @@ def run(base: str, out_dir: Path) -> int:
     # Pluggable sources — drives the Macro tab's "Custom Sources" panels. Their
     # series live in metrics, so the FRED-history loop below picks them up.
     s.snap("/sources")
+    # Forecasts tab — the page renders entirely from the views payload.
+    s.snap("/macro/forecasts")
+    s.snap("/macro/forecasts/views")
 
     # ── FRED history per series ────────────────────────────
     fred_latest = s.fetch("/fred/latest")
