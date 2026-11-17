@@ -38,6 +38,7 @@ const MODEL_META: Record<string, { name: string; color: string }> = {
   bvar_minnesota: { name: 'BVAR', color: '#f4978e' },
   stock_watson_dfm: { name: 'SW-DFM', color: '#5b8ff9' },
   mixed_frequency_dfm: { name: 'MF-DFM', color: COLORS.chartTertiary },
+  component_inflation: { name: 'COMPONENTS', color: '#e67e22' },
   excess_bond_premium: { name: 'EBP', color: COLORS.chartSecondary },
   yield_curve_recession_probit: { name: 'YC PROBIT', color: COLORS.chart6mo },
   nfci: { name: 'NFCI', color: '#f4978e' },
@@ -49,7 +50,7 @@ const meta = (id: string) => MODEL_META[id] ?? { name: id.toUpperCase(), color: 
 
 // Concepts worth a fan chart, grouped: rates first, then macro.
 const FAN_CONCEPTS = [
-  'ust_10y', 'ust_1y', 'tp_10y', 'policy_rate', 'gdp_growth', 'inflation',
+  'ust_10y', 'ust_1y', 'tp_10y', 'policy_rate', 'gdp_growth', 'inflation', 'core_pce',
 ];
 
 function ChartTooltip({
