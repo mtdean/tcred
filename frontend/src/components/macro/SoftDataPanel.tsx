@@ -16,7 +16,7 @@ import {
   YAxis,
 } from 'recharts';
 import { COLORS } from '../../lib/colors';
-import type { MacroViews } from '../../lib/types';
+import type { FilingsDistressPoint, MacroViews } from '../../lib/types';
 import Panel from '../shared/Panel';
 import TooltipShell from '../charts/TooltipShell';
 import DocLink from './DocLink';
@@ -110,6 +110,62 @@ export default function SoftDataPanel({ views }: { views: MacroViews }) {
           ))}
         </div>
       </div>
+      {sd.filings && sd.filings.length > 0 && <FilingsSection rows={sd.filings} views={views} />}
     </Panel>
+  );
+}
+
+// EDGAR filings distress: management's own words (going concern, forbearance,
+// restructuring support agreements, Chapter 11 petitions) as shares of filings.
+function FilingsSection({ rows, views }: { rows: FilingsDistressPoint[]; views: MacroViews }) {
+  const last = rows[rows.length - 1];
+  const yearAgo = rows.length > 4 ? rows[rows.length - 5] : undefined;
+  const meth = views.methodology?.filings_distress;
+  const comp = last.composite_z;
+  const chg = comp != null && yearAgo?.composite_z != null ? comp - yearAgo.composite_z : null;
+  const color = comp == null ? undefined : comp > 0.5 ? COLORS.negative : comp < -0.5 ? COLORS.positive : undefined;
+  const lines: { key: keyof FilingsDistressPoint; name: string; color: string; dash?: string }[] = [
+    { key: 'composite_z', name: 'Composite', color: COLORS.accent },
+    { key: 'going_concern_z', name: 'Going concern (10-K/Q)', color: COLORS.negative, dash: '4 3' },
+    { key: 'forbearance_z', name: 'Forbearance (8-K)', color: COLORS.chartSecondary, dash: '4 3' },
+    { key: 'rsa_z', name: 'RSA (8-K)', color: COLORS.chart6mo, dash: '4 3' },
+    { key: 'chapter11_z', name: 'Chapter 11 (8-K)', color: COLORS.textSecondary, dash: '2 3' },
+  ];
+  return (
+    <div style={{ marginTop: 14, borderTop: `1px solid ${COLORS.border}`, paddingTop: 10 }}>
+      <div className="muted" style={{ fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 6 }}>
+        SEC filings distress language — quarterly since 2001 {meth && <DocLink m={meth} />}
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 8 }}>
+        <Tile label={`Filings distress (z) · ${last.date.slice(0, 7)}`} value={z(comp)} color={color}
+          sub={`4q change ${z(chg)}`} />
+        <Tile label="Going-concern share" value={last.going_concern_share == null ? '—'
+          : `${(last.going_concern_share * 100).toFixed(1)}%`} sub="of 10-K/10-Q filings" />
+        <Tile label="RSA / Ch.11 (z)" value={`${z(last.rsa_z)} / ${z(last.chapter11_z)}`}
+          sub="pre-pack deals / petitions in 8-Ks" />
+      </div>
+      <ResponsiveContainer width="100%" height={200}>
+        <LineChart data={rows} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
+          <CartesianGrid stroke={COLORS.border} strokeDasharray="2 4" />
+          <XAxis dataKey="date" tick={{ fill: COLORS.textSecondary, fontSize: 10 }} stroke={COLORS.border}
+            tickFormatter={(d: string) => d.slice(0, 4)} minTickGap={40} />
+          <YAxis tick={{ fill: COLORS.textSecondary, fontSize: 10 }} stroke={COLORS.border} width={36} />
+          <ReferenceLine y={0} stroke={COLORS.borderBright} />
+          <Tooltip content={({ active, payload, label }) =>
+            active && payload?.length ? (
+              <TooltipShell title={label}>
+                {payload.map((p) => (
+                  <div key={String(p.dataKey)} style={{ color: p.color }}>{p.name}: {z(Number(p.value))}</div>
+                ))}
+              </TooltipShell>
+            ) : null} />
+          {lines.map((l) => (
+            <Line key={String(l.key)} dataKey={l.key as string} name={l.name} stroke={l.color}
+              strokeDasharray={l.dash} dot={false} strokeWidth={l.key === 'composite_z' ? 1.8 : 1}
+              isAnimationActive={false} connectNulls />
+          ))}
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
   );
 }

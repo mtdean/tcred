@@ -182,7 +182,7 @@ function PathTooltip({ active, payload, label, decimals = 2 }: {
   );
 }
 
-function CreditPathChart({
+export function CreditPathChart({
   concept, color, decimals = 2, fairValue, fairLabel, unitLabel,
 }: {
   concept: MacroViewConcept | undefined;

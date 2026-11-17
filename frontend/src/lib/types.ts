@@ -300,6 +300,7 @@ export interface MacroViews {
     history: { date: string; credit_stress_z: number; tone_z: number }[];
     top_terms: Record<string, number>;
     quotes: string[];
+    filings?: FilingsDistressPoint[] | null;
   };
 }
 
@@ -729,4 +730,14 @@ export interface DataSource {
     rows_ingested: number | null;
     error: string | null;
   } | null;
+}
+
+export interface FilingsDistressPoint {
+  date: string;
+  going_concern_share: number | null;
+  going_concern_z: number | null;
+  forbearance_z: number | null;
+  rsa_z: number | null;
+  chapter11_z: number | null;
+  composite_z: number | null;
 }

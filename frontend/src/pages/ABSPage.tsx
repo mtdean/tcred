@@ -13,6 +13,7 @@ import AbsPricingPanel from '../components/abs/AbsPricingPanel';
 import SpreadTrackerPanel from '../components/abs/SpreadTrackerPanel';
 import KbraPresalesPanel from '../components/abs/KbraPresalesPanel';
 import TrustPerformancePanel from '../components/abs/TrustPerformancePanel';
+import ConsumerCreditForecastPanel from '../components/abs/ConsumerCreditForecastPanel';
 import { TraceVolumePanel } from '../components/macro/DashboardPanels';
 
 export default function ABSPage() {
@@ -32,7 +33,8 @@ export default function ABSPage() {
         <TraceVolumePanel />
       </Tabs.Content>
 
-      <Tabs.Content value="trusts">
+      <Tabs.Content value="trusts" className="stack">
+        <ConsumerCreditForecastPanel />
         <TrustPerformancePanel />
       </Tabs.Content>
 
