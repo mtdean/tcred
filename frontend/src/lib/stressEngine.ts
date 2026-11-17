@@ -81,6 +81,7 @@ export interface StressResult {
     ig: Fan | null;
     corp_loss: number[] | null;
     card_loss: number[] | null;
+    ust10_band?: { lo: number[]; hi: number[] };
     sofr?: number[];
     coupon?: number[];
     share_icr_lt_1?: number[];
@@ -117,21 +118,26 @@ export function stressResponse(
   const dSlope = d10y - d2y;
   const dU = x.unrate_pp + pol.unrate_per_100bp * dPolicy / 100;
 
-  // 2) spreads and losses (satellites)
-  const dBaa = sat.spread_d_vix * x.vix + sat.spread_d_u * dU + sat.spread_d_slope * dSlope / 100;
+  // 2) volatility and funding respond to the risk shock; sliders add on top
+  const volMult = x.vol_mult * Math.exp((sat.rates_vol_d_vix ?? 0) * x.vix);
+  const dFunding = x.funding_z + (sat.funding_d_vix ?? 0) * x.vix;
+
+  // 2b) spreads and losses (satellites)
+  const dBaa = sat.spread_d_vix * x.vix + sat.spread_d_u * dU + sat.spread_d_slope * dSlope / 100
+    + (sat.spread_d_log_rvol ?? 0) * Math.log(volMult)
+    + (sat.spread_d_funding_z ?? 0) * dFunding;
   const dHy = sat.hy_per_baa * dBaa;
   const dIg = sat.ig_per_baa * dBaa;
-  const dCorp = sat.corp_loss_d_u * dU + sat.corp_loss_d_baa * dBaa;
+  const dCorp = sat.corp_loss_d_u * dU + sat.corp_loss_d_baa * dBaa
+    + (sat.corp_loss_sloos_ci ?? 0) * x.sloos;
   const dCard = sat.consumer_loss_d_u * dU + sat.consumer_loss_sloos_card * x.sloos;
 
   // 3) fair value moves too — only widening beyond it reads as cheap
   const dFvLog = fv.coef_logvix * Math.log(Math.max(fv.vix_now + x.vix, 1) / fv.vix_now)
     + fv.coef_slope * dSlope / 100 + fv.coef_rate * d10y / 100;
-  const dHyFv = fv.hy_fair_value * (Math.exp(dFvLog) - 1);
-
-  // 3b) volatility and funding respond to the risk shock; sliders add on top
-  const volMult = x.vol_mult * Math.exp((sat.rates_vol_d_vix ?? 0) * x.vix);
-  const dFunding = x.funding_z + (sat.funding_d_vix ?? 0) * x.vix;
+  // … and so does spread that pays for higher expected losses (unemployment)
+  const dHyFv = fv.hy_fair_value * (Math.exp(dFvLog) - 1)
+    + sat.hy_per_baa * sat.spread_d_u * dU;
 
   // 4) stance votes
   const ev = kit.stance.evidence;
@@ -189,11 +195,13 @@ export function stressResponse(
   const lossW = (h: number) => Math.min(h / HORIZON_M, 1);
   const shifted = (base: number[] | null, delta: number, w: (h: number) => number) =>
     (base == null ? null : base.map((b, i) => b + delta * w(P.h[i])));
-  const fan = (f: Fan | null, d: number): Fan | null => (f == null ? null : {
-    median: shifted(f.median, d, market)!.map((v) => Math.max(v, 0)),
-    p16: shifted(f.p16, d, market)!.map((v) => Math.max(v, 0)),
-    p84: shifted(f.p84, d, market)!.map((v) => Math.max(v, 0)),
-  });
+  // Fans keep their baseline proportional width around the shifted median.
+  const fan = (f: Fan | null, d: number): Fan | null => {
+    if (f == null) return null;
+    const median = shifted(f.median, d, market)!.map((v) => Math.max(v, 0));
+    const scaled = (q: number[]) => median.map((m, i) => (f.median[i] > 0 ? m * (q[i] / f.median[i]) : m));
+    return { median, p16: scaled(f.p16), p84: scaled(f.p84) };
+  };
 
   const paths: StressResult['paths'] = {
     h: P.h,
@@ -204,6 +212,15 @@ export function stressResponse(
     hy: fan(P.hy, dHy),
     ig: fan(P.ig, dIg),
   };
+  // 10y band: ±1σ of rates vol, scaled by the scenario's vol multiple
+  const rv = kit.stance.evidence.rates_vol_bp;
+  if (paths.ust10 && rv != null) {
+    const sd = P.h.map((h) => rv / 100 * Math.sqrt(h / HORIZON_M) * (1 + (volMult - 1) * market(h)));
+    paths.ust10_band = {
+      lo: paths.ust10.map((v, i) => v - sd[i]),
+      hi: paths.ust10.map((v, i) => v + sd[i]),
+    };
+  }
   const fl = kit.floating;
   if (fl && P.sofr) {
     const sofr = shifted(P.sofr, dPolicy / 100, market)!;

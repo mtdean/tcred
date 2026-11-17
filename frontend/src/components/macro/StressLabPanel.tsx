@@ -42,6 +42,19 @@ const pct = (x: number | undefined, dp = 2) => (x == null ? '—' : `${x.toFixed
 
 // ── controls ──────────────────────────────────────────────────
 
+// What each input feeds, shown under its slider so none looks dead.
+const MOVES: Record<string, string> = {
+  core_pce_pp: 'Fed funds, 10y, coupon → unemployment → spreads, losses',
+  unrate_pp: 'spreads, corporate and card losses',
+  vix: 'spreads, rates vol, funding stress',
+  sloos: 'corporate and card losses',
+  term_premium_bp: '10y, curve slope → spreads',
+  policy_bp: 'Fed funds, 10y, coupon → unemployment → spreads, losses',
+  vol_mult: 'spreads, 10y range',
+  funding_z: 'spreads',
+  ebitda_pct: 'borrower coverage (ICR) only',
+};
+
 function Slider({ spec, value, onChange }: {
   spec: StressKit['inputs'][number]; value: number; onChange: (v: number) => void;
 }) {
@@ -58,6 +71,7 @@ function Slider({ spec, value, onChange }: {
         onChange={(e) => onChange(Number(e.target.value))}
         onDoubleClick={() => onChange(spec.default)}
         style={{ width: '100%', accentColor: COLORS.accent }} />
+      {MOVES[spec.key] && <div className="muted" style={{ fontSize: 9, marginTop: -2 }}>moves {MOVES[spec.key]}</div>}
     </label>
   );
 }
@@ -81,14 +95,16 @@ function Compare({ label, base, stressed, good = 'up', sub }: {
   );
 }
 
-function PathChart({ title, h, base, stressed, band, color, fmt }: {
+function PathChart({ title, h, base, stressed, band, stressedBand, color, fmt }: {
   title: string; h: number[]; base: number[] | null | undefined; stressed: number[] | null | undefined;
-  band?: { lo: number[]; hi: number[] } | null; color: string; fmt: (v: number) => string;
+  band?: { lo: number[]; hi: number[] } | null; stressedBand?: { lo: number[]; hi: number[] } | null;
+  color: string; fmt: (v: number) => string;
 }) {
   if (!base || !stressed) return null;
   const rows = h.map((m, i) => ({
     h: m === 0 ? 'now' : `+${m}m`,
     band: band ? [band.lo[i], band.hi[i]] : undefined,
+    sband: stressedBand ? [stressedBand.lo[i], stressedBand.hi[i]] : undefined,
     base: base[i],
     stressed: stressed[i],
   }));
@@ -112,12 +128,13 @@ function PathChart({ title, h, base, stressed, band, color, fmt }: {
             const r = payload[0].payload as (typeof rows)[number];
             return (
               <TooltipShell title={label}>
-                <div style={{ color }}>scenario {fmt(r.stressed)}</div>
-                <div style={{ color: COLORS.textSecondary }}>baseline {fmt(r.base)}</div>
+                <div style={{ color }}>scenario {fmt(r.stressed)}{r.sband ? ` (${fmt(r.sband[0])}–${fmt(r.sband[1])})` : ''}</div>
+                <div style={{ color: COLORS.textSecondary }}>baseline {fmt(r.base)}{r.band ? ` (${fmt(r.band[0])}–${fmt(r.band[1])})` : ''}</div>
               </TooltipShell>
             );
           }} />
           {band && <Area dataKey="band" stroke="none" fill={COLORS.textSecondary} fillOpacity={0.12} isAnimationActive={false} />}
+          {stressedBand && <Area dataKey="sband" stroke="none" fill={color} fillOpacity={0.14} isAnimationActive={false} />}
           <Line dataKey="base" stroke={COLORS.textSecondary} strokeDasharray="5 4" dot={false} strokeWidth={1.4} isAnimationActive={false} />
           <Line dataKey="stressed" stroke={color} dot={false} strokeWidth={2.4} isAnimationActive={false} />
         </ComposedChart>
@@ -183,7 +200,7 @@ export default function StressLabPanel({ views, initialPreset }: {
       title="Stress Lab"
       subtitle={
         <span>
-          set a macro shock → policy &amp; curve → spreads &amp; losses → stance, total return and paths · grey = baseline
+          set a macro shock → policy &amp; curve → spreads &amp; losses → stance, total return and paths · grey = baseline · shading = 16–84% range (spreads), ±1σ (10y)
           {meth && <> <DocLink m={meth} /></>}
           {check && (
             <span style={{ marginLeft: 10, color: check.failed.length ? COLORS.negative : COLORS.textDim }}>
@@ -259,9 +276,11 @@ export default function StressLabPanel({ views, initialPreset }: {
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 10 }}>
             <PathChart title="HY OAS (bp)" h={P.h} color={COLORS.negative} fmt={(v) => `${Math.round(v * 100)}`}
-              base={B.hy?.median} stressed={P.hy?.median} band={B.hy ? { lo: B.hy.p16, hi: B.hy.p84 } : null} />
+              base={B.hy?.median} stressed={P.hy?.median} band={B.hy ? { lo: B.hy.p16, hi: B.hy.p84 } : null}
+              stressedBand={P.hy ? { lo: P.hy.p16, hi: P.hy.p84 } : null} />
             <PathChart title="IG OAS (bp)" h={P.h} color={COLORS.chartSecondary} fmt={(v) => `${Math.round(v * 100)}`}
-              base={B.ig?.median} stressed={P.ig?.median} band={B.ig ? { lo: B.ig.p16, hi: B.ig.p84 } : null} />
+              base={B.ig?.median} stressed={P.ig?.median} band={B.ig ? { lo: B.ig.p16, hi: B.ig.p84 } : null}
+              stressedBand={P.ig ? { lo: P.ig.p16, hi: P.ig.p84 } : null} />
             <PathChart title="Corporate loss rate (%)" h={P.h} color={COLORS.accent} fmt={(v) => v.toFixed(2)}
               base={B.corp_loss} stressed={P.corp_loss} />
             <PathChart title="Card charge-offs (%)" h={P.h} color={COLORS.accent} fmt={(v) => v.toFixed(2)}
@@ -269,7 +288,7 @@ export default function StressLabPanel({ views, initialPreset }: {
             <PathChart title="Fed funds (%)" h={P.h} color={COLORS.chartTertiary} fmt={(v) => v.toFixed(2)}
               base={B.policy} stressed={P.policy} />
             <PathChart title="10-year Treasury (%)" h={P.h} color={COLORS.chartTertiary} fmt={(v) => v.toFixed(2)}
-              base={B.ust10} stressed={P.ust10} />
+              base={B.ust10} stressed={P.ust10} band={B.ust10_band} stressedBand={P.ust10_band} />
             <PathChart title="Direct-lending coupon (%)" h={P.h} color={COLORS.chart6mo} fmt={(v) => v.toFixed(2)}
               base={B.coupon} stressed={P.coupon} />
             <PathChart title="Borrowers with ICR < 1× (%)" h={P.h} color={COLORS.chart6mo} fmt={(v) => (v * 100).toFixed(1)}
