@@ -558,6 +558,28 @@ export function SmbLendingConditionsPanel() {
   );
 }
 
+export function EdgarDistressPanel() {
+  // Original 8-Ks filed under Item 2.04 (covenant breach / acceleration /
+  // cross-default) and 1.03 (bankruptcy) — a free, monthly lead on defaults.
+  // Includes some CMBS-trust 2.04s; history starts with the 2004 item numbering.
+  const series: FredSeriesDef[] = [
+    { seriesId: 'EDGAR_8K_204_MONTHLY', key: 'accel', name: 'ITEM 2.04 ACCELERATION', color: COLORS.negative },
+    { seriesId: 'EDGAR_8K_103_MONTHLY', key: 'bk', name: 'ITEM 1.03 BANKRUPTCY', color: COLORS.chartSecondary },
+  ];
+  return (
+    <FredSeriesPanel
+      title="8-K Distress Filings (SEC EDGAR)"
+      subtitle="FILINGS / MONTH — DEBT ACCELERATION & BANKRUPTCY"
+      series={series}
+      ranges={RANGES_MONTHLY}
+      defaultRange="MAX"
+      unit="plain"
+      decimals={0}
+      limit={400}
+    />
+  );
+}
+
 export function CardPaymentBehaviorPanel() {
   // Philly Fed large-bank (Y-14M) card data. Min-payment-only share is the
   // earliest read on cardholder strain; full payers show the healthy side.

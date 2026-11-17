@@ -279,6 +279,43 @@ fred_series:
     label: "Banks Tightening Auto Loan Standards (Net %)"
     category: lending
     frequency: quarterly
+  # Loan DEMAND side of SLOOS (net % reporting stronger demand). Tightening
+  # standards plus falling demand together is the classic contraction signal.
+  - id: "DRSDCILM"
+    label: "Stronger C&I Loan Demand, Large/Mid Firms (Net %)"
+    category: lending
+    frequency: quarterly
+  - id: "DRSDCIS"
+    label: "Stronger C&I Loan Demand, Small Firms (Net %)"
+    category: lending
+    frequency: quarterly
+  - id: "DEMCC"
+    label: "Stronger Credit Card Loan Demand (Net %)"
+    category: lending
+    frequency: quarterly
+  - id: "DEMAUTO"
+    label: "Stronger Auto Loan Demand (Net %)"
+    category: lending
+    frequency: quarterly
+  # Fed G.19 terms of credit. Finance-company terms publish with a ~5-month
+  # lag and bank rates are mid-quarter samples (hence monthly_lagged);
+  # stretching maturities is the auto-affordability tell.
+  - id: "RIELPCFANNM"
+    label: "New Car Loan Rate, Finance Companies"
+    category: lending
+    frequency: monthly_lagged
+  - id: "RIFLPBCIANM72NM"
+    label: "New Car Loan Rate, Banks (72-Month)"
+    category: lending
+    frequency: monthly_lagged
+  - id: "DTCTLVENMNM"
+    label: "New Car Loan Maturity, Finance Companies (Months)"
+    category: lending
+    frequency: monthly_lagged
+  - id: "DTCTLVENANM"
+    label: "New Car Amount Financed, Finance Companies ($)"
+    category: lending
+    frequency: monthly_lagged
   - id: "DRBLACBS"
     label: "Business Loan Delinquency Rate"
     category: consumer_credit
@@ -443,6 +480,12 @@ fred_series:
     frequency: weekly
   - id: "DPSACBW027SBOG"
     label: "Total Deposits (All Banks)"
+    category: h8_bank_credit
+    frequency: weekly
+  # Bank loans to nonbank lenders (private credit funds, BDCs, nonbank
+  # mortgage/consumer lenders) — the bank leverage line into private credit.
+  - id: "LNFACBW027SBOG"
+    label: "Loans to Nondepository Financial Institutions (All Banks)"
     category: h8_bank_credit
     frequency: weekly
 

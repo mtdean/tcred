@@ -1082,3 +1082,58 @@ class TestComputeAllIndicators:
         ):
             mocked_responses.get(url, status=500)
         assert ind.compute_all_indicators() == 0
+
+
+# ─── compute_nfc_interest_coverage ───────────────────────────────────────────
+class TestNfcInterestCoverage:
+    def _stub_fred(self, monkeypatch, data: dict[str, pd.Series]):
+        class StubFred:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def get_series(self, series_id, observation_start=None):
+                return data[series_id]
+
+        fake_mod = types.ModuleType("fredapi")
+        fake_mod.Fred = StubFred
+        monkeypatch.setitem(sys.modules, "fredapi", fake_mod)
+        monkeypatch.setattr(settings, "FRED_API_KEY", "test")
+
+    def _rows(self, series_id: str) -> list[tuple[str, float]]:
+        with db.get_conn() as conn:
+            return [
+                (r["date"], r["value"])
+                for r in conn.execute(
+                    "SELECT date, value FROM metrics WHERE series_id = ? ORDER BY date",
+                    (series_id,),
+                )
+            ]
+
+    def test_returns_zero_without_key(self, fresh_db, monkeypatch):
+        monkeypatch.setattr(settings, "FRED_API_KEY", "")
+        assert ind.compute_nfc_interest_coverage() == 0
+
+    def test_net_and_gross_coverage(self, fresh_db, monkeypatch):
+        idx = pd.to_datetime(["2026-01-01", "2026-04-01"])
+        self._stub_fred(monkeypatch, {
+            "A464RC1Q027SBEA": pd.Series([900.0, 1200.0], index=idx),   # PBT $bn
+            "B471RC1Q027SBEA": pd.Series([100.0, 300.0], index=idx),    # net interest $bn
+            # Gross interest is $mm; the second quarter is missing → net only.
+            "BOGZ1FA106130001Q": pd.Series([250_000.0], index=idx[:1]),
+        })
+        assert ind.compute_nfc_interest_coverage() == 3
+        # (900 + 100) / 100 = 10x; (1200 + 300) / 300 = 5x
+        assert self._rows("NFC_INTEREST_COVERAGE") == [
+            ("2026-01-01", 10.0), ("2026-04-01", 5.0),
+        ]
+        # (900 + 100) / 250 = 4x
+        assert self._rows("NFC_INTEREST_COVERAGE_GROSS") == [("2026-01-01", 4.0)]
+
+    def test_skips_nonpositive_interest(self, fresh_db, monkeypatch):
+        idx = pd.to_datetime(["2026-01-01"])
+        self._stub_fred(monkeypatch, {
+            "A464RC1Q027SBEA": pd.Series([900.0], index=idx),
+            "B471RC1Q027SBEA": pd.Series([0.0], index=idx),
+            "BOGZ1FA106130001Q": pd.Series([250_000.0], index=idx),
+        })
+        assert ind.compute_nfc_interest_coverage() == 0

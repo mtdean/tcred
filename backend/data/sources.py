@@ -56,6 +56,10 @@ BUILTIN_MODULES = [
     "data.sce",
     "data.sba",
     "data.nfib",
+    "data.philly_cards",
+    "data.fdic",
+    "data.kcfed_sbls",
+    "data.edgar_distress",
 ]
 
 # Core scheduler jobs a source id may not shadow (data/scheduler.py).

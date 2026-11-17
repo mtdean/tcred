@@ -32,6 +32,7 @@ _H8_SERIES = (
     "TOTCI",
     "RELACBW027SBOG",
     "DPSACBW027SBOG",
+    "LNFACBW027SBOG",
 )
 
 # Trailing weeks of history to compute on (covers a full YoY window plus

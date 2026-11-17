@@ -46,6 +46,7 @@ import {
   CiQualityBySizePanel,
   SmbLoanRatesPanel,
   SmbLendingConditionsPanel,
+  EdgarDistressPanel,
 } from '../components/macro/DashboardPanels';
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -180,6 +181,7 @@ const SECTIONS: Section[] = [
           <CloStressPanel />
           <DecompressionPanel />
           <InterestCoveragePanel />
+          <EdgarDistressPanel />
         </div>
       </>
     ),

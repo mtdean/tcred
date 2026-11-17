@@ -1041,6 +1041,70 @@ def compute_recession_ensemble() -> int:
     return count
 
 
+# ── 9. Nonfinancial corporate interest coverage (BEA NIPA) ──────────────────
+#
+# Economy-wide EBIT / interest for nonfinancial corporates — the macro anchor
+# for the leveraged-credit scorecard (MACRO_FLOAT_ICR_* is the borrower-level
+# floating-rate view). EBIT = BEA profits before tax + net interest (SAAR $bn).
+# Two denominators:
+#   NFC_INTEREST_COVERAGE        — net interest (BEA). Interest *received* on
+#     corporate cash piles nets out, which flatters it when rates are high.
+#   NFC_INTEREST_COVERAGE_GROSS  — gross interest paid (Z.1, $mm → $bn). The
+#     stricter debt-service view; lower and more cyclical.
+# "Net interest & misc. payments" includes small misc items (rents/royalties),
+# so read levels loosely and trends carefully. Fetched direct from FRED back
+# to 1990 so the history spans 2001 and the GFC (the generic fetch stops at
+# 2015).
+_NFC_COVERAGE_ID = "NFC_INTEREST_COVERAGE"
+_NFC_COVERAGE_GROSS_ID = "NFC_INTEREST_COVERAGE_GROSS"
+_NFC_PBT = "A464RC1Q027SBEA"
+_NFC_NET_INTEREST = "B471RC1Q027SBEA"
+_NFC_GROSS_INTEREST = "BOGZ1FA106130001Q"  # $mm SAAR
+_NFC_START = "1990-01-01"
+
+
+def compute_nfc_interest_coverage() -> int:
+    """Store quarterly nonfinancial corporate interest coverage. Returns rows written."""
+    if not settings.FRED_API_KEY:
+        return 0
+    try:
+        from fredapi import Fred
+
+        fred = Fred(api_key=settings.FRED_API_KEY)
+        pbt = fred.get_series(_NFC_PBT, observation_start=_NFC_START).dropna()
+        interest = fred.get_series(_NFC_NET_INTEREST, observation_start=_NFC_START).dropna()
+        gross = fred.get_series(_NFC_GROSS_INTEREST, observation_start=_NFC_START).dropna()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("NFC interest coverage: FRED fetch failed (%s)", e)
+        return 0
+
+    now = _now()
+    count = 0
+    for d, ni in interest.items():
+        if d not in pbt.index or not ni or ni <= 0:
+            continue
+        ebit = float(pbt[d]) + float(ni)
+        points = [(_NFC_COVERAGE_ID, "Nonfinancial Corporate Interest Coverage (EBIT / Net Interest, x)", float(ni))]
+        if d in gross.index and gross[d] > 0:
+            points.append((_NFC_COVERAGE_GROSS_ID,
+                           "Nonfinancial Corporate Interest Coverage (EBIT / Gross Interest Paid, x)",
+                           float(gross[d]) / 1000.0))
+        for sid, label, denom in points:
+            upsert_metric(
+                {
+                    "series_id": sid,
+                    "label": label,
+                    "category": "corporate_credit",
+                    "date": d.strftime("%Y-%m-%d"),
+                    "value": round(ebit / denom, 3),
+                    "fetched_at": now,
+                }
+            )
+            count += 1
+    logger.info("NFC interest coverage: stored %d quarterly points", count)
+    return count
+
+
 def compute_all_indicators() -> int:
     """Run every derived indicator. Returns total rows written."""
     total = 0
@@ -1052,4 +1116,5 @@ def compute_all_indicators() -> int:
     total += fetch_bis_credit_gap()
     total += compute_recession_ensemble()  # reads NTFS + both probits (above)
     total += compute_cfsi()  # depends on HHDC flows; recomputed in the HHDC job too
+    total += compute_nfc_interest_coverage()
     return total

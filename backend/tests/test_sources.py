@@ -30,11 +30,16 @@ def _discover(plugin_dir: Path, overrides: dict | None = None) -> dict[str, Sour
 class TestBuiltins:
     def test_builtin_modules_register_with_existing_job_ids(self):
         found = discover_sources(plugin_dir=Path("/nonexistent"), overrides={})
-        assert [s.id for s in found] == ["manheim", "cfpb", "trace", "sce", "sba", "nfib"]
+        assert [s.id for s in found] == [
+            "manheim", "cfpb", "trace", "sce", "sba", "nfib",
+            "philly_cards", "fdic", "fdic_rates", "kcfed_sbls", "edgar_distress",
+        ]
         assert all(s.origin == "builtin" for s in found)
         cadence = {s.id: s.every_hours for s in found}
         assert cadence == {
             "manheim": 24, "cfpb": 24, "trace": 12, "sce": 168, "sba": 168, "nfib": 168,
+            "philly_cards": 168, "fdic": 168, "fdic_rates": 168, "kcfed_sbls": 168,
+            "edgar_distress": 24,
         }
 
     def test_builtin_import_failure_is_logged_not_raised(self, caplog, tmp_path):
