@@ -166,6 +166,46 @@ export function UsedVehicleValuesPanel() {
   );
 }
 
+export function AutoLoanRatesPanel() {
+  // Fed G.19 new-car loan rates. Finance-company (captive) terms publish with a
+  // ~5-month lag; the gap to bank 72-month rates shows captive subvention.
+  const series: FredSeriesDef[] = [
+    { seriesId: 'RIELPCFANNM', key: 'fin', name: 'FINANCE COS', color: COLORS.chartPrimary },
+    { seriesId: 'RIFLPBCIANM72NM', key: 'bank', name: 'BANKS 72M', color: COLORS.chartSecondary },
+  ];
+  return (
+    <FredSeriesPanel
+      title="New Car Loan Rates (Fed G.19)"
+      subtitle="% APR — FINANCE COMPANIES vs BANKS"
+      series={series}
+      ranges={RANGES_MONTHLY}
+      defaultRange="10Y"
+      unit="pct"
+      decimals={2}
+      limit={400}
+    />
+  );
+}
+
+export function AutoLoanMaturityPanel() {
+  // Stretching maturities to hold payments down is the auto-affordability tell.
+  const series: FredSeriesDef[] = [
+    { seriesId: 'DTCTLVENMNM', key: 'mat', name: 'AVG MATURITY', color: COLORS.chartPrimary },
+  ];
+  return (
+    <FredSeriesPanel
+      title="New Car Loan Maturity (Fed G.19)"
+      subtitle="MONTHS, FINANCE COMPANIES — LONGER = STRETCHED AFFORDABILITY"
+      series={series}
+      ranges={RANGES_MONTHLY}
+      defaultRange="10Y"
+      unit="plain"
+      decimals={1}
+      limit={400}
+    />
+  );
+}
+
 export function ConsumerComplaintsPanel() {
   // CFPB complaint volume by product — a real-time consumer-stress read.
   // Debt-collection volume (~25k/mo) would flatten these axes; it's available
@@ -380,6 +420,73 @@ export function LendingStandardsPanel() {
       unit="pct"
       decimals={0}
       limit={80}
+    />
+  );
+}
+
+export function LoanDemandPanel() {
+  // SLOOS demand side. Standards tightening while demand falls is the
+  // classic credit-contraction pairing — read alongside the panel above.
+  const series: FredSeriesDef[] = [
+    { seriesId: 'DRSDCILM', key: 'large', name: 'C&I LARGE/MID', color: COLORS.chartPrimary },
+    { seriesId: 'DRSDCIS', key: 'small', name: 'C&I SMALL FIRMS', color: COLORS.chartSecondary },
+    { seriesId: 'DEMCC', key: 'card', name: 'CREDIT CARD', color: COLORS.chartTertiary },
+    { seriesId: 'DEMAUTO', key: 'auto', name: 'AUTO', color: COLORS.chart6mo },
+  ];
+  return (
+    <FredSeriesPanel
+      title="Bank Loan Demand (SLOOS)"
+      subtitle="NET % OF BANKS REPORTING STRONGER DEMAND"
+      series={series}
+      ranges={RANGES_QUARTERLY}
+      defaultRange="10Y"
+      unit="pct"
+      decimals={0}
+      limit={80}
+    />
+  );
+}
+
+export function InterestCoveragePanel() {
+  // Economy-wide nonfinancial corporate EBIT / interest (BEA + Z.1). The net
+  // measure is flattered by interest earned on corporate cash; gross is the
+  // stricter debt-service view.
+  const series: FredSeriesDef[] = [
+    { seriesId: 'NFC_INTEREST_COVERAGE_GROSS', key: 'gross', name: 'EBIT / GROSS INTEREST', color: COLORS.chartPrimary },
+    { seriesId: 'NFC_INTEREST_COVERAGE', key: 'net', name: 'EBIT / NET INTEREST', color: COLORS.chartSecondary },
+  ];
+  return (
+    <FredSeriesPanel
+      title="Corporate Interest Coverage"
+      subtitle="NONFINANCIAL CORPORATES, x — LOWER = MORE STRAIN"
+      series={series}
+      ranges={RANGES_QUARTERLY}
+      defaultRange="MAX"
+      unit="plain"
+      decimals={1}
+      limit={200}
+    />
+  );
+}
+
+export function CardPaymentBehaviorPanel() {
+  // Philly Fed large-bank (Y-14M) card data. Min-payment-only share is the
+  // earliest read on cardholder strain; full payers show the healthy side.
+  const series: FredSeriesDef[] = [
+    { seriesId: 'PHIL_CC_MIN_PAY', key: 'min', name: 'MIN PAYMENT ONLY', color: COLORS.negative },
+    { seriesId: 'PHIL_CC_DPD30', key: 'dpd30', name: '30+ DPD', color: COLORS.chartSecondary },
+    { seriesId: 'PHIL_CC_DPD90', key: 'dpd90', name: '90+ DPD', color: COLORS.chartTertiary },
+  ];
+  return (
+    <FredSeriesPanel
+      title="Large-Bank Card Behavior (Philly Fed)"
+      subtitle="% OF ACTIVE ACCOUNTS — Y-14M, ~2Q LAG"
+      series={series}
+      ranges={RANGES_QUARTERLY}
+      defaultRange="MAX"
+      unit="pct"
+      decimals={1}
+      limit={100}
     />
   );
 }

@@ -34,7 +34,16 @@ function Stat({ label, value, sub, color }: { label: string; value: string; sub?
   );
 }
 
-function IndexFan({ name, idx, color }: { name: string; idx: SpreadOutlookIndex; color: string }) {
+const RATINGS: [string, string, string][] = [
+  ['bbb', 'BBB', COLORS.chartSecondary],
+  ['bb', 'BB', COLORS.chartTertiary],
+  ['b', 'B', COLORS.accent],
+  ['ccc', 'CCC', COLORS.negative],
+];
+
+function IndexFan({ name, idx, color, showValuation = true }: {
+  name: string; idx: SpreadOutlookIndex; color: string; showValuation?: boolean;
+}) {
   const rows = idx.path.map((p) => ({
     h: p.h === 0 ? 'now' : `+${p.h}m`,
     outer: p.p05 != null && p.p95 != null ? [p.p05 * 100, p.p95 * 100] : [p.median * 100, p.median * 100],
@@ -54,9 +63,14 @@ function IndexFan({ name, idx, color }: { name: string; idx: SpreadOutlookIndex;
           sub="within 12m" color={COLORS.negative} />
         <Stat label={`P(≥ ${idx.tighten_bp}bp tighter)`} value={prob(idx.prob_tighten)}
           sub="within 12m" color={COLORS.positive} />
-        <Stat label="vs fair value" value={idx.gap == null ? '—' : `${idx.gap >= 0 ? '+' : ''}${Math.round(idx.gap * 100)}bp`}
-          sub={rich ? 'rich (tight vs macro)' : 'cheap (wide vs macro)'}
-          color={rich ? COLORS.accent : COLORS.positive} />
+        {showValuation ? (
+          <Stat label="vs fair value" value={idx.gap == null ? '—' : `${idx.gap >= 0 ? '+' : ''}${Math.round(idx.gap * 100)}bp`}
+            sub={rich ? 'rich (tight vs macro)' : 'cheap (wide vs macro)'}
+            color={rich ? COLORS.accent : COLORS.positive} />
+        ) : (
+          <Stat label="Vol vs Baa" value={idx.vol_scale == null ? '—' : `${idx.vol_scale.toFixed(2)}×`}
+            sub="proportional-move scale" />
+        )}
       </div>
       <ResponsiveContainer width="100%" height={210}>
         <ComposedChart data={rows} margin={{ top: 6, right: 12, bottom: 0, left: 0 }}>
@@ -77,7 +91,7 @@ function IndexFan({ name, idx, color }: { name: string; idx: SpreadOutlookIndex;
           }} />
           <Area dataKey="outer" stroke="none" fill={color} fillOpacity={0.10} isAnimationActive={false} />
           <Area dataKey="inner" stroke="none" fill={color} fillOpacity={0.20} isAnimationActive={false} />
-          {idx.fair_value != null && (
+          {showValuation && idx.fair_value != null && (
             <ReferenceLine y={idx.fair_value * 100} stroke={COLORS.textSecondary} strokeDasharray="5 4"
               label={{ value: 'macro fair value', fill: COLORS.textSecondary, fontSize: 9, position: 'insideTopRight' }} />
           )}
@@ -108,6 +122,17 @@ export default function SpreadOutlookPanel({ views }: { views: MacroViews }) {
         {so.indices.hy && <IndexFan name="HY" idx={so.indices.hy} color={COLORS.negative} />}
         {so.indices.ig && <IndexFan name="IG" idx={so.indices.ig} color={COLORS.chartSecondary} />}
       </div>
+      {RATINGS.some(([tag]) => so.indices[tag]) && (
+        <>
+          <div className="muted" style={{ fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase', margin: '14px 0 6px' }}>
+            By rating — same dynamics, each bucket scaled by its own spread volatility
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 12 }}>
+            {RATINGS.map(([tag, name, color]) => so.indices[tag]
+              && <IndexFan key={tag} name={name} idx={so.indices[tag]} color={color} showValuation={false} />)}
+          </div>
+        </>
+      )}
     </Panel>
   );
 }
