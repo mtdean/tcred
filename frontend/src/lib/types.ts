@@ -259,6 +259,16 @@ export interface MacroViews {
     score: number | null;
     rationale: string;
     total_return: Record<string, number | null>;
+    transmission?: {
+      d_policy_bp: number | null;
+      d_10y_bp: number | null;
+      d_slope_bp: number | null;
+      d_unrate_pp: number | null;
+      d_hy_oas_pp: number | null;
+      d_ig_oas_pp: number | null;
+      d_corp_loss_pp: number | null;
+      d_consumer_loss_pp: number | null;
+    } | null;
   }[];
   methodology?: Record<string, {
     label: string;

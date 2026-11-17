@@ -354,28 +354,44 @@ function ScenarioPanel({ scenarios }: { scenarios: NonNullable<MacroViews['scena
     x == null ? '—' : `${x >= 0 ? '+' : ''}${x.toFixed(1)}%`;
   const trColor = (x: number | null | undefined) =>
     x == null ? COLORS.textDim : x >= 0 ? COLORS.positive : COLORS.negative;
+  const d = (x: number | null | undefined, unit: string, scale = 1, dp = 0) =>
+    x == null ? '—' : `${x >= 0 ? '+' : ''}${(x * scale).toFixed(dp)}${unit}`;
+  const head = (t: string, right = true) => (
+    <span className="muted" style={{ fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase',
+      textAlign: right ? 'right' : 'left' }}>{t}</span>
+  );
+  const cell = (t: string, color?: string) => (
+    <span style={{ textAlign: 'right', color: color ?? COLORS.textSecondary }}>{t}</span>
+  );
   return (
     <Panel
       title="Scenario Analysis"
-      subtitle="stresses → credit stance + 12m total return · spread shocks in HY bp, IG moves 0.4× · loss ×3 HY / ×0.1 IG"
+      subtitle="macro shock → policy & curve → spreads & losses (stress satellites, 1990+) → stance + 12m total return"
     >
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: '4px 14px',
-        fontSize: 11, alignItems: 'center' }}>
-        <span className="muted" style={{ fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase' }}>Scenario</span>
-        <span className="muted" style={{ fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', textAlign: 'right' }}>Stance</span>
-        <span className="muted" style={{ fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', textAlign: 'right' }}>HY TR</span>
-        <span className="muted" style={{ fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', textAlign: 'right' }}>IG TR</span>
-        {scenarios.map((s) => {
-          const m = STANCE_META[s.stance] ?? STANCE_META.unknown;
-          return (
-            <Fragment key={s.name}>
-              <span title={s.rationale} style={{ color: COLORS.textPrimary }}>{s.label}</span>
-              <span style={{ textAlign: 'right', fontWeight: 600, color: m.color }}>{m.label}</span>
-              <span style={{ textAlign: 'right', color: trColor(s.total_return?.hy) }}>{tr(s.total_return?.hy)}</span>
-              <span style={{ textAlign: 'right', color: trColor(s.total_return?.ig) }}>{tr(s.total_return?.ig)}</span>
-            </Fragment>
-          );
-        })}
+      <div style={{ overflowX: 'auto' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px,1fr) repeat(9, auto)',
+          gap: '4px 14px', fontSize: 11, alignItems: 'center', minWidth: 900 }}>
+          {head('Scenario', false)}{head('Δ10y')}{head('Δunemp')}{head('ΔHY OAS')}{head('ΔIG OAS')}
+          {head('Δcorp loss')}{head('Δcard loss')}{head('Stance')}{head('HY TR')}{head('IG TR')}
+          {scenarios.map((s) => {
+            const m = STANCE_META[s.stance] ?? STANCE_META.unknown;
+            const t = s.transmission;
+            return (
+              <Fragment key={s.name}>
+                <span title={s.rationale} style={{ color: COLORS.textPrimary }}>{s.label}</span>
+                {cell(d(t?.d_10y_bp, 'bp'))}
+                {cell(d(t?.d_unrate_pp, 'pp', 1, 1))}
+                {cell(d(t?.d_hy_oas_pp, 'bp', 100), (t?.d_hy_oas_pp ?? 0) > 0 ? COLORS.negative : undefined)}
+                {cell(d(t?.d_ig_oas_pp, 'bp', 100))}
+                {cell(d(t?.d_corp_loss_pp, 'pp', 1, 2), (t?.d_corp_loss_pp ?? 0) > 0.1 ? COLORS.negative : undefined)}
+                {cell(d(t?.d_consumer_loss_pp, 'pp', 1, 2), (t?.d_consumer_loss_pp ?? 0) > 0.25 ? COLORS.negative : undefined)}
+                <span style={{ textAlign: 'right', fontWeight: 600, color: m.color }}>{m.label}</span>
+                <span style={{ textAlign: 'right', color: trColor(s.total_return?.hy) }}>{tr(s.total_return?.hy)}</span>
+                <span style={{ textAlign: 'right', color: trColor(s.total_return?.ig) }}>{tr(s.total_return?.ig)}</span>
+              </Fragment>
+            );
+          })}
+        </div>
       </div>
     </Panel>
   );
