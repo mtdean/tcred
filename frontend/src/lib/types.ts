@@ -294,6 +294,12 @@ export interface MacroViews {
   };  floating_rate?: {
     curve_source: string;
     path: FloatingRatePoint[];
+  };  soft_data?: {
+    source: string;
+    latest_release: string;
+    history: { date: string; credit_stress_z: number; tone_z: number }[];
+    top_terms: Record<string, number>;
+    quotes: string[];
   };
 }
 

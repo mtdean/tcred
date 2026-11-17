@@ -20,6 +20,7 @@ import type { MacroViewConcept, MacroViews } from '../../lib/types';
 import Panel from '../shared/Panel';
 import TooltipShell from '../charts/TooltipShell';
 import FredSeriesPanel from './FredSeriesPanel';
+import SoftDataPanel from './SoftDataPanel';
 import DocLink, { type MethodologyEntry } from './DocLink';
 
 type Methodology = Record<string, MethodologyEntry>;
@@ -508,6 +509,8 @@ export default function CreditForecastsPanel({ views }: { views: MacroViews }) {
           unitLabel="bp · CP–bill funding spread · mean-reverting"
         />
       </div>
+
+      <SoftDataPanel views={views} />
 
       <div className="grid-2">
         <FredSeriesPanel
