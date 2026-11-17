@@ -291,7 +291,22 @@ export interface MacroViews {
       breakeven_spread_bp: number | null;
       base_rate?: number | null;
     }>;
+  };  floating_rate?: {
+    curve_source: string;
+    path: FloatingRatePoint[];
   };
+}
+
+export interface FloatingRatePoint {
+  h: number;
+  base_rate: number | null;
+  coupon: number | null;
+  icr_median: number | null;
+  icr_median_stress: number | null;
+  share_icr_lt_1: number | null;
+  share_icr_lt_1_stress: number | null;
+  share_icr_lt_1p5: number | null;
+  share_icr_lt_1p5_stress: number | null;
 }
 
 export interface ForwardCurveData {
