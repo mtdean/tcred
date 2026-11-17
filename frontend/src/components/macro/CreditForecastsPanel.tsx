@@ -21,6 +21,7 @@ import Panel from '../shared/Panel';
 import TooltipShell from '../charts/TooltipShell';
 import FredSeriesPanel from './FredSeriesPanel';
 import SoftDataPanel from './SoftDataPanel';
+import SpreadOutlookPanel from './SpreadOutlookPanel';
 import DocLink, { type MethodologyEntry } from './DocLink';
 
 type Methodology = Record<string, MethodologyEntry>;
@@ -489,23 +490,30 @@ export default function CreditForecastsPanel({ views }: { views: MacroViews }) {
         <ScenarioPanel scenarios={views.scenarios!} />
       )}
 
+      {views.spread_outlook ? (
+        <SpreadOutlookPanel views={views} />
+      ) : (
+        <div className="grid-2">
+          <CreditPathChart
+            concept={concepts.get('hy_oas')}
+            color={COLORS.negative}
+            decimals={2}
+            fairValue={hyFair}
+            fairLabel="macro fair value"
+            unitLabel="% OAS · dashed = fair value · shaded = forecast band"
+          />
+          <CreditPathChart
+            concept={concepts.get('ig_oas')}
+            color={COLORS.chartSecondary}
+            decimals={2}
+            fairValue={igFair}
+            fairLabel="macro fair value"
+            unitLabel="% OAS · dashed = fair value · shaded = forecast band"
+          />
+        </div>
+      )}
+
       <div className="grid-2">
-        <CreditPathChart
-          concept={concepts.get('hy_oas')}
-          color={COLORS.negative}
-          decimals={2}
-          fairValue={hyFair}
-          fairLabel="macro fair value"
-          unitLabel="% OAS · dashed = fair value · shaded = forecast band"
-        />
-        <CreditPathChart
-          concept={concepts.get('ig_oas')}
-          color={COLORS.chartSecondary}
-          decimals={2}
-          fairValue={igFair}
-          fairLabel="macro fair value"
-          unitLabel="% OAS · dashed = fair value · shaded = forecast band"
-        />
         <CreditPathChart
           concept={concepts.get('default_rate')}
           color={COLORS.accent}

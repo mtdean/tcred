@@ -259,6 +259,7 @@ export interface MacroViews {
     score: number | null;
     rationale: string;
     total_return: Record<string, number | null>;
+    d_hy_fair_value_pp?: number | null;
     transmission?: {
       d_policy_bp: number | null;
       d_10y_bp: number | null;
@@ -304,7 +305,11 @@ export interface MacroViews {
   };  floating_rate?: {
     curve_source: string;
     path: FloatingRatePoint[];
-  };  soft_data?: {
+  };  spread_outlook?: {
+    valuation_z: number | null;
+    indices: Record<string, SpreadOutlookIndex>;
+  };
+  soft_data?: {
     source: string;
     latest_release: string;
     history: { date: string; credit_stress_z: number; tone_z: number }[];
@@ -750,4 +755,16 @@ export interface FilingsDistressPoint {
   rsa_z: number | null;
   chapter11_z: number | null;
   composite_z: number | null;
+}
+
+export interface SpreadOutlookIndex {
+  now: number;
+  path: { h: number; median: number; p05: number | null; p16: number | null; p84: number | null; p95: number | null }[];
+  fair_value: number | null;
+  gap: number | null;
+  vol_scale: number | null;
+  widen_bp: number;
+  prob_widen: number | null;
+  tighten_bp: number;
+  prob_tighten: number | null;
 }
