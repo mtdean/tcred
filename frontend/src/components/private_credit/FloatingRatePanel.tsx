@@ -130,7 +130,9 @@ export default function FloatingRatePanel() {
       <div className="muted" style={{ fontSize: 10, marginTop: 6 }}>
         Stylized book: SOFR + 525bp, 75bp floor, median 5.5x leverage (log-sd 0.45), EBITDA +3%/yr ·
         stress = SOFR +200bp & EBITDA −15%.
-        {!fromPensford && ' Drop a Pensford forward-curve export in ~/macro-research/data/pensford/ to use the projected curve.'}
+        {!fromPensford && (fr.pensford_curve_age_days != null
+          ? ` The Pensford curve saved by ccflows-ui is ${Math.round(fr.pensford_curve_age_days)} days old, so it is not used — run ccflows-ui (its crawler refreshes daily) or drop an export in ~/macro-research/data/pensford/.`
+          : ' No Pensford curve on disk — run ccflows-ui or drop an export in ~/macro-research/data/pensford/.')}
       </div>
     </Panel>
   );

@@ -304,6 +304,7 @@ export interface MacroViews {
     }>;
   };  floating_rate?: {
     curve_source: string;
+    pensford_curve_age_days?: number | null;
     path: FloatingRatePoint[];
   };  policy_path?: {
     path: { h: number; point: number; lo: number; hi: number; raw: number | null; rule: number | null }[];
