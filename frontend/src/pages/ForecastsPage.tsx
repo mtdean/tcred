@@ -29,6 +29,7 @@ import TooltipShell from '../components/charts/TooltipShell';
 import FredSeriesPanel from '../components/macro/FredSeriesPanel';
 import CreditForecastsPanel from '../components/macro/CreditForecastsPanel';
 import PolicyPathPanel from '../components/macro/PolicyPathPanel';
+import AbfPlaybookPanel from '../components/macro/AbfPlaybookPanel';
 import StressLabPanel from '../components/macro/StressLabPanel';
 import DocLink, { type MethodologyEntry } from '../components/macro/DocLink';
 
@@ -366,6 +367,7 @@ const VIEWS = [
   { key: 'credit', label: 'Credit' },
   { key: 'rates', label: 'Rates & Macro' },
   { key: 'stress', label: 'Stress Lab' },
+  { key: 'playbook', label: 'ABF Playbook' },
   { key: 'history', label: 'History' },
 ];
 
@@ -438,6 +440,10 @@ export default function ForecastsPage() {
       <Tabs.Content value="stress" className="stack">
         <StressLabPanel views={data} initialPreset={params.get('preset')} initialPanel={params.get('panel')} />
         <CreditForecastsPanel views={data} section="scenarios" />
+      </Tabs.Content>
+
+      <Tabs.Content value="playbook" className="stack">
+        <AbfPlaybookPanel views={data} initialRegime={params.get('regime')} />
       </Tabs.Content>
 
       <Tabs.Content value="history" className="stack">
