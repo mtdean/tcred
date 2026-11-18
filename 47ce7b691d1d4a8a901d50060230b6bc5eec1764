@@ -1,0 +1,1 @@
+Staging error: this commit also contains unrelated in-progress work from a separate session — further Macro-tab panels in DashboardPanels.tsx and the start of the category layout in frontend/src/pages/MacroPage.tsx. That work belongs with 83b6a2f. Only the ForecastsPage.tsx line is the ACM label change this message describes.
