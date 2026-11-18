@@ -114,6 +114,62 @@ function StateRows({ kit, out, selected, onSelect, regional, suffix }: {
   );
 }
 
+// Metro areas: the most exposed under the scenario, with a name / state filter.
+function MetroSection({ kit, out }: { kit: StressKit; out: Record<string, Record<string, number>> }) {
+  const metros = kit.consumer?.metros;
+  const [measure, setMeasure] = useState<string>(metros?.measures[0]?.key ?? '');
+  const [query, setQuery] = useState('');
+  const [showAll, setShowAll] = useState(false);
+  if (!metros || !metros.rows.length) return null;
+  const m = metros.measures.find((x) => x.key === measure) ?? metros.measures[0];
+  const q = query.trim().toLowerCase();
+  const rows = metros.rows
+    .filter((r) => r.measures[m.key] && (!q || r.name.toLowerCase().includes(q)))
+    .map((r) => ({ r, v: r.measures[m.key], d: out[r.code]?.[m.key] ?? 0 }))
+    .sort((a, b) => b.d - a.d || b.v.level - a.v.level);
+  const shown = showAll || q ? rows : rows.slice(0, 15);
+  const scale = Math.max(...rows.map((x) => Math.max(x.v.level, x.v.level + x.d)), 0.01) * 1.05;
+  const btn = (on: boolean) => ({
+    background: 'transparent', color: on ? COLORS.accent : COLORS.textSecondary, border: `1px solid ${on ? COLORS.accent : COLORS.borderBright}`,
+    fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase' as const, padding: '2px 8px', cursor: 'pointer',
+  });
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginTop: 6 }}>
+        {head(`By metro area (${metros.rows.length}) ·`)}
+        {metros.measures.map((x) => (
+          <button key={x.key} type="button" onClick={() => setMeasure(x.key)} style={btn(x.key === m.key)}>{x.label}</button>
+        ))}
+        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="filter: city or state (e.g. TX)"
+          style={{ background: COLORS.bgPanel, border: `1px solid ${COLORS.border}`, color: COLORS.textPrimary, font: 'inherit', fontSize: 10, padding: '2px 8px', width: 190 }} />
+        <span className="muted" style={{ fontSize: 10 }}>{m.measure} · {q ? `${rows.length} match` : showAll ? 'all, most exposed first' : '15 most exposed'}</span>
+        {!q && <button type="button" onClick={() => setShowAll((v) => !v)} style={btn(false)}>{showAll ? 'top 15' : 'show all'}</button>}
+      </div>
+      <div style={{ maxHeight: 420, overflowY: 'auto', marginTop: 6 }}>
+        {shown.map(({ r, v, d }) => {
+          const color = Math.abs(d) < 1e-9 ? COLORS.textSecondary : d > 0 ? COLORS.negative : COLORS.positive;
+          return (
+            <div key={r.code} title={`R² ${v.r2.toFixed(2)}${v.usable ? '' : ' — no measurable link to the national cycle, held at baseline'}`}
+              style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 1.4fr) minmax(140px, 2fr) 150px', gap: 10, alignItems: 'center', padding: '4px 6px', borderBottom: `1px solid ${COLORS.border}`, opacity: v.usable ? 1 : 0.55 }}>
+              <span style={{ fontSize: 11, color: COLORS.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
+              <div>
+                <div style={{ height: 4, background: COLORS.border }}><div style={{ height: 4, width: `${(v.level / scale) * 100}%`, background: COLORS.textSecondary }} /></div>
+                <div style={{ height: 4, background: COLORS.border, marginTop: 2 }}><div style={{ height: 4, width: `${Math.min((Math.max(v.level + d, 0) / scale) * 100, 100)}%`, background: color }} /></div>
+              </div>
+              <span style={{ fontSize: 11, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color }}>
+                {v.usable ? `${v.level.toFixed(1)}% → ${Math.max(v.level + d, 0).toFixed(1)}%` : `${v.level.toFixed(1)}% · no link`}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="muted" style={{ fontSize: 10, marginTop: 5, lineHeight: 1.4 }}>
+        Each metro&apos;s own history against national unemployment (and national home prices for mortgages). No local shock here — use the state rows for that. Small metros are noisy.
+      </div>
+    </div>
+  );
+}
+
 export default function ConsumerSegmentsView({ kit, inputs, phase }: { kit: StressKit; inputs: StressInputs; phase: number }) {
   const c = kit.consumer;
   const [selected, setSelected] = useState<string>(c?.states[0]?.code ?? '');
@@ -194,6 +250,7 @@ export default function ConsumerSegmentsView({ kit, inputs, phase }: { kit: Stre
           </div>
         )}
       </div>
+      <MetroSection kit={kit} out={res.metros} />
       <div className="muted" style={{ fontSize: 10, border: `1px solid ${COLORS.border}`, padding: '6px 10px', background: COLORS.bgPanel, lineHeight: 1.5 }}>
         Every lender&apos;s borrowers (NY Fed Consumer Credit Panel; state, score and income cuts via the Philadelphia Fed Consumer Credit Explorer), not a pool.
         Flow and stock measures are not comparable in level. A national shock reaches a state through how its unemployment and home prices have moved

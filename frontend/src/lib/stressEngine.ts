@@ -65,9 +65,14 @@ export interface StressKit {
     expected_abf?: Record<string, number>;
     expected_structures?: Record<string, number>;
     expected_consumer?: Record<string, number>;
+    expected_metros?: Record<string, number>;
   }[];
   consumer?: {
     classes: AbfClass[];
+    metros?: {
+      measures: { key: string; label: string; measure: string }[];
+      rows: ConsumerMetro[];
+    } | null;
     grids: ConsumerGrid[];
     mix: string[];
     state_measures: { key: string; label: string; measure: string; suffix: string }[];
@@ -139,6 +144,11 @@ const ABF_OVERLAYS: Record<string, string[]> = {
   hpi_pct: ['p_hpi'], car_pct: ['p_car'], oil_pct: ['p_oil', 'p_gas'],
 };
 
+export interface ConsumerMetro {
+  code: string; name: string;
+  measures: Record<string, { level: number; b_u: number; b_hpi: number; r2: number; usable: boolean }>;
+}
+
 // One segment table: cell (row, col) is the class `${prefix}_${row}_${col}`.
 export interface ConsumerGrid {
   key: string; title: string; measure: string; prefix: string; note: string;
@@ -153,6 +163,7 @@ export interface StressResult {
   abf: Record<string, { delta: number; stressed: number | null }>;
   abf_structures: AbfStructureResult[];
   consumer: Record<string, { delta: number; stressed: number | null }>;
+  metros: Record<string, Record<string, number>>;
   deltas: Record<string, number>;
   stance: {
     stance: string; score: number;
@@ -372,6 +383,12 @@ export function stressResponse(
     }
     consumerOut = runClasses(kit.consumer.classes, reg, local);
   }
+  // metro areas: reduced-form betas to the national unemployment and home-price moves
+  const metroOut: StressResult['metros'] = {};
+  for (const row of kit.consumer?.metros?.rows ?? []) {
+    metroOut[row.code] = Object.fromEntries(Object.entries(row.measures).map(
+      ([m, v]) => [m, v.usable ? v.b_u * dU + v.b_hpi * (reg.p_hpi ?? 0) : 0]));
+  }
 
   // 8) generic structures: collateral stress → tranche headroom
   const abfStructures: AbfStructureResult[] = [];
@@ -420,6 +437,7 @@ export function stressResponse(
     abf: abfOut,
     abf_structures: abfStructures,
     consumer: consumerOut,
+    metros: metroOut,
     deltas: {
       d_policy_bp: dPolicy, d_2y_bp: d2y, d_10y_bp: d10y, d_slope_bp: dSlope, d_unrate_pp: dU,
       d_baa_pp: dBaa, d_hy_oas_pp: dHy, d_ig_oas_pp: dIg, d_corp_loss_pp: dCorp,
@@ -456,6 +474,11 @@ export function verifyKit(kit: StressKit): { passed: number; total: number; fail
     }
     for (const [key, want] of Object.entries(chk.expected_consumer ?? {})) {
       const have = got.consumer[key]?.delta;
+      if (have == null || Math.abs(have - want) > 1e-6) ok = false;
+    }
+    for (const [id, want] of Object.entries(chk.expected_metros ?? {})) {
+      const [code, m] = id.split(':');
+      const have = got.metros[code]?.[m];
       if (have == null || Math.abs(have - want) > 1e-6) ok = false;
     }
     if (!ok) failed.push(chk.name);

@@ -309,6 +309,7 @@ export interface MacroViews {
     path: FloatingRatePoint[];
   };  stress_kit?: import('./stressEngine').StressKit;
   abf_playbook?: import('../components/macro/AbfPlaybookPanel').AbfPlaybook;
+  consumer_watch?: import('../components/macro/ConsumerWatchPanel').ConsumerWatch;
   policy_path?: {
     path: { h: number; point: number; lo: number; hi: number; raw: number | null; rule: number | null }[];
     rule_prescription: number | null;
