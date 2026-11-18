@@ -1,0 +1,1 @@
+Staging error: the frontend/src/pages/MacroPage.tsx changes here (category bar and sectioned layout for the Macro tab) are unrelated in-progress work from a separate session and belong with 83b6a2f. The Stress Lab and Forecasts sub-tab work this message describes is in the other five files.
