@@ -64,7 +64,15 @@ export interface StressKit {
     name: string; inputs: StressInputs; expected: Record<string, number | string>;
     expected_abf?: Record<string, number>;
     expected_structures?: Record<string, number>;
+    expected_consumer?: Record<string, number>;
   }[];
+  consumer?: {
+    classes: AbfClass[];
+    age: { bands: { key: string; label: string }[]; products: { key: string; label: string }[] };
+    states: { code: string; name: string; unrate: number | null }[];
+    regional_inputs: StressInputSpec[];
+    not_modelled: { label: string; reason: string }[];
+  } | null;
   abf?: {
     classes: AbfClass[];
     structures?: {
@@ -129,9 +137,13 @@ const ABF_OVERLAYS: Record<string, string[]> = {
   hpi_pct: ['p_hpi'], car_pct: ['p_car'], oil_pct: ['p_oil', 'p_gas'],
 };
 
+// Local shock on top of what the national scenario implies, keyed by state code.
+export type RegionalShocks = Record<string, { unrate_pp?: number; hpi_pct?: number }>;
+
 export interface StressResult {
   abf: Record<string, { delta: number; stressed: number | null }>;
   abf_structures: AbfStructureResult[];
+  consumer: Record<string, { delta: number; stressed: number | null }>;
   deltas: Record<string, number>;
   stance: {
     stance: string; score: number;
@@ -171,8 +183,30 @@ function normCdf(x: number): number {
   return 0.5 * (1 + (x >= 0 ? erf : -erf));
 }
 
+// Evaluate satellite equations, drivers first: a driver's total move (equation
+// + overlay) is written into `reg` so later equations see it.
+function runClasses(
+  classes: AbfClass[], reg: Record<string, number>, extra: Record<string, number>,
+): StressResult['abf'] {
+  const out: StressResult['abf'] = {};
+  const ordered = [...classes].sort(
+    (a, b) => Number(a.kind !== 'driver') - Number(b.kind !== 'driver'));
+  for (const c of ordered) {
+    let d = c.usable
+      ? Object.entries(c.coefs).reduce((acc, [r, b]) => acc + b * (reg[r] ?? 0), 0) : 0;
+    if (c.kind === 'driver') {
+      d += extra[c.target] ?? 0;
+      reg[c.target] = d;
+      out[c.key] = { delta: d, stressed: null };
+    } else {
+      out[c.key] = { delta: d, stressed: c.level == null ? null : Math.max(c.level + d, 0) };
+    }
+  }
+  return out;
+}
+
 export function stressResponse(
-  kit: StressKit, inputs: StressInputs = {}, phaseMonths = 6,
+  kit: StressKit, inputs: StressInputs = {}, phaseMonths = 6, regional: RegionalShocks = {},
 ): StressResult {
   const x: StressInputs = { ...defaultInputs(kit), ...inputs };
   const pol = kit.policy;
@@ -307,26 +341,27 @@ export function stressResponse(
   }
 
   // 7) ABF collateral: drivers first, then losses on the total driver moves
-  const abfOut: StressResult['abf'] = {};
+  let abfOut: StressResult['abf'] = {};
+  const reg: Record<string, number> = { d_u: dU, d_vix: x.vix, sloos_card: x.sloos, sloos_ci: x.sloos };
   if (kit.abf) {
-    const reg: Record<string, number> = { d_u: dU, d_vix: x.vix, sloos_card: x.sloos, sloos_ci: x.sloos };
     const extra: Record<string, number> = {};
     for (const [key, targets] of Object.entries(ABF_OVERLAYS)) {
       for (const t of targets) extra[t] = (extra[t] ?? 0) + (x[key] ?? 0);
     }
-    const ordered = [...kit.abf.classes].sort(
-      (a, b) => Number(a.kind !== 'driver') - Number(b.kind !== 'driver'));
-    for (const c of ordered) {
-      let d = c.usable
-        ? Object.entries(c.coefs).reduce((acc, [r, b]) => acc + b * (reg[r] ?? 0), 0) : 0;
-      if (c.kind === 'driver') {
-        d += extra[c.target] ?? 0;
-        reg[c.target] = d;
-        abfOut[c.key] = { delta: d, stressed: null };
-      } else {
-        abfOut[c.key] = { delta: d, stressed: c.level == null ? null : Math.max(c.level + d, 0) };
-      }
+    abfOut = runClasses(kit.abf.classes, reg, extra);
+  }
+
+  // 7b) consumer segments: same equations by age band and state; they read the
+  //     national home-price and used-car moves left in `reg` by the ABF drivers
+  let consumerOut: StressResult['consumer'] = {};
+  if (kit.consumer) {
+    const local: Record<string, number> = {};
+    for (const [code, shock] of Object.entries(regional)) {
+      const lc = code.toLowerCase();
+      local[`u_${lc}`] = shock.unrate_pp ?? 0;
+      local[`h_${lc}`] = shock.hpi_pct ?? 0;
     }
+    consumerOut = runClasses(kit.consumer.classes, reg, local);
   }
 
   // 8) generic structures: collateral stress → tranche headroom
@@ -375,6 +410,7 @@ export function stressResponse(
   return {
     abf: abfOut,
     abf_structures: abfStructures,
+    consumer: consumerOut,
     deltas: {
       d_policy_bp: dPolicy, d_2y_bp: d2y, d_10y_bp: d10y, d_slope_bp: dSlope, d_unrate_pp: dU,
       d_baa_pp: dBaa, d_hy_oas_pp: dHy, d_ig_oas_pp: dIg, d_corp_loss_pp: dCorp,
@@ -407,6 +443,10 @@ export function verifyKit(kit: StressKit): { passed: number; total: number; fail
     for (const [id, want] of Object.entries(chk.expected_structures ?? {})) {
       const [key, rating] = id.split(':');
       const have = got.abf_structures.find((s) => s.key === key)?.tranches.find((t) => t.rating === rating)?.stressed;
+      if (have == null || Math.abs(have - want) > 1e-6) ok = false;
+    }
+    for (const [key, want] of Object.entries(chk.expected_consumer ?? {})) {
+      const have = got.consumer[key]?.delta;
       if (have == null || Math.abs(have - want) > 1e-6) ok = false;
     }
     if (!ok) failed.push(chk.name);

@@ -31,6 +31,7 @@ import {
 import type { MacroViews } from '../../lib/types';
 import Panel from '../shared/Panel';
 import TooltipShell from '../charts/TooltipShell';
+import ConsumerSegmentsView from './ConsumerSegmentsView';
 import DocLink from './DocLink';
 
 const STANCE: Record<string, { label: string; color: string }> = {
@@ -308,8 +309,8 @@ function StructuresView({ kit, res }: { kit: StressKit; res: StressResult }) {
 export default function StressLabPanel({ views, initialPreset, initialPanel }: {
   views: MacroViews; initialPreset?: string | null; initialPanel?: string | null;
 }) {
-  const [panel, setPanel] = useState<'markets' | 'abf' | 'structures'>(
-    initialPanel === 'abf' || initialPanel === 'structures' ? initialPanel : 'markets');
+  const [panel, setPanel] = useState<'markets' | 'abf' | 'structures' | 'consumer'>(
+    initialPanel === 'abf' || initialPanel === 'structures' || initialPanel === 'consumer' ? initialPanel : 'markets');
   const kit: StressKit | undefined = views.stress_kit;
   const start = kit?.presets.find((p) => p.name === initialPreset);
   const [inputs, setInputs] = useState<StressInputs>(
@@ -443,7 +444,7 @@ export default function StressLabPanel({ views, initialPreset, initialPanel }: {
           </div>
 
           <div style={{ display: 'flex', gap: 4 }}>
-            {([['markets', 'Markets & corporate'], ['abf', 'ABF collateral'], ['structures', 'ABF structures']] as const).map(([k, label]) => (
+            {([['markets', 'Markets & corporate'], ['abf', 'ABF collateral'], ['structures', 'ABF structures'], ['consumer', 'Consumer segments']] as const).map(([k, label]) => (
               <button key={k} type="button" onClick={() => setPanel(k)}
                 style={{ fontFamily: 'inherit', fontSize: 10, padding: '4px 12px', cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.1em',
                   background: 'transparent', color: panel === k ? COLORS.accent : COLORS.textSecondary,
@@ -455,6 +456,7 @@ export default function StressLabPanel({ views, initialPreset, initialPanel }: {
 
           {panel === 'abf' && <AbfView kit={kit} res={res} />}
           {panel === 'structures' && <StructuresView kit={kit} res={res} />}
+          {panel === 'consumer' && <ConsumerSegmentsView kit={kit} inputs={inputs} phase={phase} />}
 
           {panel === 'markets' && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 10 }}>
             <PathChart title="HY OAS (bp)" h={P.h} color={COLORS.negative} fmt={(v) => `${Math.round(v * 100)}`}
