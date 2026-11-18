@@ -68,8 +68,10 @@ export interface StressKit {
   }[];
   consumer?: {
     classes: AbfClass[];
-    age: { bands: { key: string; label: string }[]; products: { key: string; label: string }[] };
-    states: { code: string; name: string; unrate: number | null }[];
+    grids: ConsumerGrid[];
+    mix: string[];
+    state_measures: { key: string; label: string; measure: string; suffix: string }[];
+    states: { code: string; name: string; unrate: number | null; measures: string[] }[];
     regional_inputs: StressInputSpec[];
     not_modelled: { label: string; reason: string }[];
   } | null;
@@ -136,6 +138,13 @@ export interface AbfClass {
 const ABF_OVERLAYS: Record<string, string[]> = {
   hpi_pct: ['p_hpi'], car_pct: ['p_car'], oil_pct: ['p_oil', 'p_gas'],
 };
+
+// One segment table: cell (row, col) is the class `${prefix}_${row}_${col}`.
+export interface ConsumerGrid {
+  key: string; title: string; measure: string; prefix: string; note: string;
+  rows: { key: string; label: string }[];
+  cols: { key: string; label: string }[];
+}
 
 // Local shock on top of what the national scenario implies, keyed by state code.
 export type RegionalShocks = Record<string, { unrate_pp?: number; hpi_pct?: number }>;
