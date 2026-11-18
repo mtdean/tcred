@@ -3,6 +3,7 @@
 # Install the backend as an always-on service for the current user.
 #
 #   macOS → launchd agent  (~/Library/LaunchAgents/com.situationmonitor.server.plist)
+#           + a daily 07:00 gh-pages publish (com.situationmonitor.publish.plist)
 #   Linux → systemd user unit (~/.config/systemd/user/situation-monitor.service)
 #
 # Both auto-start on login and restart the server if it crashes.
@@ -21,6 +22,8 @@ PYTHON="$PROJECT_ROOT/backend/.venv/bin/python"
 
 LABEL="com.situationmonitor.server"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
+PUBLISH_LABEL="com.situationmonitor.publish"
+PUBLISH_PLIST="$HOME/Library/LaunchAgents/$PUBLISH_LABEL.plist"
 UNIT_NAME="situation-monitor.service"
 UNIT="$HOME/.config/systemd/user/$UNIT_NAME"
 
@@ -28,8 +31,9 @@ uninstall() {
     case "$(uname -s)" in
         Darwin)
             launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
-            rm -f "$PLIST"
-            echo "Removed $PLIST" ;;
+            launchctl bootout "gui/$(id -u)/$PUBLISH_LABEL" 2>/dev/null || true
+            rm -f "$PLIST" "$PUBLISH_PLIST"
+            echo "Removed $PLIST $PUBLISH_PLIST" ;;
         Linux)
             systemctl --user disable --now "$UNIT_NAME" 2>/dev/null || true
             rm -f "$UNIT"
@@ -61,6 +65,14 @@ case "$(uname -s)" in
         echo "Installed launchd agent: $PLIST"
         echo "  Restart: launchctl kickstart -k gui/$(id -u)/$LABEL"
         echo "  Logs:    $PROJECT_ROOT/logs/server.err.log"
+
+        sed -e "s|__PROJECT_ROOT__|$PROJECT_ROOT|g" -e "s|__PATH__|$PATH|g" \
+            "$SCRIPT_DIR/$PUBLISH_LABEL.plist.template" > "$PUBLISH_PLIST"
+        launchctl bootout "gui/$(id -u)/$PUBLISH_LABEL" 2>/dev/null || true
+        launchctl bootstrap "gui/$(id -u)" "$PUBLISH_PLIST"
+        echo "Installed daily 07:00 gh-pages publish: $PUBLISH_PLIST"
+        echo "  Run now: launchctl kickstart gui/$(id -u)/$PUBLISH_LABEL"
+        echo "  Logs:    $PROJECT_ROOT/logs/publish.log"
         ;;
     Linux)
         mkdir -p "$(dirname "$UNIT")"
@@ -86,6 +98,14 @@ EOF
         echo "Installed systemd user unit: $UNIT"
         echo "  Restart: systemctl --user restart $UNIT_NAME"
         echo "  Logs:    $PROJECT_ROOT/logs/server.err.log"
+
+        sed -e "s|__PROJECT_ROOT__|$PROJECT_ROOT|g" -e "s|__PATH__|$PATH|g" \
+            "$SCRIPT_DIR/$PUBLISH_LABEL.plist.template" > "$PUBLISH_PLIST"
+        launchctl bootout "gui/$(id -u)/$PUBLISH_LABEL" 2>/dev/null || true
+        launchctl bootstrap "gui/$(id -u)" "$PUBLISH_PLIST"
+        echo "Installed daily 07:00 gh-pages publish: $PUBLISH_PLIST"
+        echo "  Run now: launchctl kickstart gui/$(id -u)/$PUBLISH_LABEL"
+        echo "  Logs:    $PROJECT_ROOT/logs/publish.log"
         echo "  (To keep it running while logged out: loginctl enable-linger \$USER)"
         ;;
     *)
